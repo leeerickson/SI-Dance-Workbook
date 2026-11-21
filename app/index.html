@@ -1,0 +1,1316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: data:; font-src 'self'; connect-src 'self' blob: data:">
+<title>Choreography Workbook</title>
+<style>
+@font-face{font-family:"Archivo"; src:url("fonts/archivo.woff2") format("woff2"); font-weight:100 900; font-stretch:62% 125%; font-display:swap}
+@font-face{font-family:"Inter"; src:url("fonts/inter.woff2") format("woff2"); font-weight:100 900; font-display:swap}
+@font-face{font-family:"JetBrains Mono"; src:url("fonts/jetbrains-mono.woff2") format("woff2"); font-weight:100 800; font-display:swap}
+/* Layout: one app, two levels. Song library first; inside a song, a shared timeline + transport sit above four tabs (Rehearse, Counts & notes, Formations, Share & print) that all read the same counts. Spike-tape colours mark sections. */
+:root{
+  --bg:#EDF0F5; --surface:#FFFFFF; --surface-2:#E2E7EF; --ink:#141A2E; --muted:#59627A; --line:#CBD3DF;
+  --accent:#4338CA; --accent-ink:#FFFFFF; --warn:#B42318; --warn-bg:#FDECEA; --ok:#1E7A3C;
+  --stage:#191E33; --stage-ink:#F3F4FA; --stage-muted:#9CA3BF;
+  --floor:#262B3B; --floor-line:#3A4157; --floor-ink:#E9EBF4; --floor-muted:#8F97B3;
+  --tape-1:#F2C200; --tape-2:#E8508A; --tape-3:#19A7BC; --tape-4:#45A852; --tape-5:#F07B24; --tape-6:#9A6BF7;
+  --tape-ink:#111318;
+  --f-display:"Archivo","Arial Narrow",system-ui,sans-serif;
+  --f-body:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0F121B; --surface:#171B27; --surface-2:#222839; --ink:#E7EAF3; --muted:#98A1B7; --line:#2D3447;
+    --accent:#8F89FF; --accent-ink:#0D0F1E; --warn:#FF8A7A; --warn-bg:#3A1D1D; --ok:#6FD58E;
+    --stage:#080B14; --floor:#1E2232; --floor-line:#323950;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0F121B; --surface:#171B27; --surface-2:#222839; --ink:#E7EAF3; --muted:#98A1B7; --line:#2D3447;
+  --accent:#8F89FF; --accent-ink:#0D0F1E; --warn:#FF8A7A; --warn-bg:#3A1D1D; --ok:#6FD58E;
+  --stage:#080B14; --floor:#1E2232; --floor-line:#323950;
+  color-scheme:dark;
+}
+[hidden]{display:none!important}
+*{box-sizing:border-box}
+body{background:var(--bg); color:var(--ink); font-family:var(--f-body); font-size:14px; line-height:1.5; margin:0;
+  padding-left:24px; padding-right:24px; padding-block:0 40px; margin:0}
+.mono{font-family:var(--f-mono); font-variant-numeric:tabular-nums}
+h1,h2{font-family:var(--f-display); margin:0}
+h2{font-stretch:112%; font-weight:750; font-size:15px; letter-spacing:.06em; text-transform:uppercase}
+button,input,select,textarea{font:inherit; color:inherit}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.wrap{max-width:1320px; margin:0 auto}
+.top{display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px 20px; padding-block:16px 14px}
+.brand{display:flex; align-items:center; gap:12px; background:none; border:none; padding:0; cursor:pointer; text-align:left}
+.brand-mark{display:grid; gap:3px}
+.brand-mark span{display:block; width:26px; height:6px; border-radius:1px; transform:rotate(-6deg)}
+.brand-mark span:nth-child(1){background:var(--tape-1)} .brand-mark span:nth-child(2){background:var(--tape-2); margin-left:5px} .brand-mark span:nth-child(3){background:var(--tape-3)}
+.brand-name{font-family:var(--f-display); font-stretch:120%; font-weight:850; font-size:20px; line-height:1.1}
+.brand-sub{color:var(--muted); font-size:12.5px}
+.btn{display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:7px 12px; border:1px solid var(--line); background:var(--surface); color:var(--ink); border-radius:8px; cursor:pointer; font-weight:500; font-size:13.5px; line-height:1.2; white-space:nowrap; text-decoration:none}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent); color:var(--accent-ink); border-color:transparent}
+.btn[aria-pressed="true"]{background:var(--ink); color:var(--bg); border-color:var(--ink)}
+.btn.small{padding:5px 9px; font-size:12.5px}
+.btn.danger{color:var(--warn)}
+.btn:disabled{opacity:.45; cursor:not-allowed}
+.panel{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:16px; min-width:0}
+.panel-head{display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px}
+.label{font-size:11.5px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--muted)}
+.muted{color:var(--muted); font-size:12.5px}
+.inline{display:flex; flex-wrap:wrap; align-items:center; gap:8px}
+input[type="text"],input[type="number"],select,textarea{padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:var(--surface); max-width:100%}
+input[type="number"]{width:72px; font-family:var(--f-mono)}
+.toast{position:fixed; left:50%; bottom:calc(20px + env(safe-area-inset-bottom, 0px)); transform:translateX(-50%); background:var(--ink); color:var(--bg); padding:9px 14px; border-radius:10px; font-size:13px; z-index:50; max-width:calc(100% - 32px)}
+
+/* Library */
+.lib-head{display:flex; flex-wrap:wrap; align-items:end; justify-content:space-between; gap:12px; margin:6px 0 16px}
+.lib-head h1{font-stretch:118%; font-weight:850; font-size:28px; line-height:1.1}
+.cards{display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:14px}
+.card{display:grid; gap:10px; background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px; min-width:0}
+.card-top{display:flex; gap:10px; align-items:start}
+.card-tapes{display:flex; gap:3px; flex-wrap:wrap; margin-top:2px}
+.card-tapes i{display:block; width:18px; height:6px; border-radius:1px; transform:rotate(-6deg)}
+.card h3{margin:0; font-size:16px; font-weight:600; line-height:1.3; overflow-wrap:anywhere}
+.card-meta{display:flex; flex-wrap:wrap; gap:4px 12px; color:var(--muted); font-size:12.5px}
+.card-actions{display:flex; flex-wrap:wrap; gap:6px}
+.chiptag{display:inline-block; padding:1px 8px; border-radius:999px; background:var(--surface-2); font-size:11.5px; color:var(--muted)}
+.chiptag.warn{background:var(--warn-bg); color:var(--warn)}
+.import-box{display:grid; gap:10px; margin-top:14px}
+.import-box textarea{width:100%; min-height:90px; font-family:var(--f-mono); font-size:12px}
+
+/* Project bar */
+.pbar{display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; margin-bottom:12px}
+.ptitle{flex:1 1 220px; min-width:0; font-family:var(--f-display); font-stretch:112%; font-weight:800; font-size:22px; padding:4px 8px; border:1px solid transparent; border-radius:8px; background:transparent}
+.ptitle:hover,.ptitle:focus{border-color:var(--line); background:var(--surface)}
+.tabs{display:flex; gap:4px; overflow-x:auto; border-bottom:1px solid var(--line); margin-bottom:12px}
+.tab{border:none; background:none; padding:10px 14px; font-weight:600; font-size:13.5px; color:var(--muted); cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap}
+.tab[aria-selected="true"]{color:var(--ink); border-bottom-color:var(--accent)}
+.banner{display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:10px 14px; border-radius:10px; background:var(--warn-bg); color:var(--ink); margin-bottom:12px; font-size:13.5px}
+
+.timeline{display:block; width:100%; height:70px; border-radius:10px; border:1px solid var(--line); background:var(--surface); cursor:pointer; touch-action:manipulation}
+.transport{display:flex; flex-wrap:wrap; align-items:center; gap:10px 14px; margin:10px 0 14px}
+.play{width:48px; height:48px; border-radius:50%; border:none; background:var(--accent); color:var(--accent-ink); display:grid; place-items:center; cursor:pointer}
+.play svg,.icon-btn svg{width:20px; height:20px; fill:currentColor}
+.icon-btn{width:38px; height:38px; border-radius:50%; border:1px solid var(--line); background:var(--surface); color:var(--ink); display:grid; place-items:center; cursor:pointer}
+.tnow{display:grid; line-height:1.2}
+.tnow b{font-family:var(--f-display); font-stretch:115%; font-size:14px; letter-spacing:.04em; text-transform:uppercase}
+.tnow span{font-family:var(--f-mono); font-size:12px; color:var(--muted)}
+.spacer{flex:1}
+.seg{display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden}
+.seg input{position:absolute; opacity:0; pointer-events:none}
+.seg label{padding:5px 10px; cursor:pointer; font-family:var(--f-mono); font-size:12.5px; border-left:1px solid var(--line)}
+.seg label:first-of-type{border-left:none}
+.seg input:checked + label{background:var(--ink); color:var(--bg)}
+.seg input:focus-visible + label{outline:2px solid var(--accent); outline-offset:-2px}
+.loopchip{font-size:12.5px; padding:4px 10px; border-radius:999px; background:var(--accent); color:var(--accent-ink); border:none; cursor:pointer}
+
+.grid2{display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr); gap:18px; align-items:start}
+@media (max-width:960px){ .grid2{grid-template-columns:minmax(0,1fr)} }
+.col{display:grid; gap:14px; min-width:0}
+
+/* Rehearse stage */
+.stage{position:relative; aspect-ratio:16/9; max-width:100%; background:var(--stage); color:var(--stage-ink); border-radius:14px; overflow:hidden; container-type:inline-size; display:grid; place-items:center}
+.stage video{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000}
+.stage video.mirror{transform:scaleX(-1)}
+.cd{position:relative; display:grid; justify-items:center; gap:1.2cqw; text-align:center; z-index:1}
+.cd-section{display:flex; align-items:center; gap:1.6cqw; font-family:var(--f-display); font-stretch:118%; font-weight:750; font-size:3.2cqw; letter-spacing:.08em; text-transform:uppercase}
+.tape{display:inline-block; width:4.2cqw; height:1.6cqw; min-width:16px; min-height:6px; border-radius:1px; transform:rotate(-6deg); background:var(--tape-1)}
+.cd-count{font-family:var(--f-display); font-stretch:125%; font-weight:900; font-size:25cqw; line-height:.86; font-variant-numeric:tabular-nums}
+.cd-count.lead{color:var(--stage-muted)}
+.cd-phrase{font-family:var(--f-mono); font-size:2.4cqw; color:var(--stage-muted)}
+.cd-beats{display:flex; gap:1.1cqw; margin-top:.6cqw}
+.cd-beats i{display:block; width:1.5cqw; height:1.5cqw; min-width:7px; min-height:7px; border-radius:50%; background:color-mix(in srgb, var(--stage-ink) 18%, transparent)}
+.cd-beats i.on{background:var(--cur-tape, var(--tape-1))}
+.cd-beats i.past{background:color-mix(in srgb, var(--stage-ink) 45%, transparent)}
+.stage.has-video .cd{position:absolute; left:2.4cqw; bottom:2.4cqw; justify-items:start; text-align:left; gap:.4cqw; padding:1.4cqw 2cqw; border-radius:10px; background:rgba(8,10,20,.72)}
+.stage.has-video .cd-count{font-size:10cqw}
+.stage.has-video .cd-section{font-size:2cqw}
+.stage.has-video .cd-phrase{font-size:1.7cqw}
+.badges{position:absolute; top:2cqw; right:2cqw; display:flex; gap:6px; z-index:2}
+.badge{font-family:var(--f-mono); font-size:11.5px; padding:3px 8px; border-radius:999px; background:rgba(255,255,255,.14); color:var(--stage-ink)}
+.badge.loop{background:var(--accent); color:var(--accent-ink)}
+.countoff{position:absolute; inset:0; display:grid; place-items:center; background:rgba(8,10,20,.82); font-family:var(--f-display); font-stretch:125%; font-weight:900; font-size:28cqw; color:var(--tape-1); z-index:3}
+.countoff.pop{animation:pop .22s ease-out}
+@keyframes pop{from{transform:scale(1.25); opacity:.4} to{transform:scale(1); opacity:1}}
+@media (prefers-reduced-motion: reduce){ .countoff.pop{animation:none} }
+.notecard{display:grid; gap:6px}
+.note-now{font-size:22px; line-height:1.35; font-weight:500; min-height:2.7em; text-wrap:pretty}
+.note-now.empty{color:var(--muted); font-size:16px; font-weight:400}
+.note-next{font-size:13.5px; color:var(--muted)}
+.note-next b{color:var(--ink); font-weight:600}
+.cue-now{font-size:14px}
+.cue-now b{font-weight:600}
+
+/* Stage floor (formations) */
+.floor-wrap{background:var(--stage); border-radius:14px; padding:10px; position:relative; color:var(--floor-ink)}
+.floor-wrap svg{display:block; width:100%; height:auto; touch-action:none; user-select:none; -webkit-user-select:none}
+.floor-bar{display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; padding:2px 4px 8px}
+.floor-title{font-family:var(--f-display); font-stretch:115%; font-weight:700; font-size:13px; letter-spacing:.06em; text-transform:uppercase}
+.floor-sub{font-family:var(--f-mono); font-size:11.5px; color:var(--floor-muted)}
+.view-toggle{display:inline-flex; border:1px solid var(--floor-line); border-radius:8px; overflow:hidden}
+.view-toggle button{border:none; background:transparent; color:var(--floor-muted); padding:4px 9px; font-size:12px; cursor:pointer}
+.view-toggle button[aria-pressed="true"]{background:var(--floor-ink); color:var(--stage)}
+.floor-hint{margin:0; padding:8px 4px 2px; color:var(--floor-muted); font-size:12.5px}
+.floor-hint b{color:var(--floor-ink); font-weight:600}
+.empty-floor{display:grid; place-items:center; gap:10px; text-align:center; padding:40px 16px; color:var(--floor-muted)}
+
+/* Counts & notes */
+.tempo-grid{display:grid; grid-template-columns:auto minmax(0,1fr); gap:10px 14px; align-items:center}
+.status{margin:12px 0 0; padding:9px 12px; border-radius:8px; background:var(--surface-2); font-size:13px}
+.loopbar{display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:10px 12px; border-radius:10px; background:var(--surface-2); margin-bottom:14px}
+.loop-label{flex:1 1 160px; font-size:13px; min-width:0}
+.sec{display:grid; gap:8px; padding-block:10px; border-top:1px solid var(--line)}
+.sec:first-child{border-top:none; padding-top:0}
+.sec-head{display:flex; flex-wrap:wrap; align-items:center; gap:8px}
+.sec-head .tape{width:22px; height:9px}
+.sec-name{flex:1 1 120px; min-width:0; padding:5px 8px; border:1px solid transparent; border-radius:6px; background:transparent; font-weight:600; font-size:14px}
+.sec-name:hover,.sec-name:focus{border-color:var(--line); background:var(--surface)}
+.sec-start{display:flex; align-items:center; gap:6px; color:var(--muted); font-size:12px}
+.sec-start input{width:56px; padding:3px 6px; font-size:12px}
+.x{border:none; background:none; color:var(--muted); cursor:pointer; padding:4px 6px; border-radius:6px; font-size:12.5px}
+.x:hover{color:var(--ink); background:var(--surface-2)}
+.chips{display:flex; flex-wrap:wrap; gap:6px}
+.chip{position:relative; min-width:38px; height:36px; padding:0 8px; border-radius:6px; border:1px solid var(--line); background:var(--surface); font-family:var(--f-mono); font-size:13px; cursor:pointer}
+.chip.has-note::after{content:""; position:absolute; right:4px; top:4px; width:5px; height:5px; border-radius:50%; background:var(--muted)}
+.chip.has-form::before{content:""; position:absolute; left:4px; bottom:4px; width:6px; height:6px; transform:rotate(45deg); background:var(--accent)}
+.chip.in-loop{box-shadow:inset 0 0 0 2px var(--accent)}
+.chip.pick{outline:2px dashed var(--accent); outline-offset:2px}
+.chip.current{background:var(--tape); color:var(--tape-ink); border-color:transparent}
+.chip.current::after{background:var(--tape-ink)}
+.sheet{display:grid; gap:4px}
+.sheet-sec{display:flex; align-items:center; gap:8px; margin:12px 0 4px; font-weight:600}
+.sheet-sec:first-child{margin-top:0}
+.sheet-row{display:grid; grid-template-columns:auto minmax(0,1fr); gap:10px; align-items:start; padding:5px; border-radius:8px}
+.sheet-row.current{background:var(--surface-2)}
+.sheet-num{width:38px; height:36px; border-radius:6px; border:none; background:var(--tape); color:var(--tape-ink); font-family:var(--f-mono); font-size:13px; cursor:pointer}
+.sheet-row textarea{width:100%; min-height:38px; resize:vertical; font-size:13.5px; line-height:1.4}
+.form-tag{display:inline-block; margin-top:3px; font-size:11.5px; color:var(--accent); font-weight:500}
+
+/* Formations editor */
+.fstrip{display:flex; gap:8px; overflow-x:auto; padding-bottom:4px}
+.fchip{flex:0 0 auto; display:grid; gap:1px; text-align:left; padding:7px 11px; border-radius:8px; border:1px solid var(--line); background:var(--surface); cursor:pointer; min-width:120px}
+.fchip .n{font-weight:600; font-size:13px} .fchip .w{font-family:var(--f-mono); font-size:11.5px; color:var(--muted)}
+.fchip.current{border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent)}
+.fchip.next{border-style:dashed; border-color:var(--accent)}
+.field{display:grid; gap:4px}
+.fgrid{display:grid; gap:12px}
+.moving-note{padding:10px 12px; border-radius:8px; background:var(--surface-2); font-size:13px}
+.linked-note{padding:8px 10px; border-radius:8px; border:1px dashed var(--line); font-size:13px}
+.dlist{display:grid; gap:6px}
+.drow{display:grid; grid-template-columns:auto minmax(0,1fr) auto auto; gap:8px; align-items:center; padding:4px; border-radius:8px}
+.drow.sel{background:var(--surface-2)}
+.dot{width:28px; height:28px; border-radius:50%; display:grid; place-items:center; color:#fff; font-weight:600; font-size:12px; border:none; cursor:pointer}
+.drow input{border-color:transparent; background:transparent; font-weight:500}
+.drow input:hover,.drow input:focus{border-color:var(--line); background:var(--surface)}
+.pill{display:inline-block; padding:2px 9px; border-radius:999px; font-size:12px; font-weight:600; background:var(--surface-2); color:var(--muted)}
+.pill.warn{background:var(--warn-bg); color:var(--warn)}
+.wlist{display:grid; gap:6px; margin:0; padding:0; list-style:none}
+.wlist button{width:100%; text-align:left; border:1px solid var(--line); background:var(--surface); border-radius:8px; padding:8px 10px; cursor:pointer; font-size:13px}
+.wlist .wwhen{display:block; font-family:var(--f-mono); font-size:11.5px; color:var(--muted)}
+.cues{display:grid; margin-top:12px; border-top:1px solid var(--line)}
+.cue{display:grid; grid-template-columns:auto minmax(0,1fr); gap:10px; padding:9px 0; border-bottom:1px solid var(--line); cursor:pointer}
+.cue-n{width:22px; height:22px; border-radius:50%; background:var(--surface-2); display:grid; place-items:center; font-family:var(--f-mono); font-size:11px}
+.cue-name{font-weight:600; font-size:13px} .cue-when{font-family:var(--f-mono); font-size:11.5px; color:var(--muted)} .cue-spot{font-size:13px}
+
+/* Share & print */
+.share-code{width:100%; min-height:120px; font-family:var(--f-mono); font-size:11.5px}
+.radio-row{display:grid; gap:8px}
+.radio-row label{display:flex; gap:8px; align-items:start; padding:10px 12px; border:1px solid var(--line); border-radius:10px; cursor:pointer}
+.radio-row input{margin-top:3px}
+.paper-wrap{overflow-x:auto}
+.paper{background:#FFFFFF; color:#15171C; border-radius:4px; padding:36px 40px; width:100%; max-width:760px; margin:0 auto; box-shadow:0 1px 3px rgba(0,0,0,.18); font-size:12.5px; line-height:1.45}
+.paper h1{font-family:var(--f-display); font-stretch:115%; font-weight:850; font-size:24px; color:#15171C}
+.paper .pmeta{display:flex; flex-wrap:wrap; gap:4px 16px; color:#4A5060; margin:6px 0 18px; font-family:var(--f-mono); font-size:11.5px}
+.paper h4{margin:16px 0 6px; font-size:13px; text-transform:uppercase; letter-spacing:.06em; display:flex; align-items:center; gap:8px; color:#15171C}
+.paper table{width:100%; border-collapse:collapse}
+.paper td{border-top:1px solid #DADDE4; padding:5px 6px; vertical-align:top; color:#15171C}
+.paper td.n{width:58px; font-family:var(--f-mono); color:#4A5060; white-space:nowrap}
+.paper .blank{color:#9097A6}
+.pforms{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:14px}
+@media (max-width:560px){ .pforms{grid-template-columns:minmax(0,1fr)} .paper{padding:22px 18px} }
+.pform{border:1px solid #DADDE4; border-radius:6px; padding:8px}
+.pform b{display:block; font-size:12.5px; color:#15171C}
+.pform span{font-family:var(--f-mono); font-size:11px; color:#4A5060}
+.pform svg{display:block; width:100%; height:auto; margin-top:6px}
+#printRoot{display:none}
+@media print{
+  html,body{background:#fff!important; padding:0}
+  .wrap,.toast{display:none!important}
+  #printRoot{display:block}
+  #printRoot .paper{box-shadow:none; padding:0; max-width:none; border-radius:0}
+  #printRoot .pform{break-inside:avoid}
+  #printRoot h4{break-after:avoid}
+  #printRoot tr{break-inside:avoid}
+}
+.foot{margin-top:22px; display:grid; gap:6px; color:var(--muted); font-size:12.5px}
+.foot kbd{font-family:var(--f-mono); font-size:11.5px; padding:1px 6px; border:1px solid var(--line); border-radius:4px; background:var(--surface); color:var(--ink)}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <button class="brand" id="homeBtn" type="button" aria-label="Back to library">
+    <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+    <span><span class="brand-name" style="display:block">Choreography Workbook</span><span class="brand-sub" style="display:block">Build, rehearse, print and share. No login; everything stays on this PC.</span></span>
+  </button>
+</header>
+
+<!-- LIBRARY -->
+<section id="libView">
+  <div class="lib-head">
+    <div><h1>Your songs</h1><div class="muted" id="libCount"></div></div>
+    <div class="inline">
+      <label class="btn primary" for="newFile">New project from a song…</label>
+      <input type="file" id="newFile" accept="audio/*,video/*" hidden>
+      <button class="btn" id="importBtn" type="button">Open a share file…</button>
+    </div>
+  </div>
+
+  <div class="cards" id="cards"></div>
+  <p class="muted" id="storageNote" style="margin-top:14px"></p>
+</section>
+
+<!-- PROJECT -->
+<section id="projView" hidden>
+  <div class="pbar">
+    <button class="btn small" id="backBtn" type="button">← Library</button>
+    <input class="ptitle" id="pTitle" type="text" aria-label="Project title">
+    <select id="pStyle" aria-label="Style">
+      <option>Jazz</option><option>Contemporary</option><option>Lyrical</option><option>Ballet</option><option>Tap</option><option>Hip-hop</option><option>Musical theatre</option><option>Ballroom</option><option>Other</option>
+    </select>
+  </div>
+  <div class="banner" id="musicBanner" hidden>
+    <span id="musicBannerText"></span>
+    <label class="btn small primary" for="attachFile">Add my copy</label>
+    <input type="file" id="attachFile" accept="audio/*,video/*" hidden>
+  </div>
+  <canvas id="timeline" class="timeline" aria-label="Song timeline: sections, 8-counts, formations and loop. Click to jump."></canvas>
+  <div class="transport">
+    <button class="icon-btn" id="prevBtn" type="button" title="Back one 8-count (←)" aria-label="Back one 8-count"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
+    <button class="play" id="playBtn" type="button" aria-label="Play"><svg viewBox="0 0 24 24" id="playIcon"><path d="M7 4v16l13-8z"/></svg></button>
+    <button class="icon-btn" id="nextBtn" type="button" title="Forward one 8-count (→)" aria-label="Forward one 8-count"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+    <div class="tnow"><b id="tWhere">Intro 1 · 1</b><span><span id="tCur">0:00.0</span> / <span id="tDur">0:00</span></span></div>
+    <button class="loopchip" id="loopChip" type="button" hidden title="Clear loop"></button>
+    <span class="spacer"></span>
+    <div class="seg" role="radiogroup" aria-label="Playback speed">
+      <input type="radio" name="speed" id="sp50" value="0.5"><label for="sp50">50%</label>
+      <input type="radio" name="speed" id="sp75" value="0.75"><label for="sp75">75%</label>
+      <input type="radio" name="speed" id="sp90" value="0.9"><label for="sp90">90%</label>
+      <input type="radio" name="speed" id="sp100" value="1" checked><label for="sp100">100%</label>
+    </div>
+    <button class="btn small" id="coBtn" type="button" aria-pressed="true">Count-off</button>
+    <button class="btn small" id="clickBtn" type="button" aria-pressed="false">Clicks</button>
+  </div>
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" data-tab="rehearse" aria-selected="true">Rehearse</button>
+    <button class="tab" role="tab" data-tab="counts" aria-selected="false">Counts &amp; notes</button>
+    <button class="tab" role="tab" data-tab="forms" aria-selected="false">Formations</button>
+    <button class="tab" role="tab" data-tab="share" aria-selected="false">Share &amp; print</button>
+  </div>
+
+  <!-- Rehearse -->
+  <div id="tab-rehearse" class="grid2">
+    <div class="col">
+      <div class="stage" id="stage">
+        <video id="vid" playsinline muted hidden></video>
+        <div class="badges"><span class="badge" id="speedBadge" hidden></span><span class="badge loop" id="loopBadge" hidden>LOOP</span></div>
+        <div class="cd" id="cd">
+          <div class="cd-section"><span class="tape" id="cdTape"></span><span id="cdSection">Intro</span></div>
+          <div class="cd-count" id="cdCount">1</div>
+          <div class="cd-phrase" id="cdPhrase"></div>
+          <div class="cd-beats" id="cdBeats"></div>
+        </div>
+        <div class="countoff" id="countoff" hidden></div>
+      </div>
+      <div class="panel notecard">
+        <span class="label" id="noteLabel">Note for this 8-count</span>
+        <div class="note-now" id="noteNow"></div>
+        <div class="note-next" id="noteNext"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Video</h2><span class="muted" id="vidName">No video yet</span></div>
+        <div class="inline">
+          <label class="btn small" for="vidFile" id="vidAddLbl">Add video of the choreography</label>
+          <input type="file" id="vidFile" accept="video/*" hidden>
+          <button class="btn small" id="mirrorBtn" type="button" aria-pressed="false">Mirror</button>
+          <button class="btn small" id="vidHideBtn" type="button" aria-pressed="false">Hide video</button>
+          <span class="muted">Sync</span>
+          <button class="btn small" id="vMinus" type="button" title="Video earlier">−0.05 s</button>
+          <span class="mono" id="vOff">0.00 s</span>
+          <button class="btn small" id="vPlus" type="button" title="Video later">+0.05 s</button>
+          <button class="x" id="vRemove" type="button">Remove</button>
+        </div>
+        <p class="muted" style="margin:10px 0 0">The video plays muted, locked to the music, so speed, loop and mirror apply to both.</p>
+      </div>
+    </div>
+    <div class="col">
+      <div class="floor-wrap">
+        <div class="floor-bar">
+          <div><div class="floor-title">Formation now</div><div class="floor-sub" id="rFormName"></div></div>
+          <div class="view-toggle" role="group" aria-label="Stage view"><button type="button" data-view="aud" aria-pressed="true">Audience</button><button type="button" data-view="dan" aria-pressed="false">Dancer</button></div>
+        </div>
+        <svg id="rStage" viewBox="0 0 400 310" aria-label="Stage showing where dancers are right now"><g class="st-static"></g><g class="st-dyn"></g></svg>
+        <div class="empty-floor" id="rEmpty" hidden><div>No formations yet for this song.</div><button class="btn small" type="button" data-goto="forms">Set formations</button></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Follow a dancer</h2><select id="followSel" aria-label="Dancer to follow"><option value="">Everyone</option></select></div>
+        <div class="cue-now" id="cueNow"><span class="muted">Pick a dancer to see where they are and where they go next.</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Counts & notes -->
+  <div id="tab-counts" class="grid2" hidden>
+    <div class="col">
+      <div class="panel">
+        <div class="panel-head"><h2>Tempo and count 1</h2></div>
+        <div class="tempo-grid">
+          <span class="label">Tempo</span>
+          <div class="inline"><input id="bpmIn" type="number" min="40" max="240" step="0.1" aria-label="Beats per minute"> <span class="muted">BPM</span>
+            <button class="btn small" id="detectBtn" type="button">Detect again</button><button class="btn small" id="tapBtn" type="button">Tap tempo</button></div>
+          <span class="label">Count 1</span>
+          <div class="inline"><span class="mono" id="offsetVal">0.000 s</span><button class="btn small" id="offMinus" type="button">−10 ms</button><button class="btn small" id="offPlus" type="button">+10 ms</button><button class="btn small" id="here1Btn" type="button">Count 1 is here</button></div>
+          <span class="label">Counting</span>
+          <div class="inline"><select id="phraseSel" aria-label="Counts per phrase">
+            <option value="8">8-counts (jazz, hip-hop, tap, contemporary)</option><option value="6">6-counts (ballet in 6/8)</option><option value="12">12-counts (waltz, 4 bars of 3)</option><option value="4">4-counts</option><option value="16">16-counts</option></select></div>
+        </div>
+        <p class="status" id="status"></p>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Sections</h2><button class="btn small" id="addSecBtn" type="button">Add section at current <span class="word">8-count</span></button></div>
+        <div class="loopbar">
+          <span class="loop-label" id="loopLabel">No loop set</span>
+          <button class="btn small" id="loopPhraseBtn" type="button">Loop this <span class="word">8-count</span></button>
+          <button class="btn small" id="loopSecBtn" type="button">Loop this section</button>
+          <button class="btn small" id="pickBtn" type="button" aria-pressed="false">Pick a range</button>
+        </div>
+        <div id="grid"></div>
+        <p class="muted" style="margin:12px 0 0">Tap a number to jump there. A dot means it has a note; a diamond means a formation arrives in it.</p>
+      </div>
+    </div>
+    <div class="col">
+      <div class="panel">
+        <div class="panel-head"><h2>Count sheet</h2><span class="muted">Shows in Rehearse and on the printout</span></div>
+        <div class="sheet" id="sheet"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Formations -->
+  <div id="tab-forms" class="grid2" hidden>
+    <div class="col">
+      <div class="floor-wrap">
+        <div class="floor-bar">
+          <div><div class="floor-title" id="fNow">Formation</div><div class="floor-sub" id="fNowSub"></div></div>
+          <div class="view-toggle" role="group" aria-label="Stage view"><button type="button" data-view="aud" aria-pressed="true">Audience</button><button type="button" data-view="dan" aria-pressed="false">Dancer</button></div>
+        </div>
+        <svg id="fStage" viewBox="0 0 400 310" aria-label="Stage. Drag a dancer to move them."><g class="st-static"></g><g class="st-dyn"></g></svg>
+        <p class="floor-hint" id="fHint"></p>
+      </div>
+      <div class="fstrip" id="fstrip"></div>
+    </div>
+    <div class="col">
+      <div class="panel">
+        <div class="panel-head"><h2 id="fTitle">Formation</h2>
+          <div class="inline"><label class="inline muted"><input type="checkbox" id="snapChk" checked> Snap 1 ft</label><label class="inline muted"><input type="checkbox" id="ghostChk" checked> Paths</label></div></div>
+        <div id="fPanel"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Spacing check</h2><span class="pill" id="wCount">0</span></div>
+        <ul class="wlist" id="wlist"></ul>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Dancers</h2><button class="btn small" id="addDancer" type="button">Add dancer</button></div>
+        <div class="dlist" id="dlist"></div>
+        <div id="cueBox"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Share & print -->
+  <div id="tab-share" class="grid2" hidden>
+    <div class="col">
+      <div class="panel">
+        <div class="panel-head"><h2>Send to another teacher</h2></div>
+        <div class="radio-row">
+          <label><input type="radio" name="shareKind" value="light" checked><span><b>Counts, notes and formations</b><br><span class="muted">Small file, no music or video. They add their own copy of the song and the counts line up.</span></span></label>
+          <label><input type="radio" name="shareKind" value="full"><span><b>Everything, including music and video</b><br><span class="muted">Large file. Only share music and video you have the right to share, and only video of people who agreed.</span></span></label>
+        </div>
+        <div class="inline" style="margin-top:12px">
+          <button class="btn primary" id="makeShare" type="button">Save share file…</button>
+        </div>
+        <div id="shareOut" hidden style="margin-top:12px">
+          <p class="muted" id="shareMsg" style="margin:0 0 8px"></p>
+          <button class="btn small" id="revealShare" type="button">Show in folder</button>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>How sharing works</h2></div>
+        <ol class="muted" style="margin:0; padding-left:18px; display:grid; gap:4px">
+          <li>Save the share file (a <b>.dance</b> file) anywhere: Documents, a USB stick, OneDrive.</li>
+          <li>Send it by email or messages, like any attachment.</li>
+          <li>The other teacher double-clicks it, or uses <b>Open a share file</b>, and it arrives as a new project in their library.</li>
+        </ol>
+      </div>
+    </div>
+    <div class="col">
+      <div class="panel">
+        <div class="panel-head"><h2>Printout</h2>
+          <div class="inline"><label class="inline muted"><input type="checkbox" id="prSheet" checked> Count sheet</label><label class="inline muted"><input type="checkbox" id="prForms" checked> Formations</label></div></div>
+        <div class="inline" style="margin:0 0 12px"><button class="btn primary" id="printBtn" type="button">Print…</button><button class="btn" id="pdfBtn" type="button">Save as PDF…</button><span class="muted" id="printMsg"></span></div>
+        <div class="paper-wrap"><div class="paper" id="paper"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="foot">
+    <div>Shortcuts: <kbd>Space</kbd> play or pause · <kbd>←</kbd> <kbd>→</kbd> back or forward one 8-count · <kbd>L</kbd> loop this 8-count · <kbd>M</kbd> mirror video</div>
+  </footer>
+</section>
+<div class="toast" id="toast" hidden></div>
+</div>
+<div id="printRoot" aria-hidden="true"></div>
+
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const aud = new Audio(); aud.preload = 'auto';
+const vid = $('vid');
+const TAPES = ['--tape-1','--tape-2','--tape-3','--tape-4','--tape-5','--tape-6'];
+const DCOL = ['#D9480F','#1971C2','#2F9E44','#9C36B5','#C2255C','#0C8599','#E67700','#5F3DC4','#364FC7','#A61E4D','#087F5B','#862E9C'];
+const STAGE_W = 36, STAGE_D = 24, MIN_GAP = 2.0;
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+function fmt(t, tenths){ t = Math.max(0, t||0); const m = Math.floor(t/60), s = t - m*60; return tenths ? `${m}:${s.toFixed(1).padStart(4,'0')}` : `${m}:${String(Math.floor(s)).padStart(2,'0')}`; }
+let toastTimer;
+function toast(msg){ const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.hidden = true, 3200); }
+
+/* ================= storage ================= */
+const mem = {projects:new Map(), media:new Map()};
+let db = null;
+function openDB(){
+  return new Promise(res => {
+    try {
+      const r = indexedDB.open('choreo-workbook', 1);
+      r.onupgradeneeded = () => { const d = r.result; d.createObjectStore('projects', {keyPath:'id'}); d.createObjectStore('media'); };
+      r.onsuccess = () => { db = r.result; res(true); };
+      r.onerror = () => res(false); r.onblocked = () => res(false);
+    } catch(e){ res(false); }
+  });
+}
+function tx(store, mode, fn){
+  return new Promise(res => {
+    if (!db) return res(fn(null));
+    try { const t = db.transaction(store, mode), s = t.objectStore(store); const r = fn(s); t.oncomplete = () => res(r && r.result !== undefined ? r.result : undefined); t.onerror = () => res(undefined); }
+    catch(e){ res(undefined); }
+  });
+}
+async function allProjects(){ if (!db) return [...mem.projects.values()]; return (await tx('projects','readonly', s => s.getAll())) || []; }
+async function putProject(p){ const c = JSON.parse(JSON.stringify(p)); if (!db){ mem.projects.set(p.id, c); return; } await tx('projects','readwrite', s => s.put(c)); }
+async function delProject(id){ if (!db){ mem.projects.delete(id); return; } await tx('projects','readwrite', s => s.delete(id)); }
+async function putMedia(k, blob){ if (!db){ mem.media.set(k, blob); return; } await tx('media','readwrite', s => s.put(blob, k)); }
+async function getMedia(k){ if (!db) return mem.media.get(k); return tx('media','readonly', s => s.get(k)); }
+async function delMedia(k){ if (!db){ mem.media.delete(k); return; } await tx('media','readwrite', s => s.delete(k)); }
+
+/* ================= audio helpers ================= */
+async function buildDemo(){
+  const sr = 22050, bpm = 120, b = 60/bpm, start = 1.0, phrases = 16, P = 8, dur = start + phrases*P*b + 2;
+  const oc = new OfflineAudioContext(1, Math.ceil(dur*sr), sr);
+  const noise = oc.createBuffer(1, sr, sr); const nd = noise.getChannelData(0); for (let i=0;i<nd.length;i++) nd[i] = Math.random()*2-1;
+  const out = oc.createGain(); out.gain.value = 0.55; out.connect(oc.destination);
+  const sec = p => p<=2?'intro':p<=6?'verse':p<=10?'chorus':p<=12?'bridge':'final';
+  const roots = {intro:[110,110], verse:[110,87.31,130.81,98], chorus:[87.31,130.81,98,110], bridge:[73.42,82.41], final:[87.31,130.81,98,110]};
+  const secStart = {intro:1, verse:3, chorus:7, bridge:11, final:13};
+  const env = (n,t,pk,a,d) => { n.gain.setValueAtTime(0.0001,t); n.gain.exponentialRampToValueAtTime(pk,t+a); n.gain.exponentialRampToValueAtTime(0.0001,t+a+d); };
+  const kick = t => { const o=oc.createOscillator(), g=oc.createGain(); o.frequency.setValueAtTime(140,t); o.frequency.exponentialRampToValueAtTime(45,t+0.12); env(g,t,0.9,0.003,0.3); o.connect(g).connect(out); o.start(t); o.stop(t+0.35); };
+  const nz = (t,type,f,pk,d) => { const s=oc.createBufferSource(); s.buffer=noise; const fl=oc.createBiquadFilter(); fl.type=type; fl.frequency.value=f; const g=oc.createGain(); env(g,t,pk,0.002,d); s.connect(fl).connect(g).connect(out); s.start(t, Math.random()*0.5, d+0.05); };
+  const bass = (t,f) => { const o=oc.createOscillator(); o.type='sawtooth'; o.frequency.value=f; const fl=oc.createBiquadFilter(); fl.type='lowpass'; fl.frequency.value=520; const g=oc.createGain(); env(g,t,0.22,0.01,0.38); o.connect(fl).connect(g).connect(out); o.start(t); o.stop(t+0.42); };
+  const bell = t => { const o=oc.createOscillator(); o.frequency.value=1318.5; const g=oc.createGain(); env(g,t,0.12,0.004,0.8); o.connect(g).connect(out); o.start(t); o.stop(t+0.85); };
+  const pad = (t,len,f) => [1,1.26,1.5].forEach(r => { const o=oc.createOscillator(); o.type='triangle'; o.frequency.value=f*2*r; const g=oc.createGain(); g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.035,t+0.4); g.gain.setValueAtTime(0.035,t+len-0.3); g.gain.exponentialRampToValueAtTime(0.0001,t+len); o.connect(g).connect(out); o.start(t); o.stop(t+len+0.05); });
+  for (let p=1;p<=phrases;p++){
+    const s = sec(p), list = roots[s], root = list[(p-secStart[s]) % list.length], pt = start + (p-1)*P*b;
+    bell(pt); if (s==='chorus'||s==='final'||s==='bridge') pad(pt, P*b, root);
+    for (let k=0;k<P;k++){ const t = pt + k*b;
+      if (s!=='intro' || k%4===0) kick(t);
+      if ((s==='verse'||s==='chorus'||s==='final') && k%2===1) nz(t,'bandpass',1800,0.32,0.17);
+      if (s!=='intro') nz(t+b/2,'highpass',7000,0.1,0.05);
+      if (s!=='intro') bass(t, root); }
+  }
+  return oc.startRendering();
+}
+function toWav(buf){
+  const ch = buf.getChannelData(0), sr = buf.sampleRate, n = ch.length, ab = new ArrayBuffer(44+n*2), v = new DataView(ab);
+  const w = (o,s)=>{ for (let i=0;i<s.length;i++) v.setUint8(o+i, s.charCodeAt(i)); };
+  w(0,'RIFF'); v.setUint32(4,36+n*2,true); w(8,'WAVE'); w(12,'fmt '); v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+  v.setUint32(24,sr,true); v.setUint32(28,sr*2,true); v.setUint16(32,2,true); v.setUint16(34,16,true); w(36,'data'); v.setUint32(40,n*2,true);
+  let o = 44; for (let i=0;i<n;i++){ const s = Math.max(-1,Math.min(1,ch[i])); v.setInt16(o, s<0?s*0x8000:s*0x7fff, true); o+=2; }
+  return new Blob([ab], {type:'audio/wav'});
+}
+function computePeaks(buf){
+  const d = buf.getChannelData(0), N = 1600, step = d.length/N, out = []; let max = 0;
+  for (let i=0;i<N;i++){ let m=0; for (let j=Math.floor(i*step); j<Math.floor((i+1)*step); j+=2){ const x = Math.abs(d[j]); if (x>m) m=x; } out.push(m); if (m>max) max=m; }
+  return out.map(v => max ? Math.round(v/max*1000)/1000 : 0);
+}
+function detectTempo(buf){
+  const sr = buf.sampleRate, d = buf.getChannelData(0), hop = Math.max(1, Math.round(sr/200)), fps = sr/hop;
+  const n = Math.min(Math.floor(d.length/hop), Math.floor(fps*120)), env = new Float32Array(n); let emax = 0;
+  for (let f=0; f<n; f++){ let s=0; const a=f*hop; for (let j=0;j<hop;j++){ const x=d[a+j]||0; s+=x*x; } env[f]=Math.sqrt(s/hop); if (env[f]>emax) emax=env[f]; }
+  if (!emax) return null;
+  const on = new Float32Array(n); for (let f=1; f<n; f++) on[f] = Math.max(0, Math.log(1+100*env[f]/emax) - Math.log(1+100*env[f-1]/emax));
+  const minLag = Math.floor(fps*60/200), maxLag = Math.ceil(fps*60/55); let best=-1, bestLag=minLag;
+  for (let lag=minLag; lag<=maxLag; lag++){ let s=0; for (let i=0;i<n-lag;i++) s+=on[i]*on[i+lag]; s/=(n-lag); const bpm=60*fps/lag, w=Math.exp(-0.5*Math.pow(Math.log2(bpm/120)/0.9,2)); if (s*w>best){best=s*w; bestLag=lag;} }
+  let bpm = 60*fps/bestLag; while (bpm<75) bpm*=2; while (bpm>165) bpm/=2;
+  let bs=-1, bB=bpm, bP=0;
+  for (let c=bpm*0.97; c<=bpm*1.03; c+=bpm*0.0015){ const p=fps*60/c; for (let ph=0; ph<p; ph++){ let s=0,k=0; for (let x=ph;x<n;x+=p){ s+=on[Math.round(x)]||0; k++; } s/=k; if (s>bs){bs=s; bB=c; bP=ph;} } }
+  if (Math.abs(bB-Math.round(bB))<0.3) bB = Math.round(bB);
+  const p = fps*60/bB; let st=0; for (let f=0; f<n; f++){ if (env[f]>0.08*emax){ st=f; break; } }
+  const k = Math.max(0, Math.ceil((st-bP)/p - 0.3));
+  return {bpm:Math.round(bB*10)/10, offset:Math.round((bP+k*p)/fps*1000)/1000};
+}
+async function decodeBlob(blob){
+  const ab = await blob.arrayBuffer(), oc = new OfflineAudioContext(1, 2, 22050);
+  return new Promise((res, rej) => { const p = oc.decodeAudioData(ab, res, rej); if (p && p.then) p.then(res, rej); });
+}
+let demoBuf = null, demoUrl = null;
+async function demoAudio(){ if (!demoBuf) demoBuf = await buildDemo(); if (!demoUrl) demoUrl = URL.createObjectURL(toWav(demoBuf)); return demoUrl; }
+let ac = null;
+function getAC(){ if (!ac){ const C = window.AudioContext || window.webkitAudioContext; if (!C) return null; ac = new C(); } if (ac.state === 'suspended') ac.resume(); return ac; }
+
+/* ================= demo project ================= */
+function assign(prevPos, pts, dancers){
+  const o = {};
+  if (!prevPos){ dancers.forEach((d,i) => o[d.id] = pts[i].slice()); return o; }
+  const pairs = []; dancers.forEach(d => pts.forEach((p,j) => { const a = prevPos[d.id]; pairs.push([Math.hypot(a[0]-p[0], a[1]-p[1]), d.id, j]); }));
+  pairs.sort((a,b)=>a[0]-b[0]); const used = new Set(), done = {};
+  for (const [,id,j] of pairs){ if (done[id] || used.has(j)) continue; done[id]=1; used.add(j); o[id] = pts[j].slice(); }
+  const ids = dancers.map(d=>d.id), sq = (a,b) => (a[0]-b[0])**2 + (a[1]-b[1])**2;
+  for (let pass=0, imp=true; imp && pass<20; pass++){ imp=false; for (let i=0;i<ids.length;i++) for (let j=i+1;j<ids.length;j++){ const A=ids[i], B=ids[j]; if (sq(prevPos[A],o[B])+sq(prevPos[B],o[A])+1e-9 < sq(prevPos[A],o[A])+sq(prevPos[B],o[B])){ const t=o[A]; o[A]=o[B]; o[B]=t; imp=true; } } }
+  return o;
+}
+function demoProject(){
+  const dancers = ['Maya','Ava','Sofia','Lily','Zoe','Emma','Chloe','Nora'].map((n,i)=>({id:'d'+i, name:n, color:DCOL[i]}));
+  const circle = Array.from({length:8}, (_,i)=>{ const a=i*Math.PI/4; return [Math.round(7*Math.sin(a)*10)/10, Math.round((12+7*Math.cos(a))*10)/10]; });
+  const shapes = [
+    ['Opening clump',0,0,[[-3,19],[-1,19],[1,19],[3,19],[-3,21.5],[-1,21.5],[1,21.5],[3,21.5]]],
+    ['Walk into V',16,8,[[-2,6],[2,6],[-5,9],[5,9],[-8,12],[8,12],[-11,15],[11,15]]],
+    ['Two lines',32,4,[[-12,7],[-4,7],[4,7],[12,7],[-12,14],[-4,14],[4,14],[12,14]]],
+    ['Chorus diamond',48,4,[[0,5],[-4,9],[4,9],[-8,13],[0,13],[8,13],[-4,17],[4,17]]],
+    ['Pinwheel circle',72,8,circle],
+    ['Bridge rows',80,6,[[-6,6],[0,6],[6,6],[-9,11],[-3,11],[3,11],[9,11],[0,16]]],
+    ['Final wedge',96,4,[[0,5],[-3,8],[3,8],[-6,11],[6,11],[-9,14],[9,14],[0,11]]],
+    ['Final pose',126,6,[[0,4],[-2.5,5],[2.5,5],[-5,6.5],[5,6.5],[-1.5,7.5],[1.5,7.5],[0,10]]]
+  ];
+  let prev = null; const formations = shapes.map(([name,at,travel,pts]) => { const pos = assign(prev, pts, dancers); prev = pos; return {id:uid('f'), name, at, travel, pos}; });
+  return {
+    id:'demo-spotlight', title:'Spotlight (demo)', style:'Jazz', demo:true, created:Date.now(), opened:Date.now(),
+    bpm:120, offset:1, phrase:8,
+    sections:[{name:'Intro',start:1},{name:'Verse',start:3},{name:'Chorus',start:7},{name:'Bridge',start:11},{name:'Final chorus',start:13}],
+    notes:{1:'Hold opening pose, head down. Lift chin on 7, 8.',2:'Walk 4 into the V (R, L, R, L). Arms up through 1st to 5th on 5–8.',3:'Jazz square R (1–4), ball change 5-6, hip roll 7-8.',4:'Chassé R, pas de bourrée L, single pirouette R from 4th on 5-6, land 7, plié 8.',5:'Travel into two lines on 5–8. Repeat 8-count 1 to the left.',6:'Kick ball change ×2, fan kick R on 7, land in lunge on 8.',7:'Hits on 1, 3, 5-6-7. Sharp arms. Front row only.',8:'Body roll down 1–4, slide R 5-6, turn to face back 7-8.',9:'Leap R on 1, run run 2-3, toe touch 4. Start the pinwheel.',10:'Pinwheel circle, 2 counts per spot. Finish facing front on 8.',11:'Slow. Contemporary arms, développé L on 3-4, roll down 5–8.',12:'Rise 1–4 in canon by rows. Everyone up by 8.',13:'Same as Chorus 8-count 1, bigger.',14:'Same as Chorus 8-count 2.',15:'Switch leaps on 1 and 5. Travel into the final pose.',16:'Final pose on 7. Hold 8 and freeze.'},
+    dancers, formations, audio:{name:'Demo track', duration:67, demo:true}, peaks:null, video:null
+  };
+}
+
+/* ================= state ================= */
+let lib = [], cur = null;
+const UI = { tab:'rehearse', rate:1, countoff:true, clicks:false, loop:null, picking:false, pick:null, lastChip:null,
+  sel:null, hl:null, snap:true, ghosts:true, duration:0, hasAudio:false, follow:'', counting:false, vidHidden:false };
+let saveTimer = null;
+function save(){ if (!cur) return; cur.updated = Date.now(); clearTimeout(saveTimer); const p = cur; saveTimer = setTimeout(() => putProject(p), 250); }
+
+/* ================= counting ================= */
+const word = () => cur.phrase === 8 ? '8-count' : `${cur.phrase}-count`;
+const beatLen = () => 60 / cur.bpm;
+const beatAt = t => (t - cur.offset) / beatLen();
+const timeOfBeat = b => cur.offset + b * beatLen();
+const phraseTime = p => timeOfBeat((p-1) * cur.phrase);
+const dur = () => UI.duration || (cur.audio && cur.audio.duration) || 60;
+const totalPhrases = () => Math.max(1, Math.floor((dur() - cur.offset) / (beatLen()*cur.phrase) + 0.4));
+function posAt(t){ const beat = Math.floor((t - cur.offset)/beatLen() + 1e-4); if (beat < 0) return {beat, phrase:0, count:0, lead:true}; return {beat, phrase:Math.floor(beat/cur.phrase)+1, count:(beat % cur.phrase)+1, lead:false}; }
+function sectionFor(p){ let i=-1; cur.sections.forEach((s,j)=>{ if (s.start <= p) i = j; }); return i; }
+function sectionEnd(i){ return i < cur.sections.length-1 ? cur.sections[i+1].start-1 : totalPhrases(); }
+function beatParts(b){ const phrase = Math.floor(b/cur.phrase)+1, count = ((b % cur.phrase)+cur.phrase)%cur.phrase+1, si = sectionFor(phrase); return {phrase, count, si, inSec: si>=0 ? phrase - cur.sections[si].start + 1 : phrase}; }
+function beatLabel(b, short){ const p = beatParts(b), s = p.si >= 0 ? cur.sections[p.si].name : word(); return short ? `${s} ${p.inSec}:${p.count}` : `${s} ${p.inSec}, count ${p.count}`; }
+function phraseLabel(p){ const i = sectionFor(p); return i < 0 ? `${word()} ${p}` : `${cur.sections[i].name} ${p - cur.sections[i].start + 1}`; }
+function sortSections(){ cur.sections.sort((a,b)=>a.start-b.start); if (cur.sections.length) cur.sections[0].start = 1; }
+
+/* ================= formations model ================= */
+const ease = k => 0.5 - 0.5*Math.cos(Math.PI*Math.max(0,Math.min(1,k)));
+const sortF = () => cur.formations.sort((a,b)=>a.at-b.at);
+function travelStart(i){ const F = cur.formations; return i === 0 ? F[0].at : Math.max(F[i-1].at, F[i].at - F[i].travel); }
+function stateAt(b){
+  const F = cur.formations; if (!F.length) return {pos:{}, idx:-1, moving:false};
+  let i = 0; while (i+1 < F.length && F[i+1].at <= b) i++;
+  const c = F[i], n = F[i+1];
+  if (!n || b < c.at) return {pos:c.pos, idx:i, moving:false};
+  const ts = travelStart(i+1); if (b <= ts) return {pos:c.pos, idx:i, moving:false};
+  const k = ease((b-ts)/(n.at-ts)), pos = {};
+  cur.dancers.forEach(d => { const a = c.pos[d.id] || n.pos[d.id], z = n.pos[d.id] || a; if (a) pos[d.id] = [a[0]+(z[0]-a[0])*k, a[1]+(z[1]-a[1])*k]; });
+  return {pos, idx:i, next:i+1, moving:true, ts};
+}
+function spotText(x, y){
+  const depth = y < 8 ? 'Downstage' : y < 16 ? 'Centre' : 'Upstage', side = x > 0 ? 'stage left' : 'stage right', ax = Math.abs(x), near = Math.round(ax/4)*4, num = near/2;
+  let spot; if (Math.abs(ax-near) <= 1) spot = num === 0 ? 'on centre' : `on ${num} ${side}`; else { const lo = Math.floor(ax/4)*2; spot = lo === 0 ? `between centre and 2 ${side}` : `between ${lo} and ${lo+2} ${side}`; }
+  return `${depth}, ${spot}`;
+}
+function initials(d){ const f = (d.name.trim()[0]||'?').toUpperCase(); const clash = cur.dancers.some(o => o !== d && (o.name.trim()[0]||'').toUpperCase() === f); return clash ? (d.name.trim().slice(0,2)||'?').replace(/^./, c=>c.toUpperCase()) : f; }
+const nameOf = id => (cur.dancers.find(d=>d.id===id)||{}).name || '';
+let warnings = [];
+function computeWarnings(){
+  const W = [], F = cur.formations, D = cur.dancers;
+  F.forEach((f,i) => {
+    const stat = new Set();
+    for (let a=0;a<D.length;a++) for (let c=a+1;c<D.length;c++){ const p=f.pos[D[a].id], q=f.pos[D[c].id]; if (!p||!q) continue; const d=Math.hypot(p[0]-q[0],p[1]-q[1]); if (d<MIN_GAP){ W.push({a:D[a].id,b:D[c].id,beat:f.at,text:`${D[a].name} and ${D[c].name} are ${d.toFixed(1)} ft apart in ${f.name}`}); stat.add(a+'-'+c); } }
+    if (i === 0) return; const prev = F[i-1], ts = travelStart(i), te = f.at; if (te <= ts) return; const best = {};
+    for (let s=1;s<24;s++){ const b = ts+(te-ts)*s/24, st = stateAt(b);
+      for (let a=0;a<D.length;a++) for (let c=a+1;c<D.length;c++){ const key=a+'-'+c; if (stat.has(key)) continue; const p0=prev.pos[D[a].id], q0=prev.pos[D[c].id]; if (p0&&q0&&Math.hypot(p0[0]-q0[0],p0[1]-q0[1])<MIN_GAP) continue; const p=st.pos[D[a].id], q=st.pos[D[c].id]; if (!p||!q) continue; const d=Math.hypot(p[0]-q[0],p[1]-q[1]); if (d<MIN_GAP && (!best[key]||d<best[key].d)) best[key]={d,b}; } }
+    Object.entries(best).forEach(([key,v]) => { const [a,c] = key.split('-').map(Number); W.push({a:D[a].id,b:D[c].id,beat:v.b,text:`${D[a].name} and ${D[c].name} pass within ${v.d.toFixed(1)} ft moving into ${f.name}`}); });
+  });
+  W.sort((x,y)=>x.beat-y.beat); warnings = W;
+}
+
+/* ================= stage component ================= */
+function makeStage(svg, interactive){
+  const st = {svg, view:'aud', interactive, sg:svg.querySelector('.st-static'), dg:svg.querySelector('.st-dyn')};
+  st.toS = (x,y) => st.view === 'aud' ? [200 + x*10, 275 - y*10] : [200 - x*10, 35 + y*10];
+  st.fromS = (X,Y) => st.view === 'aud' ? [(X-200)/10, (275-Y)/10] : [(200-X)/10, (Y-35)/10];
+  st.renderStatic = () => {
+    const [x0,y0] = st.toS(-STAGE_W/2, STAGE_D), [x1,y1] = st.toS(STAGE_W/2, 0);
+    let h = `<rect x="${Math.min(x0,x1)}" y="${Math.min(y0,y1)}" width="${Math.abs(x1-x0)}" height="${Math.abs(y1-y0)}" rx="3" fill="var(--floor)"/>`;
+    for (let y=4;y<STAGE_D;y+=4){ const [a,b]=st.toS(-STAGE_W/2,y), [c,d]=st.toS(STAGE_W/2,y), z=y===8||y===16; h += `<line x1="${a}" y1="${b}" x2="${c}" y2="${d}" stroke="var(--floor-line)" stroke-width="${z?1:.6}" ${z?'stroke-dasharray="4 3"':''}/>`; }
+    for (let x=-16;x<=16;x+=2){ const [a,b]=st.toS(x,0), [c,d]=st.toS(x,STAGE_D); h += `<line x1="${a}" y1="${b}" x2="${c}" y2="${d}" stroke="var(--floor-line)" stroke-width="${x%4===0?.8:.35}"/>`; }
+    const [c1,c2] = st.toS(0,0), [c3,c4] = st.toS(0,STAGE_D); h += `<line x1="${c1}" y1="${c2}" x2="${c3}" y2="${c4}" stroke="var(--floor-muted)" opacity=".55"/>`;
+    const fr = st.view === 'aud' ? 1 : -1;
+    for (let x=-16;x<=16;x+=4){ const [a,b]=st.toS(x,0), n=Math.abs(x)/2; h += `<rect x="${a-3.5}" y="${b-1.6}" width="7" height="3.2" fill="var(--tape-1)" transform="rotate(-6 ${a} ${b})"/><text x="${a}" y="${b+fr*12+3}" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="8.5" fill="var(--floor-ink)">${n===0?'C':n}</text>`; }
+    [['DS',4],['CS',12],['US',20]].forEach(([t,y]) => { const [a,b]=st.toS(-STAGE_W/2+1.1,y); h += `<text x="${a}" y="${b+3}" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="6.5" fill="var(--floor-muted)">${t}</text>`; });
+    const lab = (x,y,t,r) => `<text x="${x}" y="${y}" text-anchor="middle" font-family="Archivo, sans-serif" font-weight="700" font-size="8" letter-spacing="1.6" fill="var(--floor-muted)" ${r?`transform="rotate(${r} ${x} ${y})"`:''}>${t}</text>`;
+    h += st.view === 'aud' ? lab(200,26,'UPSTAGE')+lab(200,304,'AUDIENCE')+lab(390,155,'STAGE LEFT',90)+lab(10,155,'STAGE RIGHT',-90) : lab(200,10,'AUDIENCE')+lab(200,292,'UPSTAGE')+lab(390,155,'STAGE RIGHT',90)+lab(10,155,'STAGE LEFT',-90);
+    h += `<defs><marker id="arr-${svg.id}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--floor-ink)"/></marker></defs>`;
+    st.sg.innerHTML = h;
+  };
+  st.renderDyn = (S, sel, hl, warnNow, editable) => {
+    const F = cur.formations, D = cur.dancers; let h = '';
+    if (st.interactive && UI.ghosts && !S.moving && S.idx > 0){
+      const prev = F[S.idx-1], c = F[S.idx];
+      D.forEach(d => { if (sel && d.id !== sel && !(hl||[]).includes(d.id)) return; const a=prev.pos[d.id], z=c.pos[d.id]; if (!a||!z) return;
+        const [x1,y1]=st.toS(a[0],a[1]), [x2,y2]=st.toS(z[0],z[1]), len=Math.hypot(x2-x1,y2-y1); if (len<4) return; const k=(len-11)/len;
+        h += `<circle cx="${x1}" cy="${y1}" r="9" fill="none" stroke="${d.color}" stroke-width="1.2" stroke-dasharray="2 2" opacity=".7"/><line x1="${x1}" y1="${y1}" x2="${x1+(x2-x1)*k}" y2="${y1+(y2-y1)*k}" stroke="var(--floor-ink)" stroke-dasharray="3 3" opacity=".55" marker-end="url(#arr-${svg.id})"/>`; });
+    }
+    if (sel){ const d = D.find(x=>x.id===sel), pts = F.map(f=>f.pos[sel]).filter(Boolean).map(p=>st.toS(p[0],p[1]));
+      if (d && pts.length > 1){ h += `<polyline points="${pts.map(p=>p.join(',')).join(' ')}" fill="none" stroke="${d.color}" stroke-width="1.6" opacity=".7" stroke-linejoin="round"/>`;
+        pts.forEach((p,i) => { h += `<circle cx="${p[0]}" cy="${p[1]}" r="4.2" fill="var(--floor)" stroke="${d.color}"/><text x="${p[0]}" y="${p[1]+2.2}" text-anchor="middle" font-size="5.5" font-family="JetBrains Mono, monospace" fill="var(--floor-ink)">${i+1}</text>`; }); } }
+    D.forEach(d => { const p = S.pos[d.id]; if (!p) return; const [x,y] = st.toS(p[0],p[1]), dim = sel && d.id !== sel && !(hl||[]).includes(d.id);
+      h += `<g data-id="${d.id}" style="cursor:${editable?'grab':'pointer'}" opacity="${dim?0.32:1}">`;
+      if (warnNow && warnNow.has(d.id)) h += `<circle cx="${x}" cy="${y}" r="14" fill="none" stroke="var(--warn)" stroke-width="1.6"/>`;
+      if (d.id === sel) h += `<circle cx="${x}" cy="${y}" r="13" fill="none" stroke="var(--floor-ink)" stroke-width="1.4"/>`;
+      h += `<circle cx="${x}" cy="${y}" r="10" fill="${d.color}" stroke="rgba(0,0,0,.35)" stroke-width=".8"/><text x="${x}" y="${y+3.2}" text-anchor="middle" font-family="Inter, sans-serif" font-weight="600" font-size="9" fill="#fff" pointer-events="none">${esc(initials(d))}</text><text x="${x}" y="${y+19}" text-anchor="middle" font-family="Inter, sans-serif" font-size="6.5" fill="var(--floor-ink)" opacity=".85" pointer-events="none">${esc(d.name)}</text></g>`; });
+    st.dg.innerHTML = h;
+  };
+  st.svg.parentElement.querySelectorAll('.view-toggle button').forEach(b => b.addEventListener('click', () => {
+    st.view = b.dataset.view; st.svg.parentElement.querySelectorAll('.view-toggle button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); st.renderStatic(); needDraw = true;
+  }));
+  return st;
+}
+const rStage = makeStage($('rStage'), false), fStage = makeStage($('fStage'), true);
+
+/* ================= library ================= */
+async function refreshLib(){
+  lib = (await allProjects()).sort((a,b) => (b.opened||0) - (a.opened||0));
+  $('libCount').textContent = `${lib.length} ${lib.length === 1 ? 'project' : 'projects'} saved on this device`;
+  const box = $('cards'); box.innerHTML = '';
+  if (!lib.length){ box.innerHTML = `<div class="panel"><b>No songs yet.</b><p class="muted" style="margin:6px 0 0">Start a new project from a song on this device, open a share file, or <button class="x" id="reseed" type="button" style="padding:0;color:var(--accent)">add the demo project</button>.</p></div>`; $('reseed').addEventListener('click', async () => { await putProject(demoProject()); refreshLib(); }); return; }
+  lib.forEach(p => {
+    const c = document.createElement('div'); c.className = 'card';
+    const nNotes = Object.values(p.notes||{}).filter(v => v && v.trim()).length;
+    const len = p.audio && p.audio.duration ? fmt(p.audio.duration) : '–';
+    const missing = !p.audio || (!p.audio.demo && !p.hasAudio);
+    c.innerHTML = `<div class="card-top"><div style="flex:1; min-width:0"><div class="card-tapes">${(p.sections||[]).map((s,i)=>`<i style="background:var(${TAPES[i%6]})"></i>`).join('')}</div><h3 style="margin-top:6px">${esc(p.title)}</h3></div></div>
+      <div class="card-meta"><span>${esc(p.style||'')}</span><span class="mono">${p.bpm} BPM</span><span class="mono">${len}</span></div>
+      <div class="card-meta"><span>${(p.sections||[]).length} sections</span><span>${nNotes} notes</span><span>${(p.formations||[]).length} formations</span>${p.video ? '<span>video</span>' : ''}</div>
+      ${missing ? '<div><span class="chiptag warn">Needs your copy of the music</span></div>' : ''}
+      ${p.imported ? '<div><span class="chiptag">Received from a share file</span></div>' : ''}
+      <div class="card-actions"><button class="btn small primary" data-a="open" type="button">Open</button><button class="btn small" data-a="dup" type="button">Duplicate</button><button class="btn small danger" data-a="del" type="button">Delete</button></div>`;
+    c.querySelector('[data-a="open"]').addEventListener('click', () => openProject(p.id));
+    c.querySelector('[data-a="dup"]').addEventListener('click', () => duplicate(p));
+    const del = c.querySelector('[data-a="del"]');
+    del.addEventListener('click', async () => {
+      if (del.dataset.armed !== '1'){ del.dataset.armed = '1'; del.textContent = 'Tap again to delete'; setTimeout(() => { del.dataset.armed = ''; del.textContent = 'Delete'; }, 3000); return; }
+      await delProject(p.id); await delMedia(p.id+':audio'); await delMedia(p.id+':video'); toast(`Deleted ${p.title}.`); refreshLib();
+    });
+    box.appendChild(c);
+  });
+}
+async function duplicate(p){
+  const c = JSON.parse(JSON.stringify(p)); c.id = uid('p'); c.title = p.title + ' (copy)'; c.created = c.opened = Date.now(); c.demo = false;
+  for (const k of ['audio','video']){ const m = await getMedia(p.id+':'+k); if (m) await putMedia(c.id+':'+k, m); }
+  await putProject(c); toast(`Made a copy: ${c.title}.`); refreshLib();
+}
+$('newFile').addEventListener('change', async e => {
+  const f = e.target.files && e.target.files[0]; if (!f) return; e.target.value = '';
+  toast('Reading the beat…');
+  const id = uid('p'), isVideo = (f.type||'').startsWith('video');
+  const p = {id, title:f.name.replace(/\.[^.]+$/,''), style:'Jazz', created:Date.now(), opened:Date.now(), bpm:120, offset:0, phrase:8,
+    sections:[{name:'Intro',start:1}], notes:{}, dancers:[], formations:[], audio:{name:f.name, duration:0}, hasAudio:true, peaks:null, video:isVideo ? {name:f.name, offset:0, mirror:false} : null};
+  try { const buf = await decodeBlob(f); p.peaks = computePeaks(buf); p.audio.duration = Math.round(buf.duration*100)/100; const r = detectTempo(buf); if (r){ p.bpm = r.bpm; p.offset = r.offset; } }
+  catch(err){ toast("Couldn't read the beat from this file. You can tap the tempo inside the project."); }
+  await putMedia(id+':audio', f); if (isVideo) await putMedia(id+':video', f);
+  await putProject(p); openProject(id);
+});
+const MIME = {mp3:'audio/mpeg', m4a:'audio/mp4', aac:'audio/aac', wav:'audio/wav', ogg:'audio/ogg', flac:'audio/flac', mp4:'video/mp4', mov:'video/quicktime', webm:'video/webm', m4v:'video/mp4'};
+async function importShare(share){
+  if (!share) return;
+  if (!share.ok){ if (!share.canceled) toast(share.error || "That file couldn't be opened."); return; }
+  const data = share.data, s = data.project, id = uid('p');
+  const p = {id, title:s.title || 'Shared project', style:s.style||'Other', created:Date.now(), opened:Date.now(), bpm:+s.bpm||120, offset:+s.offset||0, phrase:+s.phrase||8,
+    sections:Array.isArray(s.sections)&&s.sections.length ? s.sections : [{name:'Intro',start:1}], notes:s.notes||{}, dancers:s.dancers||[], formations:s.formations||[],
+    audio:s.audio || null, hasAudio:false, peaks:s.peaks||null, video:null, imported:true, from:data.exported};
+  const m = share.media || {};
+  if (m.audio){ await putMedia(id+':audio', new Blob([m.audio.data], {type:MIME[m.audio.ext]||''})); p.hasAudio = true; if (p.audio) p.audio.demo = false; }
+  if (m.video && s.video){ await putMedia(id+':video', new Blob([m.video.data], {type:MIME[m.video.ext]||''})); p.video = s.video; }
+  await putProject(p);
+  if (cur) await closeProject(); else await refreshLib();
+  toast(`Added "${p.title}" to your library${m.audio ? ' with its music' : ''}.`);
+}
+$('importBtn').addEventListener('click', async () => importShare(await window.workbook.openShare()));
+
+/* ================= open / close project ================= */
+let audioUrl = null, videoUrl = null;
+async function openProject(id){
+  const p = (await allProjects()).find(x => x.id === id); if (!p) return;
+  stopAll();
+  cur = p; cur.opened = Date.now(); save();
+  UI.loop = null; UI.sel = null; UI.hl = null; UI.follow = ''; UI.picking = false; UI.pick = null; UI.duration = cur.audio ? cur.audio.duration || 0 : 0;
+  if (audioUrl){ URL.revokeObjectURL(audioUrl); audioUrl = null; }
+  if (videoUrl){ URL.revokeObjectURL(videoUrl); videoUrl = null; }
+  UI.hasAudio = false;
+  if (cur.audio && cur.audio.demo){ aud.src = await demoAudio(); UI.hasAudio = true; if (!cur.peaks && demoBuf) cur.peaks = computePeaks(demoBuf); }
+  else { const m = await getMedia(cur.id+':audio'); if (m){ audioUrl = URL.createObjectURL(m); aud.src = audioUrl; UI.hasAudio = true; } else { aud.removeAttribute('src'); } }
+  aud.load();
+  vid.hidden = true; vid.removeAttribute('src'); $('stage').classList.remove('has-video');
+  if (cur.video){ const v = await getMedia(cur.id+':video'); if (v){ videoUrl = URL.createObjectURL(v); vid.src = videoUrl; vid.hidden = UI.vidHidden; $('stage').classList.toggle('has-video', !UI.vidHidden); vid.classList.toggle('mirror', !!cur.video.mirror); } }
+  $('libView').hidden = true; $('projView').hidden = false;
+  $('pTitle').value = cur.title; $('pStyle').value = cur.style || 'Other';
+  updateMusicBanner(); computeWarnings();
+  rStage.renderStatic(); fStage.renderStatic();
+  setTab(UI.tab); renderAll(); sizeCanvas();
+  applyRate();
+  window.scrollTo(0,0);
+}
+function updateMusicBanner(){
+  const missing = !UI.hasAudio;
+  $('musicBanner').hidden = !missing;
+  if (missing) $('musicBannerText').textContent = cur.audio ? `This project came without music. Add your copy of "${cur.audio.name}"${cur.audio.duration ? ` (${fmt(cur.audio.duration)})` : ''} to play it. Counts, notes and formations are all here.` : 'This project has no music yet. Add the song to play it.';
+  $('playBtn').disabled = missing;
+}
+function stopAll(){ cancelCountoff(); aud.pause(); vid.pause(); }
+async function closeProject(){ stopAll(); if (cur) await putProject(cur); cur = null; $('projView').hidden = true; $('libView').hidden = false; refreshLib(); window.scrollTo(0,0); }
+$('backBtn').addEventListener('click', closeProject);
+$('homeBtn').addEventListener('click', () => { if (cur) closeProject(); });
+$('pTitle').addEventListener('input', e => { cur.title = e.target.value || 'Untitled'; save(); });
+$('pStyle').addEventListener('change', e => { cur.style = e.target.value; save(); });
+$('attachFile').addEventListener('change', async e => {
+  const f = e.target.files && e.target.files[0]; if (!f) return; e.target.value = '';
+  let msg = 'Music added.';
+  try { const buf = await decodeBlob(f); const d = buf.duration; if (!cur.peaks) cur.peaks = computePeaks(buf);
+    if (cur.audio && cur.audio.duration && Math.abs(d - cur.audio.duration) > 2) msg = `Music added, but it is ${fmt(d)} long and the original was ${fmt(cur.audio.duration)}. It may be a different version, so check count 1.`;
+    else msg = 'Music added and it matches the original length. Counts, notes and formations line up.';
+    cur.audio = Object.assign({}, cur.audio || {}, {name:f.name, duration:Math.round(d*100)/100, demo:false});
+  } catch(err){ msg = "Music added, but its beat couldn't be read."; cur.audio = Object.assign({}, cur.audio || {}, {name:f.name, demo:false}); }
+  await putMedia(cur.id+':audio', f); cur.hasAudio = true; save();
+  if (audioUrl) URL.revokeObjectURL(audioUrl); audioUrl = URL.createObjectURL(f); aud.src = audioUrl; aud.load(); UI.hasAudio = true;
+  updateMusicBanner(); renderAll(); toast(msg);
+});
+
+/* ================= tabs ================= */
+function setTab(t){
+  UI.tab = t;
+  document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === t)));
+  ['rehearse','counts','forms','share'].forEach(x => $('tab-'+x).hidden = x !== t);
+  if (t === 'counts'){ renderGrid(); renderSheet(); }
+  if (t === 'forms'){ lastIdx = null; renderFormsSide(); }
+  if (t === 'share'){ renderPaper(); $('shareOut').hidden = true; }
+  if (t === 'rehearse') renderFollow();
+  needDraw = true; lastBeat = null; lastPhrase = null;
+}
+document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
+document.addEventListener('click', e => { const g = e.target.closest('[data-goto]'); if (g) setTab(g.dataset.goto); });
+
+/* ================= transport ================= */
+function applyRate(){ aud.playbackRate = UI.rate; aud.preservesPitch = true; aud.webkitPreservesPitch = true; vid.playbackRate = UI.rate; $('speedBadge').hidden = UI.rate === 1; $('speedBadge').textContent = `${Math.round(UI.rate*100)}% speed`; }
+document.querySelectorAll('input[name="speed"]').forEach(r => r.addEventListener('change', e => { UI.rate = parseFloat(e.target.value); applyRate(); }));
+function toggleBtn(id, key, after){ const b = $(id); b.addEventListener('click', () => { UI[key] = !UI[key]; b.setAttribute('aria-pressed', String(UI[key])); after && after(); }); }
+toggleBtn('coBtn','countoff'); toggleBtn('clickBtn','clicks', () => getAC());
+function seek(t){ t = Math.max(0, Math.min(dur(), t)); if (UI.loop){ const [a,b] = loopTimes(); if (t < a-0.05 || t > b+0.05) clearLoop(); } aud.currentTime = t; needDraw = true; }
+const seekBeat = b => seek(timeOfBeat(b) + 0.001);
+const seekPhrase = p => seek(phraseTime(p) + 0.001);
+function stepPhrase(dir){
+  const t = aud.currentTime || 0, pos = posAt(t); let p = pos.lead ? 0 : pos.phrase;
+  if (dir < 0){ const into = t - phraseTime(Math.max(1,p)); p = (p >= 1 && into > beatLen()*0.5) ? p : p - 1; } else p = p + 1;
+  if (p < 1) seek(0); else seekPhrase(p);
+}
+$('prevBtn').addEventListener('click', () => stepPhrase(-1));
+$('nextBtn').addEventListener('click', () => stepPhrase(1));
+let coTimers = [];
+function beep(when, accent){ const a = getAC(); if (!a) return; const o = a.createOscillator(), g = a.createGain(); o.type='square'; o.frequency.value = accent?1760:1175; g.gain.setValueAtTime(0.0001,when); g.gain.exponentialRampToValueAtTime(accent?0.22:0.13, when+0.003); g.gain.exponentialRampToValueAtTime(0.0001, when+0.06); o.connect(g).connect(a.destination); o.start(when); o.stop(when+0.08); }
+const countoffNums = () => { const n = Math.min(4, cur.phrase), o = []; for (let i=cur.phrase-n+1;i<=cur.phrase;i++) o.push(i); return o; };
+function cancelCountoff(){ coTimers.forEach(clearTimeout); coTimers = []; UI.counting = false; $('countoff').hidden = true; updatePlayIcon(); }
+function play(){
+  const a = getAC();
+  if (!UI.countoff || !a){ aud.play(); return; }
+  const iv = beatLen()/UI.rate, nums = countoffNums(), co = $('countoff'); UI.counting = true; updatePlayIcon(); co.textContent = ''; co.hidden = UI.tab !== 'rehearse';
+  const t0 = a.currentTime + 0.06;
+  nums.forEach((n,i) => { beep(t0+i*iv, i===0); coTimers.push(setTimeout(() => { co.textContent = n; co.classList.remove('pop'); void co.offsetWidth; co.classList.add('pop'); $('tWhere').textContent = `Count-off ${n}`; }, 60+i*iv*1000)); });
+  coTimers.push(setTimeout(() => { co.hidden = true; UI.counting = false; aud.play(); updatePlayIcon(); }, 60+nums.length*iv*1000));
+}
+function togglePlay(){ if (!UI.hasAudio) return; getAC(); if (UI.counting){ cancelCountoff(); return; } if (aud.paused) play(); else aud.pause(); }
+$('playBtn').addEventListener('click', togglePlay);
+function updatePlayIcon(){ const on = !aud.paused || UI.counting; $('playIcon').innerHTML = on ? '<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>' : '<path d="M7 4v16l13-8z"/>'; $('playBtn').setAttribute('aria-label', on ? 'Pause' : 'Play'); }
+aud.addEventListener('play', () => { updatePlayIcon(); needDraw = true; lastIdx = null; });
+aud.addEventListener('pause', () => { updatePlayIcon(); needDraw = true; lastIdx = null; vid.pause(); });
+aud.addEventListener('loadedmetadata', () => { if (!cur) return; if (isFinite(aud.duration) && aud.duration > 0){ UI.duration = aud.duration; if (cur.audio && !cur.audio.duration){ cur.audio.duration = Math.round(aud.duration*100)/100; save(); } } $('tDur').textContent = fmt(dur()); renderAll(); });
+
+/* loop */
+function loopTimes(){ return [phraseTime(UI.loop.a), phraseTime(UI.loop.b + 1)]; }
+function setLoop(a, b){ if (a < 1) a = 1; if (b < a) [a,b] = [b,a]; UI.loop = {a,b}; UI.picking = false; UI.pick = null; const t = aud.currentTime, [ls,le] = loopTimes(); if (t < ls || t >= le) aud.currentTime = ls + 0.001; updateLoopUI(); markChips(); needDraw = true; }
+function clearLoop(){ UI.loop = null; updateLoopUI(); markChips(); needDraw = true; }
+function updateLoopUI(){
+  const L = UI.loop, txt = L ? `${phraseLabel(L.a)}${L.b !== L.a ? ' to ' + phraseLabel(L.b) : ''}` : '';
+  $('loopLabel').innerHTML = L ? `Looping <b>${esc(txt)}</b>` : (UI.picking ? (UI.pick ? 'Now tap the last one' : 'Tap the first one to loop') : 'No loop set');
+  $('loopChip').hidden = !L; $('loopChip').textContent = L ? `Loop: ${txt} ✕` : '';
+  $('loopBadge').hidden = !L; $('pickBtn').setAttribute('aria-pressed', String(UI.picking));
+}
+$('loopChip').addEventListener('click', clearLoop);
+$('loopPhraseBtn').addEventListener('click', () => { const p = Math.max(1, posAt(aud.currentTime||0).phrase); setLoop(p,p); });
+$('loopSecBtn').addEventListener('click', () => { const p = Math.max(1, posAt(aud.currentTime||0).phrase), i = Math.max(0, sectionFor(p)); setLoop(cur.sections[i].start, Math.min(sectionEnd(i), totalPhrases())); });
+$('pickBtn').addEventListener('click', () => { UI.picking = !UI.picking; UI.pick = null; updateLoopUI(); markChips(); });
+
+/* ================= counts & notes tab ================= */
+function setStatus(m){ $('status').textContent = m; }
+function updateTempoUI(){
+  if (document.activeElement !== $('bpmIn')) $('bpmIn').value = cur.bpm;
+  $('offsetVal').textContent = `${cur.offset.toFixed(3)} s`; $('phraseSel').value = String(cur.phrase);
+  document.querySelectorAll('.word').forEach(w => w.textContent = word());
+  $('coBtn').textContent = `Count-off ${countoffNums().join(', ')}`;
+}
+let chipEls = {};
+function renderGrid(){
+  const grid = $('grid'), total = totalPhrases(); grid.innerHTML = ''; chipEls = {};
+  const formPhrases = new Set(cur.formations.map(f => Math.floor(f.at/cur.phrase)+1));
+  cur.sections.forEach((sec,i) => {
+    const row = document.createElement('div'); row.className = 'sec'; row.style.setProperty('--tape', `var(${TAPES[i%6]})`);
+    const end = sectionEnd(i);
+    row.innerHTML = `<div class="sec-head"><span class="tape" style="background:var(--tape)"></span><input class="sec-name" id="secName${i}" value="${esc(sec.name)}" aria-label="Section name">
+      ${i>0 ? `<label class="sec-start">starts at ${word()} <input type="number" min="2" value="${sec.start}"></label><button class="x" type="button" data-del="1">Remove</button>` : ''}</div><div class="chips"></div>`;
+    const chips = row.querySelector('.chips');
+    if (sec.start > total) chips.innerHTML = '<span class="muted">Starts after the end of the song.</span>';
+    for (let p=sec.start; p<=end; p++){ const c = document.createElement('button'); c.type='button'; c.className='chip'+(formPhrases.has(p)?' has-form':''); c.dataset.p=p; c.textContent=p-sec.start+1; c.title=`${sec.name}, ${word()} ${p-sec.start+1}`; chips.appendChild(c); chipEls[p]=c; }
+    row.querySelector('.sec-name').addEventListener('input', e => { sec.name = e.target.value || 'Untitled'; save(); lastPhrase = null; needDraw = true; updateLoopUI(); });
+    row.querySelector('.sec-name').addEventListener('change', () => renderSheet());
+    const st = row.querySelector('.sec-start input');
+    if (st) st.addEventListener('change', e => { let v = parseInt(e.target.value,10); if (!(v>=2)) v = 2; if (cur.sections.some((s,j)=>j!==i&&s.start===v)){ setStatus(`Another section already starts at ${word()} ${v}.`); e.target.value = sec.start; return; } sec.start = v; sortSections(); save(); renderAll(); });
+    const del = row.querySelector('[data-del]'); if (del) del.addEventListener('click', () => { cur.sections.splice(i,1); sortSections(); save(); renderAll(); });
+    grid.appendChild(row);
+  });
+  markChips();
+}
+function markChips(){
+  const c = posAt(aud.currentTime||0).phrase;
+  Object.entries(chipEls).forEach(([p,el]) => { p = +p; el.classList.toggle('current', p===c); el.classList.toggle('in-loop', !!UI.loop && p>=UI.loop.a && p<=UI.loop.b); el.classList.toggle('pick', UI.pick===p); el.classList.toggle('has-note', !!(cur.notes[p]&&cur.notes[p].trim())); });
+}
+$('grid').addEventListener('click', e => {
+  const c = e.target.closest('.chip'); if (!c) return; const p = +c.dataset.p;
+  if (UI.picking){ if (UI.pick == null){ UI.pick = p; updateLoopUI(); markChips(); } else setLoop(UI.pick, p); return; }
+  if (e.shiftKey && UI.lastChip != null && UI.lastChip !== p){ setLoop(UI.lastChip, p); return; }
+  UI.lastChip = p; seekPhrase(p);
+});
+function renderSheet(){
+  const box = $('sheet'); if (box.contains(document.activeElement)) return; box.innerHTML = '';
+  const total = totalPhrases();
+  const formAt = {}; cur.formations.forEach(f => { const p = Math.floor(f.at/cur.phrase)+1; (formAt[p] = formAt[p] || []).push(f); });
+  cur.sections.forEach((s,i) => {
+    const end = Math.min(sectionEnd(i), total); if (s.start > end) return;
+    const h = document.createElement('div'); h.className = 'sheet-sec'; h.innerHTML = `<span class="tape" style="width:22px;height:9px;background:var(${TAPES[i%6]})"></span>${esc(s.name)}`; box.appendChild(h);
+    for (let p=s.start; p<=end; p++){
+      const row = document.createElement('div'); row.className = 'sheet-row'; row.dataset.p = p; row.style.setProperty('--tape', `var(${TAPES[i%6]})`);
+      const fs = (formAt[p]||[]).map(f => `◆ ${esc(f.name)} on count ${beatParts(f.at).count}`).join(' · ');
+      row.innerHTML = `<button class="sheet-num" type="button" title="Jump here">${p-s.start+1}</button><div><textarea id="note${p}" rows="1" placeholder="Steps, cues, arms, facings…" aria-label="${esc(s.name)} ${word()} ${p-s.start+1} note">${esc(cur.notes[p]||'')}</textarea>${fs ? `<div class="form-tag">${fs}</div>` : ''}</div>`;
+      row.querySelector('button').addEventListener('click', () => seekPhrase(p));
+      row.querySelector('textarea').addEventListener('input', e => { cur.notes[p] = e.target.value; save(); if (chipEls[p]) chipEls[p].classList.toggle('has-note', !!e.target.value.trim()); lastPhrase = null; });
+      box.appendChild(row);
+    }
+  });
+  markSheet();
+}
+function markSheet(){ const c = posAt(aud.currentTime||0).phrase; document.querySelectorAll('.sheet-row').forEach(r => r.classList.toggle('current', +r.dataset.p === c)); }
+$('bpmIn').addEventListener('change', e => { let v = parseFloat(e.target.value); if (!(v>=40&&v<=240)){ e.target.value = cur.bpm; return; } cur.bpm = Math.round(v*10)/10; save(); renderAll(); setStatus(`Tempo set to ${cur.bpm} BPM. Notes and formations stay on their counts.`); });
+const nudge = d => { cur.offset = Math.max(0, Math.round((cur.offset+d)*1000)/1000); save(); renderAll(); };
+$('offMinus').addEventListener('click', () => nudge(-0.01));
+$('offPlus').addEventListener('click', () => nudge(0.01));
+$('here1Btn').addEventListener('click', () => { cur.offset = Math.round((aud.currentTime||0)*1000)/1000; save(); renderAll(); setStatus(`Count 1 is now at ${cur.offset.toFixed(2)} s. Music before it shows as lead-in.`); });
+$('phraseSel').addEventListener('change', e => { cur.phrase = parseInt(e.target.value,10); save(); renderAll(); });
+let taps = [];
+$('tapBtn').addEventListener('click', () => {
+  const now = performance.now(); if (taps.length && now - taps[taps.length-1] > 2000) taps = []; taps.push(now); if (taps.length > 8) taps.shift();
+  if (taps.length >= 4){ const iv = (taps[taps.length-1]-taps[0])/(taps.length-1); let bpm = 60000/iv; if (!aud.paused) bpm *= UI.rate; cur.bpm = Math.round(bpm*10)/10;
+    if (!aud.paused){ const t = aud.currentTime, bl = 60/cur.bpm; cur.offset = Math.max(0, Math.round((t - Math.round((t-cur.offset)/bl)*bl)*1000)/1000); }
+    save(); renderAll(); setStatus(`Tapped ${cur.bpm} BPM. Keep tapping to refine it.`);
+  } else setStatus(`Keep tapping on the beat (${taps.length} of 4)…`);
+});
+$('detectBtn').addEventListener('click', async () => {
+  setStatus('Reading the beat…');
+  try { let buf; if (cur.audio && cur.audio.demo) buf = demoBuf || await buildDemo(); else { const m = await getMedia(cur.id+':audio'); if (!m) throw 0; buf = await decodeBlob(m); }
+    const r = detectTempo(buf); if (!r) throw 0; cur.bpm = r.bpm; cur.offset = r.offset; save(); renderAll(); setStatus(`Detected ${cur.bpm} BPM with count 1 at ${cur.offset.toFixed(2)} s.`);
+  } catch(e){ setStatus("Couldn't read the beat. Use Tap tempo while the song plays."); }
+});
+$('addSecBtn').addEventListener('click', () => {
+  const p = Math.max(1, posAt(aud.currentTime||0).phrase); if (cur.sections.some(s => s.start === p)){ setStatus(`A section already starts at ${word()} ${p}. Rename it instead.`); return; }
+  cur.sections.push({name:'New section', start:p}); sortSections(); save(); renderAll();
+  const i = cur.sections.findIndex(s => s.start === p), inp = $('secName'+i); if (inp){ inp.focus(); inp.select(); }
+});
+
+/* ================= rehearse tab ================= */
+function buildDots(){ const d = $('cdBeats'); d.innerHTML = ''; for (let i=0;i<cur.phrase;i++) d.appendChild(document.createElement('i')); }
+function updateNoteCard(pos){
+  const nn = $('noteNow'), nx = $('noteNext');
+  if (pos.lead){ nn.textContent = 'Lead-in. Get into your opening position.'; nn.classList.add('empty'); const n1 = cur.notes[1]; nx.innerHTML = n1 ? `<b>First:</b> ${esc(n1)}` : ''; $('noteLabel').textContent = 'Before count 1'; return; }
+  const p = pos.phrase, n = cur.notes[p];
+  $('noteLabel').textContent = `Note for ${phraseLabel(p)}`;
+  if (n && n.trim()){ nn.textContent = n; nn.classList.remove('empty'); } else { nn.textContent = 'No note for this 8-count yet. Add one in Counts & notes.'.replace('8-count', word()); nn.classList.add('empty'); }
+  const nextN = cur.notes[p+1]; nx.innerHTML = nextN && p+1 <= totalPhrases() ? `<b>Next, ${esc(phraseLabel(p+1))}:</b> ${esc(nextN)}` : '';
+}
+function renderFollow(){
+  const sel = $('followSel'), v = UI.follow;
+  sel.innerHTML = '<option value="">Everyone</option>' + cur.dancers.map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join('');
+  sel.value = cur.dancers.some(d => d.id === v) ? v : ''; UI.follow = sel.value;
+}
+$('followSel').addEventListener('change', e => { UI.follow = e.target.value; lastIdx = null; needDraw = true; });
+function updateCue(b, S){
+  const box = $('cueNow'), d = cur.dancers.find(x => x.id === UI.follow);
+  if (!cur.formations.length){ box.innerHTML = '<span class="muted">No formations yet. Set them in the Formations tab and they play here in time with the music.</span>'; return; }
+  if (!d){ box.innerHTML = '<span class="muted">Pick a dancer to see where they are and where they go next.</span>'; return; }
+  const F = cur.formations, p = S.pos[d.id]; let h = '';
+  if (S.moving){ const n = F[S.next]; h += `<div><b>${esc(d.name)}</b> is travelling into <b>${esc(n.name)}</b>, arriving on ${esc(beatLabel(n.at))}.</div><div class="muted">Going to: ${esc(spotText(n.pos[d.id][0], n.pos[d.id][1]))}</div>`; }
+  else if (p){ h += `<div><b>${esc(d.name)}</b> is in <b>${esc(F[S.idx].name)}</b>: ${esc(spotText(p[0],p[1]))}.</div>`; const n = F[S.idx+1]; if (n && n.pos[d.id]) h += `<div class="muted">Next: start moving on ${esc(beatLabel(travelStart(S.idx+1)))} to ${esc(spotText(n.pos[d.id][0], n.pos[d.id][1]))}.</div>`; }
+  box.innerHTML = h;
+}
+$('mirrorBtn').addEventListener('click', () => { if (!cur.video){ toast('Add a video first, then mirror it.'); return; } cur.video.mirror = !cur.video.mirror; vid.classList.toggle('mirror', cur.video.mirror); $('mirrorBtn').setAttribute('aria-pressed', String(cur.video.mirror)); save(); });
+$('vidHideBtn').addEventListener('click', () => { UI.vidHidden = !UI.vidHidden; $('vidHideBtn').setAttribute('aria-pressed', String(UI.vidHidden)); if (cur.video && vid.src){ vid.hidden = UI.vidHidden; $('stage').classList.toggle('has-video', !UI.vidHidden); } });
+function vidNudge(d){ if (!cur.video) return; cur.video.offset = Math.round((cur.video.offset + d)*100)/100; save(); updateVideoUI(); }
+$('vMinus').addEventListener('click', () => vidNudge(-0.05));
+$('vPlus').addEventListener('click', () => vidNudge(0.05));
+$('vRemove').addEventListener('click', async () => { if (!cur.video) return; await delMedia(cur.id+':video'); cur.video = null; save(); vid.removeAttribute('src'); vid.hidden = true; $('stage').classList.remove('has-video'); updateVideoUI(); toast('Video removed from this project.'); });
+$('vidFile').addEventListener('change', async e => {
+  const f = e.target.files && e.target.files[0]; if (!f) return; e.target.value = '';
+  await putMedia(cur.id+':video', f); cur.video = {name:f.name, offset:0, mirror:false}; save();
+  if (videoUrl) URL.revokeObjectURL(videoUrl); videoUrl = URL.createObjectURL(f); vid.src = videoUrl; UI.vidHidden = false; vid.hidden = false; $('stage').classList.add('has-video'); vid.classList.remove('mirror');
+  updateVideoUI(); toast('Video added. If it starts later than the song, nudge the sync until the steps land on the counts.');
+});
+function updateVideoUI(){
+  const v = cur.video; $('vidName').textContent = v ? v.name : 'No video yet';
+  $('vidAddLbl').textContent = v ? 'Replace video' : 'Add video of the choreography';
+  ['mirrorBtn','vidHideBtn','vMinus','vPlus','vRemove'].forEach(id => $(id).disabled = !v);
+  $('vOff').textContent = `${(v ? v.offset : 0).toFixed(2)} s`; $('mirrorBtn').setAttribute('aria-pressed', String(!!(v && v.mirror)));
+}
+
+/* ================= formations tab ================= */
+let drag = null;
+function svgPoint(svg, e){ const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; return pt.matrixTransform(svg.getScreenCTM().inverse()); }
+const editable = S => !S.moving && aud.paused && !UI.counting && S.idx >= 0;
+const fsvg = $('fStage');
+fsvg.addEventListener('pointerdown', e => {
+  const g = e.target.closest('[data-id]'); if (!g){ if (UI.sel){ UI.sel = null; UI.hl = null; renderDancers(); needDraw = true; } return; }
+  drag = {id:g.dataset.id, moved:false, S:stateAt(beatAt(aud.currentTime||0)), x0:e.clientX, y0:e.clientY}; fsvg.setPointerCapture(e.pointerId); e.preventDefault();
+});
+fsvg.addEventListener('pointermove', e => {
+  if (!drag) return; if (!drag.moved && Math.hypot(e.clientX-drag.x0, e.clientY-drag.y0) < 4) return;
+  if (!editable(drag.S)){ if (!drag.warned){ drag.warned = true; toast(aud.paused ? 'Dancers are travelling here. Jump to a formation to move them.' : 'Pause the music to move dancers.'); } return; }
+  drag.moved = true; const p = svgPoint(fsvg, e); let [x,y] = fStage.fromS(p.x, p.y);
+  if (UI.snap){ x = Math.round(x); y = Math.round(y); }
+  x = Math.max(-STAGE_W/2+1, Math.min(STAGE_W/2-1, x)); y = Math.max(1, Math.min(STAGE_D-1, y));
+  cur.formations[drag.S.idx].pos[drag.id] = [x,y]; UI.sel = drag.id; needDraw = true;
+  $('fHint').innerHTML = `<b>${esc(nameOf(drag.id))}</b>: ${esc(spotText(x,y))}`;
+});
+fsvg.addEventListener('pointerup', () => {
+  if (!drag) return; const d = drag; drag = null;
+  if (d.moved){ computeWarnings(); save(); renderDancers(); renderWarnings(); }
+  else { UI.sel = UI.sel === d.id ? null : d.id; UI.hl = null; renderDancers(); }
+  needDraw = true; updateFHint();
+});
+function updateFHint(){
+  const S = stateAt(beatAt(aud.currentTime||0)), F = cur.formations; let h;
+  if (!F.length) h = cur.dancers.length ? 'Scrub to the count where the first formation should land, then press <b>Add formation here</b>.' : 'Add your dancers first, then add a formation.';
+  else if (!aud.paused) h = 'Playing. Pause to move dancers.';
+  else if (S.moving) h = `Travelling into <b>${esc(F[S.next].name)}</b>. Jump to a formation to move dancers.`;
+  else h = `Drag dancers to set their spots for <b>${esc(F[S.idx].name)}</b>.${UI.snap ? ' Spots snap to 1 ft.' : ''} Tap a dancer to follow their path.`;
+  $('fHint').innerHTML = h;
+}
+function renderFStrip(S){
+  const box = $('fstrip'); box.innerHTML = '';
+  cur.formations.forEach((f,i) => { const b = document.createElement('button'); b.type='button'; b.className='fchip'; if (!S.moving && S.idx===i) b.classList.add('current'); if (S.moving && S.next===i) b.classList.add('next');
+    b.innerHTML = `<span class="n">${i+1}. ${esc(f.name)}</span><span class="w">${esc(beatLabel(f.at,true))}</span>`; b.addEventListener('click', () => seekBeat(f.at)); box.appendChild(b); });
+}
+function renderFPanel(force){
+  const box = $('fPanel'); if (!force && box.contains(document.activeElement)) return;
+  const b = beatAt(aud.currentTime||0), S = stateAt(b), F = cur.formations, here = Math.max(0, Math.floor(b + 1e-4));
+  const addBtn = `<button class="btn small primary" id="addF" type="button" ${cur.dancers.length ? '' : 'disabled'}>Add formation at ${esc(beatLabel(here,true))}</button>`;
+  const noteOf = at => { const p = Math.floor(at/cur.phrase)+1, n = cur.notes[p]; return n && n.trim() ? `<div class="linked-note"><span class="label">Note for ${esc(phraseLabel(p))}</span><br>${esc(n)}</div>` : ''; };
+  if (!F.length){ $('fTitle').textContent = 'Formations'; box.innerHTML = `<div class="fgrid"><p class="muted" style="margin:0">${cur.dancers.length ? 'No formations yet. Scrub the timeline to a count and add the first one.' : 'Add dancers below first.'}</p><div class="inline">${addBtn}</div></div>`; }
+  else if (S.moving){ const n = F[S.next]; $('fTitle').textContent = 'Travelling'; box.innerHTML = `<div class="fgrid"><div class="moving-note">Dancers are moving into <b>${esc(n.name)}</b>, arriving on ${esc(beatLabel(n.at))}.</div><div class="inline">${addBtn}</div></div>`; }
+  else {
+    const f = F[S.idx], p = beatParts(f.at), maxT = S.idx === 0 ? 0 : f.at - F[S.idx-1].at;
+    $('fTitle').textContent = `Formation ${S.idx+1} of ${F.length}`;
+    box.innerHTML = `<div class="fgrid">
+      <div class="field"><label class="label" for="fName">Name</label><input type="text" id="fName" value="${esc(f.name)}" style="width:100%"></div>
+      <div class="field"><span class="label">Dancers arrive on</span><div class="inline"><select id="fSec" aria-label="Section">${cur.sections.map((s,i)=>`<option value="${i}" ${i===p.si?'selected':''}>${esc(s.name)}</option>`).join('')}</select>
+        <label class="inline muted">${word()} <input type="number" id="fPh" min="1" value="${p.inSec}"></label><label class="inline muted">count <input type="number" id="fCt" min="1" max="${cur.phrase}" value="${p.count}"></label></div></div>
+      ${S.idx > 0 ? `<div class="field"><label class="label" for="fTr">Travel time</label><div class="inline"><input type="number" id="fTr" min="1" max="${maxT}" value="${Math.min(f.travel,maxT)}"><span class="muted">counts, starting on ${esc(beatLabel(travelStart(S.idx)))}</span></div></div>` : '<p class="muted" style="margin:0">Opening formation: dancers start here.</p>'}
+      ${noteOf(f.at)}
+      <div class="inline">${addBtn}<button class="btn small danger" id="delF" type="button">Delete formation</button></div></div>`;
+    $('fName').addEventListener('input', e => { f.name = e.target.value || 'Untitled'; save(); renderFStrip(stateAt(beatAt(aud.currentTime||0))); });
+    const reAt = () => { const s = cur.sections[+$('fSec').value], ph = Math.max(1, parseInt($('fPh').value,10)||1), ct = Math.max(1, Math.min(cur.phrase, parseInt($('fCt').value,10)||1)), at = (s.start-1+ph-1)*cur.phrase + (ct-1);
+      if (F.some(o => o !== f && o.at === at)){ toast(`Another formation already arrives on ${beatLabel(at)}.`); renderFPanel(true); return; }
+      f.at = at; sortF(); computeWarnings(); save(); seekBeat(at); lastIdx = null; renderFPanel(true); renderWarnings(); };
+    ['fSec','fPh','fCt'].forEach(id => $(id).addEventListener('change', reAt));
+    const tr = $('fTr'); if (tr) tr.addEventListener('change', e => { f.travel = Math.max(1, Math.min(maxT, parseInt(e.target.value,10)||1)); computeWarnings(); save(); renderFPanel(true); renderWarnings(); needDraw = true; });
+    $('delF').addEventListener('click', () => { F.splice(S.idx,1); computeWarnings(); save(); lastIdx = null; needDraw = true; renderFPanel(true); renderWarnings(); toast(`Deleted ${f.name}.`); });
+  }
+  const add = $('addF'); if (add) add.addEventListener('click', addFormationHere);
+}
+function addFormationHere(){
+  const b = Math.max(0, Math.floor(beatAt(aud.currentTime||0) + 1e-4));
+  if (cur.formations.some(f => f.at === b)){ toast(`A formation already arrives on ${beatLabel(b)}.`); return; }
+  const pos = {};
+  if (cur.formations.length){ const S = stateAt(b); cur.dancers.forEach(d => { if (S.pos[d.id]) pos[d.id] = S.pos[d.id].map(v => Math.round(v*2)/2); }); }
+  else { const n = cur.dancers.length; cur.dancers.forEach((d,i) => pos[d.id] = [Math.round((-((n-1)*3)/2 + i*3)*2)/2, 8]); }
+  const prev = [...cur.formations].reverse().find(f => f.at < b);
+  cur.formations.push({id:uid('f'), name:`Formation ${cur.formations.length+1}`, at:b, travel: prev ? Math.min(4, b-prev.at) : 0, pos});
+  sortF(); computeWarnings(); save(); seekBeat(b); lastIdx = null; renderFPanel(true); renderWarnings();
+  const n = $('fName'); if (n){ n.focus(); n.select(); }
+  toast(`Added a formation on ${beatLabel(b)}. Drag dancers to their spots.`);
+}
+function renderWarnings(){
+  const n = warnings.length, pill = $('wCount'); pill.textContent = n ? `${n} to fix` : 'All clear'; pill.className = 'pill' + (n ? ' warn' : '');
+  const ul = $('wlist'); ul.innerHTML = '';
+  if (!cur.formations.length){ ul.innerHTML = '<li class="muted">Checks appear once there are formations.</li>'; return; }
+  if (!n){ ul.innerHTML = `<li class="muted">Every dancer keeps at least ${MIN_GAP} ft from the others, in every formation and while travelling.</li>`; return; }
+  warnings.forEach(w => { const li = document.createElement('li'), b = document.createElement('button'); b.type = 'button'; b.innerHTML = `${esc(w.text)}<span class="wwhen">${esc(beatLabel(Math.floor(w.beat)))}</span>`;
+    b.addEventListener('click', () => { aud.pause(); UI.sel = w.a; UI.hl = [w.a, w.b]; seekBeat(w.beat); renderDancers(); }); li.appendChild(b); ul.appendChild(li); });
+}
+function renderDancers(){
+  const box = $('dlist'); if (box.contains(document.activeElement) && document.activeElement.tagName === 'INPUT'){ renderCues(); return; }
+  box.innerHTML = '';
+  if (!cur.dancers.length) box.innerHTML = '<p class="muted" style="margin:0">No dancers yet. Solo? Add just yourself.</p>';
+  cur.dancers.forEach(d => {
+    const row = document.createElement('div'); row.className = 'drow' + (UI.sel === d.id ? ' sel' : '');
+    row.innerHTML = `<button class="dot" type="button" style="background:${d.color}">${esc(initials(d))}</button><input type="text" value="${esc(d.name)}" aria-label="Dancer name"><button class="x" type="button" data-a="f">${UI.sel===d.id?'Show all':'Show spots'}</button><button class="x" type="button" data-a="d" aria-label="Remove ${esc(d.name)}">✕</button>`;
+    const tog = () => { UI.sel = UI.sel === d.id ? null : d.id; UI.hl = null; renderDancers(); needDraw = true; };
+    row.querySelector('.dot').addEventListener('click', tog); row.querySelector('[data-a="f"]').addEventListener('click', tog);
+    row.querySelector('input').addEventListener('input', e => { d.name = e.target.value || 'Dancer'; save(); needDraw = true; renderCues(); });
+    row.querySelector('input').addEventListener('change', () => { computeWarnings(); renderWarnings(); renderDancers(); renderFollow(); });
+    row.querySelector('[data-a="d"]').addEventListener('click', () => { cur.dancers = cur.dancers.filter(x => x !== d); cur.formations.forEach(f => delete f.pos[d.id]); if (UI.sel === d.id) UI.sel = null; computeWarnings(); save(); renderDancers(); renderWarnings(); renderFollow(); needDraw = true; });
+    box.appendChild(row);
+  });
+  renderCues();
+}
+function renderCues(){
+  const box = $('cueBox'), d = cur.dancers.find(x => x.id === UI.sel);
+  if (!d){ box.innerHTML = cur.dancers.length ? '<p class="muted" style="margin:12px 0 0">Pick a dancer to see their spots for the whole number.</p>' : ''; return; }
+  let h = '<div class="cues">';
+  cur.formations.forEach((f,i) => { const p = f.pos[d.id]; if (!p) return; const when = i === 0 ? `Start · ${beatLabel(f.at)}` : `Arrive ${beatLabel(f.at)} · travel ${f.at - travelStart(i)} counts`;
+    h += `<div class="cue" data-at="${f.at}"><span class="cue-n">${i+1}</span><div><div class="cue-name">${esc(f.name)}</div><div class="cue-when">${esc(when)}</div><div class="cue-spot">${esc(spotText(p[0],p[1]))}</div></div></div>`; });
+  box.innerHTML = h + '</div>';
+  box.querySelectorAll('.cue').forEach(c => c.addEventListener('click', () => seekBeat(+c.dataset.at)));
+}
+function renderFormsSide(){ renderFPanel(true); renderWarnings(); renderDancers(); updateFHint(); renderFStrip(stateAt(beatAt(aud.currentTime||0))); }
+$('snapChk').addEventListener('change', e => { UI.snap = e.target.checked; updateFHint(); });
+$('ghostChk').addEventListener('change', e => { UI.ghosts = e.target.checked; needDraw = true; });
+$('addDancer').addEventListener('click', () => {
+  const used = new Set(cur.dancers.map(d=>d.color)), color = DCOL.find(c => !used.has(c)) || DCOL[cur.dancers.length % DCOL.length];
+  const d = {id:uid('d'), name:`Dancer ${cur.dancers.length+1}`, color}, n = cur.dancers.length;
+  cur.formations.forEach(f => { f.pos[d.id] = [Math.max(-17, Math.min(17, -16 + (n%8)*2 + 1)), 22]; });
+  cur.dancers.push(d); computeWarnings(); save(); renderDancers(); renderWarnings(); renderFollow(); renderFPanel(true); updateFHint(); needDraw = true;
+});
+
+/* ================= share & print ================= */
+function shareObject(){
+  return {app:'choreo-workbook', format:1, exported:new Date().toISOString(), project:{title:cur.title, style:cur.style, bpm:cur.bpm, offset:cur.offset, phrase:cur.phrase,
+    sections:cur.sections, notes:cur.notes, dancers:cur.dancers, formations:cur.formations, peaks:cur.peaks,
+    audio:cur.audio ? {name:cur.audio.name, duration:cur.audio.duration, demo:!!cur.audio.demo} : null, video:cur.video ? {name:cur.video.name, offset:cur.video.offset, mirror:cur.video.mirror} : null}};
+}
+let lastSharePath = null;
+$('makeShare').addEventListener('click', async () => {
+  const kind = document.querySelector('input[name="shareKind"]:checked').value, obj = shareObject(), media = {};
+  if (kind === 'full'){
+    const a = cur.audio && !cur.audio.demo ? await getMedia(cur.id+':audio') : null, v = cur.video ? await getMedia(cur.id+':video') : null;
+    if (a) media.audio = {name:cur.audio.name, data:await a.arrayBuffer()};
+    if (v) media.video = {name:cur.video.name, data:await v.arrayBuffer()};
+  }
+  const res = await window.workbook.saveShare({title:cur.title, data:obj, media});
+  if (!res || !res.ok){ if (res && res.error) toast(`Couldn't save: ${res.error}`); return; }
+  lastSharePath = res.path;
+  const mb = res.size/1048576;
+  $('shareOut').hidden = false;
+  $('shareMsg').textContent = `Saved ${res.path} (${mb < 1 ? Math.max(1, Math.round(res.size/1024))+' KB' : mb.toFixed(1)+' MB'}): ${cur.sections.length} sections, ${Object.values(cur.notes).filter(v=>v&&v.trim()).length} notes, ${cur.formations.length} formations${media.audio || media.video ? ', with media' : ''}. ${cur.audio && cur.audio.demo ? 'The demo track is built into every copy of the app.' : (kind === 'light' ? 'The other person adds their own copy of the song.' : '')}`;
+});
+$('revealShare').addEventListener('click', () => { if (lastSharePath) window.workbook.reveal(lastSharePath); });
+function preparePrint(){ renderPaper(); const root = $('printRoot'); root.innerHTML = ''; root.appendChild($('paper').cloneNode(true)); root.firstChild.removeAttribute('id'); }
+$('printBtn').addEventListener('click', async () => { preparePrint(); const r = await window.workbook.print(); $('printMsg').textContent = r && r.ok ? 'Sent to the printer.' : ''; });
+$('pdfBtn').addEventListener('click', async () => { preparePrint(); const r = await window.workbook.savePdf(cur.title); if (r && r.ok){ $('printMsg').textContent = `Saved ${r.path}`; } else if (r && r.error) toast(`Couldn't save the PDF: ${r.error}`); });
+function printStage(f){
+  const X = x => 200 + x*10, Y = y => 255 - y*10;
+  let h = `<svg viewBox="0 0 400 290" role="img" aria-label="${esc(f.name)}"><rect x="20" y="15" width="360" height="240" fill="#F6F7F9" stroke="#9097A6"/>`;
+  for (let x=-16;x<=16;x+=4) h += `<line x1="${X(x)}" y1="15" x2="${X(x)}" y2="255" stroke="#DADDE4" stroke-width="${x===0?1.2:.6}"/><text x="${X(x)}" y="272" text-anchor="middle" font-size="11" font-family="JetBrains Mono, monospace" fill="#4A5060">${x===0?'C':Math.abs(x)/2}</text>`;
+  h += `<line x1="20" y1="${Y(8)}" x2="380" y2="${Y(8)}" stroke="#DADDE4" stroke-dasharray="4 3"/><line x1="20" y1="${Y(16)}" x2="380" y2="${Y(16)}" stroke="#DADDE4" stroke-dasharray="4 3"/>`;
+  h += `<text x="200" y="287" text-anchor="middle" font-size="9" letter-spacing="1.5" fill="#4A5060">AUDIENCE</text>`;
+  cur.dancers.forEach(d => { const p = f.pos[d.id]; if (!p) return; h += `<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="10" fill="#fff" stroke="#15171C" stroke-width="1.4"/><text x="${X(p[0])}" y="${Y(p[1])+4}" text-anchor="middle" font-size="10" font-weight="600" font-family="Inter, sans-serif" fill="#15171C">${esc(initials(d))}</text>`; });
+  return h + '</svg>';
+}
+function renderPaper(){
+  const P = $('paper'), total = totalPhrases(); let h = `<h1>${esc(cur.title)}</h1><div class="pmeta"><span>${esc(cur.style||'')}</span><span>${cur.bpm} BPM</span><span>${word()}s</span><span>Count 1 at ${cur.offset.toFixed(2)} s</span>${cur.audio ? `<span>${esc(cur.audio.name)}${cur.audio.duration ? ' · '+fmt(cur.audio.duration) : ''}</span>` : ''}</div>`;
+  if ($('prSheet').checked){
+    cur.sections.forEach((s,i) => { const end = Math.min(sectionEnd(i), total); if (s.start > end) return;
+      h += `<h4><span style="display:inline-block;width:18px;height:7px;background:var(${TAPES[i%6]});transform:rotate(-6deg)"></span>${esc(s.name)}</h4><table>`;
+      for (let p=s.start;p<=end;p++){ const n = cur.notes[p]; h += `<tr><td class="n">${word()} ${p-s.start+1}</td><td>${n && n.trim() ? esc(n) : '<span class="blank">—</span>'}</td></tr>`; }
+      h += '</table>'; });
+  }
+  if ($('prForms').checked && cur.formations.length){
+    h += `<h4 style="margin-top:24px">Formations · ${cur.dancers.length} dancers</h4><div class="pforms">`;
+    cur.formations.forEach((f,i) => { h += `<div class="pform"><b>${i+1}. ${esc(f.name)}</b><span>Arrive ${esc(beatLabel(f.at))}${i>0 ? ` · travel ${f.at - travelStart(i)} counts` : ''}</span>${printStage(f)}</div>`; });
+    h += `</div><p style="margin-top:10px;color:#4A5060;font-size:11px">${cur.dancers.map(d => `${esc(initials(d))} = ${esc(d.name)}`).join(' · ')}</p>`;
+  }
+  P.innerHTML = h;
+}
+$('prSheet').addEventListener('change', renderPaper); $('prForms').addEventListener('change', renderPaper);
+
+/* ================= timeline ================= */
+const tl = $('timeline'), tg = tl.getContext('2d');
+let colors = {}, colorsAt = 0;
+function readColors(){ const cs = getComputedStyle(document.documentElement), v = n => cs.getPropertyValue(n).trim(); colors = {surface:v('--surface'), ink:v('--ink'), muted:v('--muted'), accent:v('--accent'), warn:v('--warn'), tapes:TAPES.map(v)}; colorsAt = performance.now(); }
+function sizeCanvas(){ const r = tl.getBoundingClientRect(), d = window.devicePixelRatio||1; tl.width = Math.max(1, Math.round(r.width*d)); tl.height = Math.max(1, Math.round(r.height*d)); needDraw = true; }
+window.addEventListener('resize', sizeCanvas);
+function drawTimeline(t){
+  if (performance.now() - colorsAt > 600) readColors();
+  const W = tl.width, H = tl.height, dpr = window.devicePixelRatio||1, D = dur(), X = s => s/D*W, band = 5*dpr, wH = H - band;
+  tg.clearRect(0,0,W,H); tg.fillStyle = colors.surface; tg.fillRect(0,0,W,H);
+  cur.sections.forEach((s,i) => { const a = X(phraseTime(s.start)), b = i < cur.sections.length-1 ? X(phraseTime(cur.sections[i+1].start)) : W; if (a >= W) return; tg.fillStyle = colors.tapes[i%6]; tg.globalAlpha = .1; tg.fillRect(a,0,b-a,wH); tg.globalAlpha = 1; tg.fillRect(a,wH,b-a,band); });
+  if (UI.loop){ const [a,b] = loopTimes(); tg.fillStyle = colors.accent; tg.globalAlpha = .18; tg.fillRect(X(a),0,X(b)-X(a),wH); tg.globalAlpha = 1; }
+  const bl = beatLen(), pxB = X(bl); tg.fillStyle = colors.muted;
+  for (let k=0, bt=cur.offset; bt < D; k++, bt += bl){ const x = Math.round(X(bt)); if (k % cur.phrase === 0){ tg.globalAlpha = .5; tg.fillRect(x,0,Math.max(1,dpr),wH); } else if (pxB > 5*dpr){ tg.globalAlpha = .15; tg.fillRect(x, wH*.8, Math.max(1,dpr), wH*.2); } }
+  tg.globalAlpha = 1;
+  const px = X(t);
+  if (cur.peaks && cur.peaks.length){ const N = cur.peaks.length, mid = wH/2, step = 2*dpr;
+    for (let x=0;x<W;x+=step){ const a = Math.floor(x/W*N), z = Math.max(a+1, Math.floor((x+step)/W*N)); let m = 0; for (let i=a;i<z&&i<N;i++) if (cur.peaks[i]>m) m = cur.peaks[i]; const h = Math.max(dpr, m*mid*.82);
+      tg.fillStyle = x < px ? colors.ink : colors.muted; tg.globalAlpha = x < px ? .75 : .38; tg.fillRect(x, mid-h, Math.max(1, step-dpr), h*2); }
+    tg.globalAlpha = 1; }
+  const mY = 9*dpr;
+  cur.formations.forEach((f,i) => { const xa = X(timeOfBeat(f.at)); if (i > 0){ const xs = X(timeOfBeat(travelStart(i))); tg.fillStyle = colors.accent; tg.globalAlpha = .4; tg.fillRect(xs, mY-2*dpr, xa-xs, 4*dpr); tg.globalAlpha = 1; }
+    tg.fillStyle = colors.accent; tg.beginPath(); tg.moveTo(xa, mY-5*dpr); tg.lineTo(xa+4.5*dpr, mY); tg.lineTo(xa, mY+5*dpr); tg.lineTo(xa-4.5*dpr, mY); tg.closePath(); tg.fill(); });
+  tg.fillStyle = colors.warn; warnings.forEach(w => { tg.beginPath(); tg.arc(X(timeOfBeat(w.beat)), wH-5*dpr, 2.6*dpr, 0, Math.PI*2); tg.fill(); });
+  tg.fillStyle = colors.accent; tg.fillRect(Math.round(px-dpr), 0, 2*dpr, H);
+}
+tl.addEventListener('click', e => { const r = tl.getBoundingClientRect(), x = e.clientX - r.left;
+  for (const f of cur.formations){ if (Math.abs(timeOfBeat(f.at)/dur()*r.width - x) < 8){ seekBeat(f.at); return; } }
+  seek(x/r.width*dur()); });
+
+/* ================= render + frame ================= */
+function renderAll(){
+  if (!cur) return; sortSections(); updateTempoUI(); buildDots(); updateLoopUI(); updateVideoUI(); renderFollow();
+  if (UI.tab === 'counts'){ renderGrid(); renderSheet(); }
+  if (UI.tab === 'forms') renderFormsSide();
+  if (UI.tab === 'share') renderPaper();
+  $('tDur').textContent = fmt(dur());
+  lastBeat = null; lastPhrase = null; lastIdx = null; needDraw = true;
+}
+let needDraw = true, lastT = -1, lastBeat = null, lastPhrase = null, lastIdx = null, lastMoving = null;
+function frame(){
+  requestAnimationFrame(frame);
+  if (!cur) return;
+  const t = aud.currentTime || 0;
+  if (UI.loop && !aud.paused){ const [ls,le] = loopTimes(); if (t >= le - 0.012){ aud.currentTime = ls + 0.001; } }
+  // video follows the music
+  if (cur.video && vid.src && !vid.hidden){
+    const target = t - (cur.video.offset||0);
+    if (target < 0 || (vid.duration && target > vid.duration)){ if (!vid.paused) vid.pause(); }
+    else { if (Math.abs(vid.currentTime - target) > 0.18) vid.currentTime = target; if (!aud.paused && vid.paused) vid.play().catch(()=>{}); if (aud.paused && !vid.paused) vid.pause(); if (vid.playbackRate !== UI.rate) vid.playbackRate = UI.rate; }
+  }
+  if (t === lastT && !needDraw) return;
+  const pos = posAt(t), b = beatAt(t);
+  if (pos.beat !== lastBeat){
+    if (UI.clicks && !aud.paused && !pos.lead && lastBeat !== null && pos.beat === lastBeat + 1) beep(getAC() ? ac.currentTime : 0, pos.count === 1);
+    lastBeat = pos.beat;
+    const cc = $('cdCount'), dots = $('cdBeats').children;
+    if (pos.lead){ cc.textContent = '·'; cc.classList.add('lead'); $('cdSection').textContent = 'Lead-in'; $('cdPhrase').textContent = `Count 1 in ${Math.max(0, cur.offset - t).toFixed(1)} s`; for (const d of dots) d.className = ''; $('cdTape').style.background = 'var(--stage-muted)'; }
+    else { cc.textContent = pos.count; cc.classList.remove('lead'); for (let i=0;i<dots.length;i++) dots[i].className = i+1 === pos.count ? 'on' : (i+1 < pos.count ? 'past' : ''); }
+    if (!UI.counting) $('tWhere').textContent = pos.lead ? 'Lead-in' : `${phraseLabel(pos.phrase)} · ${pos.count}`;
+  }
+  if (pos.phrase !== lastPhrase){
+    lastPhrase = pos.phrase;
+    const si = pos.lead ? -1 : sectionFor(pos.phrase);
+    if (si >= 0){ const s = cur.sections[si], tv = `var(${TAPES[si%6]})`; $('cdSection').textContent = s.name; $('cdTape').style.background = tv; $('cd').style.setProperty('--cur-tape', tv); $('cdPhrase').textContent = `${word()} ${pos.phrase - s.start + 1} of ${Math.max(1, Math.min(sectionEnd(si), totalPhrases()) - s.start + 1)}`; }
+    updateNoteCard(pos); markChips(); markSheet();
+  }
+  const S = stateAt(b);
+  if (UI.tab === 'rehearse'){
+    const has = cur.formations.length > 0;
+    $('rStage').hidden = !has; $('rEmpty').hidden = has;
+    if (has){ rStage.renderDyn(S, UI.follow || null, null, null, false); $('rFormName').textContent = S.moving ? `Travelling into ${cur.formations[S.next].name}` : cur.formations[S.idx].name; }
+    else $('rFormName').textContent = '';
+    updateCue(b, S);
+  }
+  if (UI.tab === 'forms'){
+    const wn = new Set(); warnings.forEach(w => { if (Math.abs(w.beat - b) < 0.6){ wn.add(w.a); wn.add(w.b); } });
+    if (cur.formations.length) fStage.renderDyn(S, UI.sel, UI.hl, wn, editable(S)); else fStage.dg.innerHTML = '';
+    $('fNow').textContent = !cur.formations.length ? 'No formations yet' : S.moving ? 'Travelling' : cur.formations[S.idx].name;
+    $('fNowSub').textContent = pos.lead ? 'Lead-in' : `${phraseLabel(pos.phrase)}, count ${pos.count}`;
+    if (S.idx !== lastIdx || S.moving !== lastMoving){ lastIdx = S.idx; lastMoving = S.moving; renderFStrip(S); if (aud.paused) renderFPanel(); updateFHint(); }
+  }
+  $('tCur').textContent = fmt(t, true);
+  drawTimeline(t);
+  lastT = t; needDraw = false;
+}
+
+/* ================= keyboard ================= */
+document.addEventListener('keydown', e => {
+  if (!cur || (e.target.closest && e.target.closest('input, textarea, select'))) return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.code === 'Space'){ e.preventDefault(); togglePlay(); }
+  else if (e.key === 'ArrowLeft'){ e.preventDefault(); stepPhrase(-1); }
+  else if (e.key === 'ArrowRight'){ e.preventDefault(); stepPhrase(1); }
+  else if (e.key === 'l' || e.key === 'L'){ if (UI.loop) clearLoop(); else $('loopPhraseBtn').click(); }
+  else if (e.key === 'm' || e.key === 'M') $('mirrorBtn').click();
+  else if (e.key === 'Escape'){ UI.sel = null; UI.hl = null; if (UI.tab === 'forms') renderDancers(); needDraw = true; }
+});
+
+/* ================= start ================= */
+(async () => {
+  readColors();
+  const ok = await openDB();
+  $('storageNote').textContent = ok ? 'Projects, music and video are saved on this PC. Nothing is uploaded. Use share files to send a project to someone or to keep a backup.' : "Storage isn't available, so projects last only until you close the app.";
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch(e){}
+  let ps = await allProjects();
+  if (!ps.length){ await putProject(demoProject()); }
+  await refreshLib();
+  demoAudio().catch(() => {});
+  requestAnimationFrame(frame);
+  window.workbook.onIncomingShare(share => importShare(Object.assign({ok:true}, share)));
+  importShare(await window.workbook.pendingShare());
+  window.workbook.onMenu(async name => {
+    if (name === 'new') $('newFile').click();
+    else if (name === 'open') importShare(await window.workbook.openShare());
+    else if (name === 'library'){ if (cur) closeProject(); }
+    else if (!cur) toast('Open a project first.');
+    else if (name === 'share'){ setTab('share'); $('makeShare').click(); }
+    else if (name === 'print'){ setTab('share'); $('printBtn').click(); }
+    else if (name === 'pdf'){ setTab('share'); $('pdfBtn').click(); }
+  });
+})();
+})();
+</script>
+</body>
+</html>

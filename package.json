@@ -1,0 +1,77 @@
+{
+  "name": "choreography-workbook",
+  "productName": "Choreography Workbook",
+  "version": "0.1.0",
+  "description": "Build, rehearse, print and share dance choreography. No login; everything stays on your PC.",
+  "main": "main.js",
+  "author": "Choreography Workbook",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "pack:win": "electron-builder --win --x64 --dir",
+    "dist": "npm run pack:win && node build/stamp-exe.js && electron-builder --win --x64 --prepackaged dist/win-unpacked",
+    "test": "node test/smoke.js",
+    "dist:portable": "npm run pack:win && node build/stamp-exe.js && electron-builder --win portable zip --x64 --prepackaged dist/win-unpacked"
+  },
+  "dependencies": {
+    "adm-zip": "0.5.16"
+  },
+  "devDependencies": {
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8",
+    "resedit": "^1.7.2"
+  },
+  "build": {
+    "appId": "app.choreographyworkbook.desktop",
+    "productName": "Choreography Workbook",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "app/**/*",
+      "package.json"
+    ],
+    "fileAssociations": [
+      {
+        "ext": "dance",
+        "name": "Choreography Workbook share file",
+        "description": "Dance counts, notes and formations",
+        "role": "Editor"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Choreography Workbook",
+      "artifactName": "Choreography-Workbook-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "Choreography-Workbook-Portable-${version}.${ext}"
+    },
+    "artifactName": "Choreography-Workbook-${version}-win-x64.${ext}"
+  }
+}

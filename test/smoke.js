@@ -1,0 +1,54 @@
+// Smoke test: launches the real Electron app, opens the demo, saves a .dance file,
+// opens it again, and saves the printout as a PDF. Native dialogs are stubbed.
+// Run: npm test   (needs the `playwright` package; on Linux run under xvfb-run)
+const { _electron: electron } = require('playwright');
+const path = require('path');
+const fs = require('fs');
+const os = require('os');
+const AdmZip = require('adm-zip');
+
+(async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'workbook-'));
+  const sharePath = path.join(tmp, 'Spotlight.dance'), pdfPath = path.join(tmp, 'Spotlight.pdf');
+  const app = await electron.launch({ executablePath: require('electron'), args: [path.join(__dirname, '..'), '--no-sandbox', `--user-data-dir=${path.join(tmp, 'profile')}`] });
+  const win = await app.firstWindow();
+  const errors = []; win.on('pageerror', e => errors.push(e.message));
+  const ok = (cond, msg) => { console.log((cond ? 'PASS ' : 'FAIL ') + msg); if (!cond) process.exitCode = 1; };
+
+  await win.waitForSelector('.card');
+  ok((await win.textContent('#libCount')).includes('1 project'), 'library starts with the demo project');
+  await win.click('.card [data-a="open"]');
+  await win.waitForFunction(() => document.getElementById('tDur').textContent === '1:07', null, { timeout: 20000 });
+  ok(true, 'demo project opens with its 1:07 track');
+
+  for (let i = 0; i < 4; i++) await win.click('#nextBtn');
+  await win.waitForTimeout(300);
+  ok((await win.textContent('#noteNow')).includes('pirouette'), 'rehearse view shows the note for Verse 2');
+  ok((await win.textContent('#rFormName')) === 'Walk into V', 'rehearse view shows the live formation');
+
+  await app.evaluate(({ dialog }, p) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: p }); }, sharePath);
+  await win.click('[data-tab="share"]');
+  await win.click('#makeShare');
+  await win.waitForFunction(() => !document.getElementById('shareOut').hidden, null, { timeout: 10000 });
+  const zip = new AdmZip(sharePath), data = JSON.parse(zip.readAsText('project.json'));
+  ok(data.app === 'choreo-workbook' && data.format === 1, '.dance file is a zip with project.json');
+  ok(data.project.formations.length === 8 && Object.keys(data.project.notes).length === 16, '.dance file holds 8 formations and 16 notes');
+
+  await app.evaluate(({ dialog }, p) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: p }); }, pdfPath);
+  await win.click('#pdfBtn');
+  await win.waitForFunction(() => document.getElementById('printMsg').textContent.startsWith('Saved'), null, { timeout: 20000 });
+  const pdf = fs.readFileSync(pdfPath);
+  ok(pdf.slice(0, 4).toString() === '%PDF' && pdf.length > 20000, `printout saved as a PDF (${Math.round(pdf.length / 1024)} KB)`);
+
+  await app.evaluate(({ dialog }, p) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [p] }); }, sharePath);
+  await win.click('#backBtn');
+  await win.waitForSelector('.card');
+  await win.click('#importBtn');
+  await win.waitForFunction(() => document.querySelectorAll('.card').length === 2, null, { timeout: 10000 });
+  ok((await win.textContent('#cards')).includes('Received from a share file'), 'opening the .dance file adds it to the library');
+
+  await win.screenshot({ path: path.join(tmp, 'library.png') });
+  ok(errors.length === 0, 'no page errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
+  console.log('Artifacts in ' + tmp);
+  await app.close();
+})().catch(e => { console.error(e); process.exit(1); });
