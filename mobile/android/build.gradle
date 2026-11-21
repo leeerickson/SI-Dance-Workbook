@@ -5,6 +5,8 @@ buildscript {
     repositories {
         google()
         mavenCentral()
+        // Backup copy of Maven Central, used when the main server is unavailable.
+        maven { url "https://maven-central.storage-download.googleapis.com/maven2/" }
     }
     dependencies {
         classpath 'com.android.tools.build:gradle:8.2.1'
@@ -21,6 +23,8 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        // Backup copy of Maven Central, used when the main server is unavailable.
+        maven { url "https://maven-central.storage-download.googleapis.com/maven2/" }
     }
 }
 
