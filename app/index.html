@@ -1108,7 +1108,7 @@ function renderGrid(){
     const chips = row.querySelector('.chips');
     if (sec.start > total) chips.innerHTML = '<span class="muted">Starts after the end of the song.</span>';
     for (let p=sec.start; p<=end; p++){ const c = document.createElement('button'); c.type='button'; c.className='chip'+(formPhrases.has(p)?' has-form':''); c.dataset.p=p; c.textContent=p-sec.start+1; c.title=`${sec.name}, ${word()} ${p-sec.start+1}`; chips.appendChild(c); chipEls[p]=c; }
-    row.querySelector('.sec-name').addEventListener('input', e => { sec.name = e.target.value || 'Untitled'; save(); lastPhrase = null; needDraw = true; updateLoopUI(); });
+    row.querySelector('.sec-name').addEventListener('input', e => { sec.name = e.target.value || 'Untitled'; save(); lastPhrase = null; needDraw = true; renderRepeat(); updateLoopUI(); });
     row.querySelector('.sec-name').addEventListener('change', () => renderSheet());
     const st = row.querySelector('.sec-start input');
     if (st) st.addEventListener('change', e => { let v = parseInt(e.target.value,10); if (!(v>=2)) v = 2; if (cur.sections.some((s,j)=>j!==i&&s.start===v)){ setStatus(`Another section already starts at ${word()} ${v}.`); e.target.value = sec.start; return; } sec.start = v; sortSections(); save(); renderAll(); });
