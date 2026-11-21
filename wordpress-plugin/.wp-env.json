@@ -1,0 +1,4 @@
+{
+  "plugins": ["./dance-player"],
+  "mappings": { "fixtures": "../mobile/test/fixtures" }
+}

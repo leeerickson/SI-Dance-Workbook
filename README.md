@@ -109,3 +109,21 @@ node test/player-test.js path/to/file.dance
 ```
 
 Test builds are signed with `android/app/test-signing.keystore`, which is kept in the repository so each build installs over the last one. Before publishing to the Play Store, create a private release key and keep it out of the repository.
+
+## WordPress plugin (`wordpress-plugin/`)
+
+**Dance Player** shows a `.dance` file on a WordPress page, using the same player as the phone apps (`mobile/www`). Add the **Dance Player** block, or the shortcode `[dance_player file="<Media Library ID or URL>"]`. Use `open="no"` to hide the Open button, or leave out `file` so visitors open their own files. The plugin also allows `.dance` uploads to the Media Library.
+
+To build the zip in `dist/`:
+
+```bash
+node wordpress-plugin/build.js
+```
+
+To test it against a stand-in page (uses PHP and Playwright):
+
+```bash
+node wordpress-plugin/test/plugin-test.js
+```
+
+The **WordPress plugin** workflow builds the zip, starts a real WordPress site in Docker, uploads the test file, creates pages with the shortcode and the block, tests them in a browser, and publishes a release.

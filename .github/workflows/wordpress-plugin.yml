@@ -1,0 +1,71 @@
+name: WordPress plugin
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+      - run: npx playwright install --with-deps chromium
+      - name: Build the plugin zip
+        run: node wordpress-plugin/build.js
+      - name: Start a WordPress site with the plugin installed (Docker)
+        working-directory: wordpress-plugin
+        run: npx --yes @wordpress/env@10.29.0 start
+      - name: Upload the test .dance file and make pages with the shortcode and the block
+        working-directory: wordpress-plugin
+        run: |
+          wp() { npx --yes @wordpress/env@10.29.0 run cli wp "$@" 2>/dev/null | tr -d '\r' | grep -E '^[0-9]+$' | tail -1; }
+          ID=$(wp media import /var/www/html/fixtures/spotlight.dance --user=admin --porcelain)
+          echo "Media Library ID: $ID"; test -n "$ID"
+          P1=$(wp post create --post_type=page --post_status=publish --post_title="Dance shortcode" --post_content="[dance_player file=\"$ID\" open=\"no\"]" --porcelain)
+          P2=$(wp post create --post_type=page --post_status=publish --post_title="Dance block" --post_content="<!-- wp:dance-player/player {\"fileId\":$ID,\"name\":\"spotlight.dance\"} /-->" --porcelain)
+          P3=$(wp post create --post_type=page --post_status=publish --post_title="Open your own" --post_content="[dance_player]" --porcelain)
+          echo "PAGE_FILE=http://localhost:8888/?page_id=$P1" >> "$GITHUB_ENV"
+          echo "PAGE_BLOCK=http://localhost:8888/?page_id=$P2" >> "$GITHUB_ENV"
+          echo "PAGE_OPEN=http://localhost:8888/?page_id=$P3" >> "$GITHUB_ENV"
+      - name: Test the pages in a browser
+        run: |
+          mkdir -p shots
+          WP_URL=http://localhost:8888 SHOTS=shots node wordpress-plugin/test/plugin-test.js
+      - id: ver
+        run: echo "v=$(grep -oP 'Version:\s*\K[0-9.]+' wordpress-plugin/dance-player/dance-player.php)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dance-player-wordpress
+          path: |
+            dist/dance-player-*.zip
+            shots/*.png
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: wordpress-v${{ steps.ver.outputs.v }}-build${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: Dance Player ${{ steps.ver.outputs.v }} for WordPress (build ${{ github.run_number }})
+          prerelease: true
+          make_latest: false
+          files: |
+            dist/dance-player-*.zip
+            shots/wordpress-page.png
+          body: |
+            **Dance Player for WordPress**: plays .dance files on any page, like the Workbook Player app.
+
+            **To install:** download **dance-player-…zip** below. In WordPress go to **Plugins → Add New Plugin → Upload Plugin**, choose the zip, click **Install Now**, then **Activate**.
+
+            **To use:**
+            1. Upload a .dance file to the **Media Library** (the plugin allows .dance files).
+            2. Edit a page, add the **Dance Player** block, and choose the file. Or use the shortcode `[dance_player file="123"]` with the file's Media Library ID.
+            3. `[dance_player]` with no file lets visitors open .dance files from their own device. `open="no"` hides the Open button.
+
+            To include the music, save the share file with "Everything, including music and video", and only post music and video you have the right to share.
+
+            Tested on a real WordPress site in this build: shortcode, block, and visitor-opened files (see wordpress-page.png).
