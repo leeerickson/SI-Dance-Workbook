@@ -26,6 +26,33 @@ const AdmZip = require('adm-zip');
   ok((await win.textContent('#noteNow')).includes('pirouette'), 'rehearse view shows the note for Verse 2');
   ok((await win.textContent('#rFormName')) === 'Walk into V', 'rehearse view shows the live formation');
 
+  // Repeat sections: Verse through Chorus, 2 times
+  await win.selectOption('#repFrom', '1'); await win.selectOption('#repTo', '2'); await win.selectOption('#repTimes', '2');
+  await win.uncheck('#repCountIn'); await win.click('#repGo'); await win.waitForTimeout(300);
+  ok((await win.textContent('#loopChip')).includes('Repeat: Verse to Chorus (1 of 2)'), 'repeat Verse through Chorus 2 times is set');
+  ok((await win.textContent('#repGo')) === 'Stop repeating', 'repeat button switches to Stop repeating');
+  await win.click('#repGo'); await win.waitForTimeout(200);
+  ok(await win.$eval('#loopChip', e => e.hidden), 'Stop repeating clears the repeat');
+  await win.click('#playBtn').catch(() => {}); await win.waitForTimeout(100); await win.click('#playBtn').catch(() => {});
+
+  // Props: the demo brings two chairs on for the Bridge
+  await win.click('[data-tab="forms"]');
+  await win.click('.fchip:has-text("Bridge rows")'); await win.waitForTimeout(400);
+  ok((await win.$$('#plist .prow')).length === 2, 'demo has two props');
+  ok((await win.$$('#fStage [data-prop]')).length === 2, 'both chairs are drawn on the stage in Bridge rows');
+  const movers = await win.$$eval('#plist select[data-a="who"]', s => s.map(x => x.options[x.selectedIndex].text));
+  ok(movers.length === 2 && movers.every(m => m && m !== 'Nobody chosen'), `each chair has a dancer moving it (${movers.join(', ')})`);
+  ok((await win.textContent('#wCount')) === 'All clear', 'spacing and prop checks are all clear');
+  await win.selectOption('#propKind', 'box'); await win.click('#addProp'); await win.waitForTimeout(300);
+  ok((await win.$$('#plist .prow')).length === 3, 'adding a prop works');
+  ok((await win.textContent('#wlist')).includes('Nobody is set to move Box 1'), 'a new prop with no mover is flagged');
+  await win.selectOption('#plist .prow.sel select[data-a="who"]', 'crew'); await win.waitForTimeout(200);
+  ok(!(await win.textContent('#wlist')).includes('Nobody is set to move Box 1'), 'choosing stage crew clears the flag');
+  await win.click('#plist .prow.sel [data-a="del"]'); await win.waitForTimeout(200);
+  ok((await win.$$('#plist .prow')).length === 2, 'removing a prop works');
+  await win.click('[data-tab="share"]'); await win.waitForTimeout(300);
+  ok((await win.textContent('#paper')).includes('Bring Chair A on from stage right'), 'printout lists who moves which prop');
+
   await app.evaluate(({ dialog }, p) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: p }); }, sharePath);
   await win.click('[data-tab="share"]');
   await win.click('#makeShare');
@@ -33,6 +60,7 @@ const AdmZip = require('adm-zip');
   const zip = new AdmZip(sharePath), data = JSON.parse(zip.readAsText('project.json'));
   ok(data.app === 'choreo-workbook' && data.format === 1, '.dance file is a zip with project.json');
   ok(data.project.formations.length === 8 && Object.keys(data.project.notes).length === 16, '.dance file holds 8 formations and 16 notes');
+  ok(Array.isArray(data.project.props) && data.project.props.length === 2, '.dance file holds the props');
 
   await app.evaluate(({ dialog }, p) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: p }); }, pdfPath);
   await win.click('#pdfBtn');

@@ -108,6 +108,9 @@ input[type="number"]{width:72px; font-family:var(--f-mono)}
 .seg label:first-of-type{border-left:none}
 .seg input:checked + label{background:var(--ink); color:var(--bg)}
 .seg input:focus-visible + label{outline:2px solid var(--accent); outline-offset:-2px}
+.repeatbar{display:flex; flex-wrap:wrap; align-items:center; gap:8px 10px; padding:10px 12px; border-radius:10px; background:var(--surface); border:1px solid var(--line); margin:-4px 0 14px}
+.repeatbar .rep-status{font-size:12.5px; color:var(--muted)}
+.repeatbar .rep-status b{color:var(--ink)}
 .loopchip{font-size:12.5px; padding:4px 10px; border-radius:999px; background:var(--accent); color:var(--accent-ink); border:none; cursor:pointer}
 
 .grid2{display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr); gap:18px; align-items:start}
@@ -218,6 +221,19 @@ input[type="number"]{width:72px; font-family:var(--f-mono)}
 .cue-n{width:22px; height:22px; border-radius:50%; background:var(--surface-2); display:grid; place-items:center; font-family:var(--f-mono); font-size:11px}
 .cue-name{font-weight:600; font-size:13px} .cue-when{font-family:var(--f-mono); font-size:11.5px; color:var(--muted)} .cue-spot{font-size:13px}
 
+/* Props */
+.plist{display:grid; gap:8px}
+.prow{display:grid; gap:6px; padding:8px 10px; border:1px solid var(--line); border-radius:8px; cursor:pointer}
+.prow.sel{border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent)}
+.prow-top{display:flex; flex-wrap:wrap; align-items:center; gap:8px}
+.prow-top input[type="text"]{flex:1 1 120px; min-width:0; font-weight:500; border-color:transparent; background:transparent}
+.prow-top input[type="text"]:hover,.prow-top input[type="text"]:focus{border-color:var(--line); background:var(--surface)}
+.prop-swatch{width:22px; height:16px; border-radius:3px; background:#B98B4E; border:1px solid rgba(0,0,0,.25); flex:0 0 auto}
+.prop-swatch.round{border-radius:50%; width:18px; height:18px}
+.prow-now{display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:12.5px; color:var(--muted)}
+.prow-now b{color:var(--ink)}
+.cue-prop{font-size:13px; color:var(--accent); font-weight:500}
+
 /* Share & print */
 .share-code{width:100%; min-height:120px; font-family:var(--f-mono); font-size:11.5px}
 .radio-row{display:grid; gap:8px}
@@ -307,6 +323,18 @@ input[type="number"]{width:72px; font-family:var(--f-mono)}
     </div>
     <button class="btn small" id="coBtn" type="button" aria-pressed="true">Count-off</button>
     <button class="btn small" id="clickBtn" type="button" aria-pressed="false">Clicks</button>
+  </div>
+  <div class="repeatbar" role="group" aria-label="Repeat sections">
+    <span class="label">Repeat</span>
+    <select id="repFrom" aria-label="Repeat from section"></select>
+    <span class="muted">through</span>
+    <select id="repTo" aria-label="Repeat through section"></select>
+    <select id="repTimes" aria-label="How many times">
+      <option value="0">until I stop</option><option value="2">2 times</option><option value="3" selected>3 times</option><option value="4">4 times</option><option value="5">5 times</option><option value="8">8 times</option><option value="10">10 times</option>
+    </select>
+    <label class="inline muted"><input type="checkbox" id="repCountIn" checked> Count in before each time</label>
+    <button class="btn small primary" id="repGo" type="button">Start repeating</button>
+    <span class="rep-status" id="repStatus"></span>
   </div>
   <div class="tabs" role="tablist">
     <button class="tab" role="tab" data-tab="rehearse" aria-selected="true">Rehearse</button>
@@ -421,6 +449,12 @@ input[type="number"]{width:72px; font-family:var(--f-mono)}
         <div class="panel-head"><h2 id="fTitle">Formation</h2>
           <div class="inline"><label class="inline muted"><input type="checkbox" id="snapChk" checked> Snap 1 ft</label><label class="inline muted"><input type="checkbox" id="ghostChk" checked> Paths</label></div></div>
         <div id="fPanel"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Props</h2>
+          <div class="inline"><select id="propKind" aria-label="Kind of prop"><option value="chair">Chair</option><option value="stool">Stool</option><option value="box">Box</option><option value="bench">Bench</option><option value="table">Table</option><option value="ladder">Ladder</option><option value="hoop">Hoop</option><option value="other">Other</option></select><button class="btn small" id="addProp" type="button">Add prop</button></div></div>
+        <div class="plist" id="plist"></div>
+        <p class="muted" style="margin:10px 0 0">Drag props on the stage like dancers. When a prop moves between formations, choose who moves it: a dancer or the stage crew.</p>
       </div>
       <div class="panel">
         <div class="panel-head"><h2>Spacing check</h2><span class="pill" id="wCount">0</span></div>
@@ -608,13 +642,15 @@ function demoProject(){
     ['Final pose',126,6,[[0,4],[-2.5,5],[2.5,5],[-5,6.5],[5,6.5],[-1.5,7.5],[1.5,7.5],[0,10]]]
   ];
   let prev = null; const formations = shapes.map(([name,at,travel,pts]) => { const pos = assign(prev, pts, dancers); prev = pos; return {id:uid('f'), name, at, travel, pos}; });
-  return {
+  const proj = {
     id:'demo-spotlight', title:'Spotlight (demo)', style:'Jazz', demo:true, created:Date.now(), opened:Date.now(),
     bpm:120, offset:1, phrase:8,
     sections:[{name:'Intro',start:1},{name:'Verse',start:3},{name:'Chorus',start:7},{name:'Bridge',start:11},{name:'Final chorus',start:13}],
     notes:{1:'Hold opening pose, head down. Lift chin on 7, 8.',2:'Walk 4 into the V (R, L, R, L). Arms up through 1st to 5th on 5–8.',3:'Jazz square R (1–4), ball change 5-6, hip roll 7-8.',4:'Chassé R, pas de bourrée L, single pirouette R from 4th on 5-6, land 7, plié 8.',5:'Travel into two lines on 5–8. Repeat 8-count 1 to the left.',6:'Kick ball change ×2, fan kick R on 7, land in lunge on 8.',7:'Hits on 1, 3, 5-6-7. Sharp arms. Front row only.',8:'Body roll down 1–4, slide R 5-6, turn to face back 7-8.',9:'Leap R on 1, run run 2-3, toe touch 4. Start the pinwheel.',10:'Pinwheel circle, 2 counts per spot. Finish facing front on 8.',11:'Slow. Contemporary arms, développé L on 3-4, roll down 5–8.',12:'Rise 1–4 in canon by rows. Everyone up by 8.',13:'Same as Chorus 8-count 1, bigger.',14:'Same as Chorus 8-count 2.',15:'Switch leaps on 1 and 5. Travel into the final pose.',16:'Final pose on 7. Hold 8 and freeze.'},
     dancers, formations, audio:{name:'Demo track', duration:67, demo:true}, peaks:null, video:null
   };
+  addDemoProps(proj);
+  return proj;
 }
 
 /* ================= state ================= */
@@ -644,7 +680,8 @@ function sortSections(){ cur.sections.sort((a,b)=>a.start-b.start); if (cur.sect
 const ease = k => 0.5 - 0.5*Math.cos(Math.PI*Math.max(0,Math.min(1,k)));
 const sortF = () => cur.formations.sort((a,b)=>a.at-b.at);
 function travelStart(i){ const F = cur.formations; return i === 0 ? F[0].at : Math.max(F[i-1].at, F[i].at - F[i].travel); }
-function stateAt(b){
+function stateAt(b){ const s = stateAt0(b); s.b = b; return s; }
+function stateAt0(b){
   const F = cur.formations; if (!F.length) return {pos:{}, idx:-1, moving:false};
   let i = 0; while (i+1 < F.length && F[i+1].at <= b) i++;
   const c = F[i], n = F[i+1];
@@ -653,6 +690,71 @@ function stateAt(b){
   const k = ease((b-ts)/(n.at-ts)), pos = {};
   cur.dancers.forEach(d => { const a = c.pos[d.id] || n.pos[d.id], z = n.pos[d.id] || a; if (a) pos[d.id] = [a[0]+(z[0]-a[0])*k, a[1]+(z[1]-a[1])*k]; });
   return {pos, idx:i, next:i+1, moving:true, ts};
+}
+
+/* ---------- props ----------
+   cur.props = [{id, name, kind, w, d, round}]   (feet)
+   formation.props[propId] = {on, x, y, rot, mover}
+   mover = who moves the prop INTO this formation: a dancer id, 'crew', or '' (not chosen). */
+const PROP_KINDS = {
+  chair:{label:'Chair', w:1.5, d:1.5}, stool:{label:'Stool', w:1.2, d:1.2, round:true}, box:{label:'Box', w:2, d:2},
+  bench:{label:'Bench', w:4, d:1.5}, table:{label:'Table', w:4, d:2}, ladder:{label:'Ladder', w:2, d:3},
+  hoop:{label:'Hoop', w:3, d:3, round:true}, other:{label:'Prop', w:2, d:2}
+};
+function ensureProps(p){ p.props = Array.isArray(p.props) ? p.props : []; (p.formations||[]).forEach(f => { f.props = f.props || {}; }); }
+const isOn = s => !!(s && s.on);
+function propMoved(a, z){
+  const A = isOn(a), Z = isOn(z); if (!A && !Z) return false; if (A !== Z) return true;
+  return Math.hypot(a.x - z.x, a.y - z.y) > 0.4 || (a.rot||0) !== (z.rot||0);
+}
+const wingSide = x => x < 0 ? 'stage right' : 'stage left';
+const wingOf = s => ({x: s.x < 0 ? -19.5 : 19.5, y: s.y, rot: s.rot||0});
+function moverName(m){ if (m === 'crew') return 'Stage crew'; const d = cur.dancers.find(x => x.id === m); return d ? d.name : 'Nobody chosen'; }
+function propMoveText(pr, a, z){
+  const A = isOn(a), Z = isOn(z);
+  if (!A && Z) return `Bring ${pr.name} on from ${wingSide(z.x)} to ${spotText(z.x, z.y).replace(/^./, c => c.toLowerCase())}`;
+  if (A && !Z) return `Take ${pr.name} off, ${wingSide(a.x)}`;
+  if (Math.hypot(a.x - z.x, a.y - z.y) <= 0.4) return `Turn ${pr.name} to face a new direction`;
+  return `Move ${pr.name} to ${spotText(z.x, z.y).replace(/^./, c => c.toLowerCase())}`;
+}
+// Where each prop is at the moment described by S (from stateAt).
+function propsAt(S){
+  const F = cur.formations, out = {}; if (S.idx < 0) return out;
+  const c = F[S.idx], n = S.moving ? F[S.next] : null;
+  const k = n ? ease((S.b - S.ts) / (n.at - S.ts)) : 0;
+  cur.props.forEach(pr => {
+    const a = (c.props||{})[pr.id];
+    if (!n){ if (isOn(a)) out[pr.id] = {x:a.x, y:a.y, rot:a.rot||0}; return; }
+    const z = (n.props||{})[pr.id];
+    if (!isOn(a) && !isOn(z)) return;
+    if (!propMoved(a, z)){ out[pr.id] = {x:a.x, y:a.y, rot:a.rot||0}; return; }
+    const from = isOn(a) ? a : wingOf(z), to = isOn(z) ? z : wingOf(a);
+    out[pr.id] = {x: from.x + (to.x - from.x)*k, y: from.y + (to.y - from.y)*k, rot: (from.rot||0) + ((to.rot||0) - (from.rot||0))*k, moving:true, mover: z ? z.mover : ''};
+  });
+  return out;
+}
+function insideProp(pr, s, x, y, margin){
+  const r = (s.rot||0) * Math.PI / 180, dx = x - s.x, dy = y - s.y;
+  const lx = dx*Math.cos(r) + dy*Math.sin(r), ly = -dx*Math.sin(r) + dy*Math.cos(r);
+  if (pr.round) return Math.hypot(lx/(pr.w/2 + margin), ly/(pr.d/2 + margin)) < 1;
+  return Math.abs(lx) < pr.w/2 + margin && Math.abs(ly) < pr.d/2 + margin;
+}
+// Prop jobs for one person ('crew' or a dancer id) in the move INTO formation i.
+function propJobsFor(who, i){
+  if (i <= 0) return []; const F = cur.formations, f = F[i], prev = F[i-1];
+  return cur.props.filter(pr => { const s = (f.props||{})[pr.id]; return s && s.mover === who && propMoved((prev.props||{})[pr.id], s); })
+    .map(pr => propMoveText(pr, (prev.props||{})[pr.id], f.props[pr.id]));
+}
+function addDemoProps(p){
+  p.props = [{id:'prop-a', name:'Chair A', kind:'chair', w:1.5, d:1.5}, {id:'prop-b', name:'Chair B', kind:'chair', w:1.5, d:1.5}];
+  p.propsSeeded = true;
+  p.formations.forEach(f => { f.props = {}; p.props.forEach(pr => { f.props[pr.id] = {on:false}; }); });
+  const bi = p.formations.findIndex(f => f.name === 'Bridge rows'), wi = p.formations.findIndex(f => f.name === 'Final wedge');
+  if (bi < 0) return;
+  const B = p.formations[bi], who = (x, y) => (Object.entries(B.pos).find(([, v]) => v[0] === x && v[1] === y) || [''])[0];
+  B.props['prop-a'] = {on:true, x:-9, y:13, rot:0, mover:who(-9, 11)};
+  B.props['prop-b'] = {on:true, x:9, y:13, rot:0, mover:who(9, 11)};
+  if (wi > bi){ const W = p.formations[wi]; W.props['prop-a'] = {on:false, mover:'crew'}; W.props['prop-b'] = {on:false, mover:'crew'}; }
 }
 function spotText(x, y){
   const depth = y < 8 ? 'Downstage' : y < 16 ? 'Centre' : 'Upstage', side = x > 0 ? 'stage left' : 'stage right', ax = Math.abs(x), near = Math.round(ax/4)*4, num = near/2;
@@ -671,6 +773,25 @@ function computeWarnings(){
     for (let s=1;s<24;s++){ const b = ts+(te-ts)*s/24, st = stateAt(b);
       for (let a=0;a<D.length;a++) for (let c=a+1;c<D.length;c++){ const key=a+'-'+c; if (stat.has(key)) continue; const p0=prev.pos[D[a].id], q0=prev.pos[D[c].id]; if (p0&&q0&&Math.hypot(p0[0]-q0[0],p0[1]-q0[1])<MIN_GAP) continue; const p=st.pos[D[a].id], q=st.pos[D[c].id]; if (!p||!q) continue; const d=Math.hypot(p[0]-q[0],p[1]-q[1]); if (d<MIN_GAP && (!best[key]||d<best[key].d)) best[key]={d,b}; } }
     Object.entries(best).forEach(([key,v]) => { const [a,c] = key.split('-').map(Number); W.push({a:D[a].id,b:D[c].id,beat:v.b,text:`${D[a].name} and ${D[c].name} pass within ${v.d.toFixed(1)} ft moving into ${f.name}`}); });
+  });
+  // Props: someone must move each prop that moves; the mover should end near it; nobody stands on a prop.
+  F.forEach((f, i) => {
+    const fp = f.props || {}, load = {};
+    cur.props.forEach(pr => {
+      const s = fp[pr.id];
+      if (isOn(s)) D.forEach(d => { const p = f.pos[d.id]; if (p && insideProp(pr, s, p[0], p[1], 0.8)) W.push({a:d.id, b:null, beat:f.at, text:`${d.name} is standing on ${pr.name} in ${f.name}`}); });
+      if (i === 0) return;
+      const a = (F[i-1].props||{})[pr.id];
+      if (!propMoved(a, s)) return;
+      const m = s ? s.mover : '', d = D.find(x => x.id === m);
+      if (m !== 'crew' && !d){ W.push({a:null, b:null, beat:travelStart(i), text:`Nobody is set to move ${pr.name} ${isOn(s) ? 'into' : 'off for'} ${f.name}`}); return; }
+      if (d){
+        load[m] = (load[m]||0) + 1;
+        const end = f.pos[m];
+        if (isOn(s) && end){ const gap = Math.hypot(end[0] - s.x, end[1] - s.y); if (gap > 4) W.push({a:m, b:null, beat:f.at, text:`${d.name} moves ${pr.name} but ends ${gap.toFixed(0)} ft away from it in ${f.name}`}); }
+      }
+    });
+    Object.entries(load).forEach(([m, c]) => { if (c > 1) W.push({a:m, b:null, beat:travelStart(i), text:`${nameOf(m)} is moving ${c} props at once into ${f.name}`}); });
   });
   W.sort((x,y)=>x.beat-y.beat); warnings = W;
 }
@@ -705,6 +826,21 @@ function makeStage(svg, interactive){
     if (sel){ const d = D.find(x=>x.id===sel), pts = F.map(f=>f.pos[sel]).filter(Boolean).map(p=>st.toS(p[0],p[1]));
       if (d && pts.length > 1){ h += `<polyline points="${pts.map(p=>p.join(',')).join(' ')}" fill="none" stroke="${d.color}" stroke-width="1.6" opacity=".7" stroke-linejoin="round"/>`;
         pts.forEach((p,i) => { h += `<circle cx="${p[0]}" cy="${p[1]}" r="4.2" fill="var(--floor)" stroke="${d.color}"/><text x="${p[0]}" y="${p[1]+2.2}" text-anchor="middle" font-size="5.5" font-family="JetBrains Mono, monospace" fill="var(--floor-ink)">${i+1}</text>`; }); } }
+    // props sit under the dancers
+    const PP = propsAt(S);
+    cur.props.forEach(pr => {
+      const s = PP[pr.id]; if (!s) return;
+      const [x, y] = st.toS(s.x, s.y), w = pr.w*10, dd = pr.d*10, half = Math.max(w, dd)/2, selP = st.interactive && UI.selProp === pr.id;
+      const mover = s.moving && s.mover ? (s.mover === 'crew' ? {id:'crew', name:'Stage crew', color:'#8F97B3'} : D.find(z => z.id === s.mover)) : null;
+      const dimP = sel && !(mover && mover.id === sel);
+      const edge = selP ? 'var(--floor-ink)' : '#F1DFBE', dash = s.moving ? 'stroke-dasharray="2.5 1.5"' : '';
+      h += `<g data-prop="${pr.id}" style="cursor:${editable?'grab':'pointer'}" opacity="${dimP?0.45:1}"><g transform="translate(${x} ${y}) rotate(${s.rot||0})">`;
+      h += pr.round ? `<ellipse rx="${w/2}" ry="${dd/2}" fill="#B98B4E" stroke="${edge}" stroke-width="${selP?1.6:.8}" ${dash}/>`
+                    : `<rect x="${-w/2}" y="${-dd/2}" width="${w}" height="${dd}" rx="2" fill="#B98B4E" stroke="${edge}" stroke-width="${selP?1.6:.8}" ${dash}/><line x1="${-w/2+2}" y1="${-dd/2+2.2}" x2="${w/2-2}" y2="${-dd/2+2.2}" stroke="#F1DFBE" stroke-width=".6" opacity=".7"/>`;
+      h += `</g><text x="${x}" y="${y - half - 3}" text-anchor="middle" font-family="Inter, sans-serif" font-size="6.2" font-weight="600" fill="#E9CFA0" pointer-events="none">${esc(pr.name)}</text>`;
+      if (mover) h += `<circle cx="${x - 14}" cy="${y + half + 6}" r="2.6" fill="${mover.color}"/><text x="${x - 9}" y="${y + half + 8}" font-family="Inter, sans-serif" font-size="6" fill="var(--floor-ink)" pointer-events="none">${esc(mover.name)} moves it</text>`;
+      h += `</g>`;
+    });
     D.forEach(d => { const p = S.pos[d.id]; if (!p) return; const [x,y] = st.toS(p[0],p[1]), dim = sel && d.id !== sel && !(hl||[]).includes(d.id);
       h += `<g data-id="${d.id}" style="cursor:${editable?'grab':'pointer'}" opacity="${dim?0.32:1}">`;
       if (warnNow && warnNow.has(d.id)) h += `<circle cx="${x}" cy="${y}" r="14" fill="none" stroke="var(--warn)" stroke-width="1.6"/>`;
@@ -732,7 +868,7 @@ async function refreshLib(){
     const missing = !p.audio || (!p.audio.demo && !p.hasAudio);
     c.innerHTML = `<div class="card-top"><div style="flex:1; min-width:0"><div class="card-tapes">${(p.sections||[]).map((s,i)=>`<i style="background:var(${TAPES[i%6]})"></i>`).join('')}</div><h3 style="margin-top:6px">${esc(p.title)}</h3></div></div>
       <div class="card-meta"><span>${esc(p.style||'')}</span><span class="mono">${p.bpm} BPM</span><span class="mono">${len}</span></div>
-      <div class="card-meta"><span>${(p.sections||[]).length} sections</span><span>${nNotes} notes</span><span>${(p.formations||[]).length} formations</span>${p.video ? '<span>video</span>' : ''}</div>
+      <div class="card-meta"><span>${(p.sections||[]).length} sections</span><span>${nNotes} notes</span><span>${(p.formations||[]).length} formations</span>${(p.props||[]).length ? `<span>${p.props.length} props</span>` : ''}${p.video ? '<span>video</span>' : ''}</div>
       ${missing ? '<div><span class="chiptag warn">Needs your copy of the music</span></div>' : ''}
       ${p.imported ? '<div><span class="chiptag">Received from a share file</span></div>' : ''}
       <div class="card-actions"><button class="btn small primary" data-a="open" type="button">Open</button><button class="btn small" data-a="dup" type="button">Duplicate</button><button class="btn small danger" data-a="del" type="button">Delete</button></div>`;
@@ -768,7 +904,7 @@ async function importShare(share){
   if (!share.ok){ if (!share.canceled) toast(share.error || "That file couldn't be opened."); return; }
   const data = share.data, s = data.project, id = uid('p');
   const p = {id, title:s.title || 'Shared project', style:s.style||'Other', created:Date.now(), opened:Date.now(), bpm:+s.bpm||120, offset:+s.offset||0, phrase:+s.phrase||8,
-    sections:Array.isArray(s.sections)&&s.sections.length ? s.sections : [{name:'Intro',start:1}], notes:s.notes||{}, dancers:s.dancers||[], formations:s.formations||[],
+    sections:Array.isArray(s.sections)&&s.sections.length ? s.sections : [{name:'Intro',start:1}], notes:s.notes||{}, dancers:s.dancers||[], formations:s.formations||[], props:Array.isArray(s.props) ? s.props : [], propsSeeded:true,
     audio:s.audio || null, hasAudio:false, peaks:s.peaks||null, video:null, imported:true, from:data.exported};
   const m = share.media || {};
   if (m.audio){ await putMedia(id+':audio', new Blob([m.audio.data], {type:MIME[m.audio.ext]||''})); p.hasAudio = true; if (p.audio) p.audio.demo = false; }
@@ -784,7 +920,9 @@ let audioUrl = null, videoUrl = null;
 async function openProject(id){
   const p = (await allProjects()).find(x => x.id === id); if (!p) return;
   stopAll();
-  cur = p; cur.opened = Date.now(); save();
+  cur = p; cur.opened = Date.now(); ensureProps(cur);
+  if (cur.id === 'demo-spotlight' && !cur.propsSeeded) addDemoProps(cur);
+  UI.selProp = null; save();
   UI.loop = null; UI.sel = null; UI.hl = null; UI.follow = ''; UI.picking = false; UI.pick = null; UI.duration = cur.audio ? cur.audio.duration || 0 : 0;
   if (audioUrl){ URL.revokeObjectURL(audioUrl); audioUrl = null; }
   if (videoUrl){ URL.revokeObjectURL(videoUrl); videoUrl = null; }
@@ -860,9 +998,9 @@ let coTimers = [];
 function beep(when, accent){ const a = getAC(); if (!a) return; const o = a.createOscillator(), g = a.createGain(); o.type='square'; o.frequency.value = accent?1760:1175; g.gain.setValueAtTime(0.0001,when); g.gain.exponentialRampToValueAtTime(accent?0.22:0.13, when+0.003); g.gain.exponentialRampToValueAtTime(0.0001, when+0.06); o.connect(g).connect(a.destination); o.start(when); o.stop(when+0.08); }
 const countoffNums = () => { const n = Math.min(4, cur.phrase), o = []; for (let i=cur.phrase-n+1;i<=cur.phrase;i++) o.push(i); return o; };
 function cancelCountoff(){ coTimers.forEach(clearTimeout); coTimers = []; UI.counting = false; $('countoff').hidden = true; updatePlayIcon(); }
-function play(){
+function play(force){
   const a = getAC();
-  if (!UI.countoff || !a){ aud.play(); return; }
+  if ((!UI.countoff && !force) || !a){ aud.play(); return; }
   const iv = beatLen()/UI.rate, nums = countoffNums(), co = $('countoff'); UI.counting = true; updatePlayIcon(); co.textContent = ''; co.hidden = UI.tab !== 'rehearse';
   const t0 = a.currentTime + 0.06;
   nums.forEach((n,i) => { beep(t0+i*iv, i===0); coTimers.push(setTimeout(() => { co.textContent = n; co.classList.remove('pop'); void co.offsetWidth; co.classList.add('pop'); $('tWhere').textContent = `Count-off ${n}`; }, 60+i*iv*1000)); });
@@ -877,15 +1015,42 @@ aud.addEventListener('loadedmetadata', () => { if (!cur) return; if (isFinite(au
 
 /* loop */
 function loopTimes(){ return [phraseTime(UI.loop.a), phraseTime(UI.loop.b + 1)]; }
-function setLoop(a, b){ if (a < 1) a = 1; if (b < a) [a,b] = [b,a]; UI.loop = {a,b}; UI.picking = false; UI.pick = null; const t = aud.currentTime, [ls,le] = loopTimes(); if (t < ls || t >= le) aud.currentTime = ls + 0.001; updateLoopUI(); markChips(); needDraw = true; }
+function setLoop(a, b, opts){ if (a < 1) a = 1; if (b < a) [a,b] = [b,a]; opts = opts || {}; UI.loop = {a, b, times:opts.times||0, countIn:!!opts.countIn, done:0}; UI.picking = false; UI.pick = null; const t = aud.currentTime, [ls,le] = loopTimes(); if (t < ls || t >= le) aud.currentTime = ls + 0.001; updateLoopUI(); markChips(); needDraw = true; }
+function loopText(L){
+  const si = sectionFor(L.a), sj = sectionFor(L.b);
+  if (si >= 0 && sj >= 0 && L.a === cur.sections[si].start && L.b === Math.min(sectionEnd(sj), totalPhrases()))
+    return si === sj ? cur.sections[si].name : `${cur.sections[si].name} to ${cur.sections[sj].name}`;
+  return `${phraseLabel(L.a)}${L.b !== L.a ? ' to ' + phraseLabel(L.b) : ''}`;
+}
 function clearLoop(){ UI.loop = null; updateLoopUI(); markChips(); needDraw = true; }
 function updateLoopUI(){
-  const L = UI.loop, txt = L ? `${phraseLabel(L.a)}${L.b !== L.a ? ' to ' + phraseLabel(L.b) : ''}` : '';
+  const L = UI.loop, txt = L ? loopText(L) : '';
   $('loopLabel').innerHTML = L ? `Looping <b>${esc(txt)}</b>` : (UI.picking ? (UI.pick ? 'Now tap the last one' : 'Tap the first one to loop') : 'No loop set');
-  $('loopChip').hidden = !L; $('loopChip').textContent = L ? `Loop: ${txt} ✕` : '';
+  const prog = L && L.times ? ` (${Math.min(L.done+1, L.times)} of ${L.times})` : '';
+  $('loopChip').hidden = !L; $('loopChip').textContent = L ? `${L.times ? 'Repeat' : 'Loop'}: ${txt}${prog} ✕` : '';
+  $('repGo').textContent = L ? 'Stop repeating' : 'Start repeating';
+  $('repGo').classList.toggle('primary', !L);
+  $('repStatus').innerHTML = L ? `${L.times ? `Time <b>${Math.min(L.done+1, L.times)} of ${L.times}</b>` : `Time <b>${L.done+1}</b>, until you stop`} · ${esc(txt)}` : '';
   $('loopBadge').hidden = !L; $('pickBtn').setAttribute('aria-pressed', String(UI.picking));
 }
 $('loopChip').addEventListener('click', clearLoop);
+function renderRepeat(){
+  const f = $('repFrom'), t = $('repTo'), fi = +f.value || 0, ti = t.value === '' ? -1 : +t.value;
+  const opts = cur.sections.map((s, i) => `<option value="${i}">${esc(s.name)}</option>`).join('');
+  f.innerHTML = opts; t.innerHTML = opts;
+  f.value = String(Math.min(fi, cur.sections.length - 1));
+  t.value = String(Math.max(+f.value, Math.min(ti < 0 ? +f.value : ti, cur.sections.length - 1)));
+}
+$('repFrom').addEventListener('change', () => { if (+$('repTo').value < +$('repFrom').value) $('repTo').value = $('repFrom').value; });
+$('repTo').addEventListener('change', () => { if (+$('repTo').value < +$('repFrom').value) $('repFrom').value = $('repTo').value; });
+$('repGo').addEventListener('click', () => {
+  if (UI.loop){ clearLoop(); if (UI.counting) cancelCountoff(); return; }
+  const fi = +$('repFrom').value, ti = +$('repTo').value, a = cur.sections[fi].start, b = Math.min(sectionEnd(ti), totalPhrases());
+  if (a > b){ toast('That section starts after the end of the song.'); return; }
+  setLoop(a, b, {times:+$('repTimes').value, countIn:$('repCountIn').checked});
+  aud.currentTime = phraseTime(a) + 0.001;
+  if (UI.hasAudio && aud.paused && !UI.counting){ getAC(); play($('repCountIn').checked); }
+});
 $('loopPhraseBtn').addEventListener('click', () => { const p = Math.max(1, posAt(aud.currentTime||0).phrase); setLoop(p,p); });
 $('loopSecBtn').addEventListener('click', () => { const p = Math.max(1, posAt(aud.currentTime||0).phrase), i = Math.max(0, sectionFor(p)); setLoop(cur.sections[i].start, Math.min(sectionEnd(i), totalPhrases())); });
 $('pickBtn').addEventListener('click', () => { UI.picking = !UI.picking; UI.pick = null; updateLoopUI(); markChips(); });
@@ -986,17 +1151,25 @@ function updateNoteCard(pos){
 }
 function renderFollow(){
   const sel = $('followSel'), v = UI.follow;
-  sel.innerHTML = '<option value="">Everyone</option>' + cur.dancers.map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join('');
-  sel.value = cur.dancers.some(d => d.id === v) ? v : ''; UI.follow = sel.value;
+  sel.innerHTML = '<option value="">Everyone</option>' + cur.dancers.map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join('') + (cur.props.length ? '<option value="crew">Stage crew (props)</option>' : '');
+  sel.value = cur.dancers.some(d => d.id === v) || (v === 'crew' && cur.props.length) ? v : ''; UI.follow = sel.value;
 }
 $('followSel').addEventListener('change', e => { UI.follow = e.target.value; lastIdx = null; needDraw = true; });
 function updateCue(b, S){
   const box = $('cueNow'), d = cur.dancers.find(x => x.id === UI.follow);
   if (!cur.formations.length){ box.innerHTML = '<span class="muted">No formations yet. Set them in the Formations tab and they play here in time with the music.</span>'; return; }
+  const F = cur.formations, start = S.moving ? S.next : S.idx + 1;
+  const nextJob = who => { for (let j = start; j < F.length; j++){ const jobs = propJobsFor(who, j); if (jobs.length) return {j, jobs}; } return null; };
+  const jobLine = (nj, label) => `<div style="margin-top:6px"><b>${label}</b> ${esc(nj.jobs.join('; '))}, between ${esc(beatLabel(travelStart(nj.j)))} and ${esc(beatLabel(F[nj.j].at))}.</div>`;
+  if (UI.follow === 'crew'){
+    let h = '', n = 0; for (let j = start; j < F.length && n < 3; j++){ const jobs = propJobsFor('crew', j); if (jobs.length){ h += jobLine({j, jobs}, n ? 'Then:' : 'Next crew job:'); n++; } }
+    box.innerHTML = h || '<span class="muted">No more stage crew jobs in this number.</span>'; return;
+  }
   if (!d){ box.innerHTML = '<span class="muted">Pick a dancer to see where they are and where they go next.</span>'; return; }
-  const F = cur.formations, p = S.pos[d.id]; let h = '';
+  const p = S.pos[d.id]; let h = '';
   if (S.moving){ const n = F[S.next]; h += `<div><b>${esc(d.name)}</b> is travelling into <b>${esc(n.name)}</b>, arriving on ${esc(beatLabel(n.at))}.</div><div class="muted">Going to: ${esc(spotText(n.pos[d.id][0], n.pos[d.id][1]))}</div>`; }
   else if (p){ h += `<div><b>${esc(d.name)}</b> is in <b>${esc(F[S.idx].name)}</b>: ${esc(spotText(p[0],p[1]))}.</div>`; const n = F[S.idx+1]; if (n && n.pos[d.id]) h += `<div class="muted">Next: start moving on ${esc(beatLabel(travelStart(S.idx+1)))} to ${esc(spotText(n.pos[d.id][0], n.pos[d.id][1]))}.</div>`; }
+  const nj = nextJob(d.id); if (nj) h += jobLine(nj, 'Prop job:');
   box.innerHTML = h;
 }
 $('mirrorBtn').addEventListener('click', () => { if (!cur.video){ toast('Add a video first, then mirror it.'); return; } cur.video.mirror = !cur.video.mirror; vid.classList.toggle('mirror', cur.video.mirror); $('mirrorBtn').setAttribute('aria-pressed', String(cur.video.mirror)); save(); });
@@ -1024,23 +1197,89 @@ function svgPoint(svg, e){ const pt = svg.createSVGPoint(); pt.x = e.clientX; pt
 const editable = S => !S.moving && aud.paused && !UI.counting && S.idx >= 0;
 const fsvg = $('fStage');
 fsvg.addEventListener('pointerdown', e => {
-  const g = e.target.closest('[data-id]'); if (!g){ if (UI.sel){ UI.sel = null; UI.hl = null; renderDancers(); needDraw = true; } return; }
-  drag = {id:g.dataset.id, moved:false, S:stateAt(beatAt(aud.currentTime||0)), x0:e.clientX, y0:e.clientY}; fsvg.setPointerCapture(e.pointerId); e.preventDefault();
+  const g = e.target.closest('[data-id]'), gp = g ? null : e.target.closest('[data-prop]');
+  if (!g && !gp){ if (UI.sel || UI.selProp){ UI.sel = null; UI.hl = null; UI.selProp = null; renderDancers(); renderProps(true); needDraw = true; } return; }
+  drag = {id:g ? g.dataset.id : null, prop:gp ? gp.dataset.prop : null, moved:false, S:stateAt(beatAt(aud.currentTime||0)), x0:e.clientX, y0:e.clientY}; fsvg.setPointerCapture(e.pointerId); e.preventDefault();
 });
 fsvg.addEventListener('pointermove', e => {
   if (!drag) return; if (!drag.moved && Math.hypot(e.clientX-drag.x0, e.clientY-drag.y0) < 4) return;
-  if (!editable(drag.S)){ if (!drag.warned){ drag.warned = true; toast(aud.paused ? 'Dancers are travelling here. Jump to a formation to move them.' : 'Pause the music to move dancers.'); } return; }
+  if (!editable(drag.S)){ if (!drag.warned){ drag.warned = true; toast(aud.paused ? 'Everything is travelling here. Jump to a formation to move dancers or props.' : 'Pause the music to move dancers or props.'); } return; }
   drag.moved = true; const p = svgPoint(fsvg, e); let [x,y] = fStage.fromS(p.x, p.y);
-  if (UI.snap){ x = Math.round(x); y = Math.round(y); }
+  if (UI.snap){ x = Math.round(x*2)/2; y = Math.round(y*2)/2; if (!drag.prop){ x = Math.round(x); y = Math.round(y); } }
   x = Math.max(-STAGE_W/2+1, Math.min(STAGE_W/2-1, x)); y = Math.max(1, Math.min(STAGE_D-1, y));
-  cur.formations[drag.S.idx].pos[drag.id] = [x,y]; UI.sel = drag.id; needDraw = true;
+  const f = cur.formations[drag.S.idx];
+  if (drag.prop){
+    const old = f.props[drag.prop] || {}; f.props[drag.prop] = Object.assign({}, old, {on:true, x, y, rot:old.rot||0});
+    UI.selProp = drag.prop; needDraw = true;
+    const pr = cur.props.find(q => q.id === drag.prop); $('fHint').innerHTML = `<b>${esc(pr ? pr.name : 'Prop')}</b>: ${esc(spotText(x,y))}`;
+    return;
+  }
+  f.pos[drag.id] = [x,y]; UI.sel = drag.id; needDraw = true;
   $('fHint').innerHTML = `<b>${esc(nameOf(drag.id))}</b>: ${esc(spotText(x,y))}`;
 });
 fsvg.addEventListener('pointerup', () => {
   if (!drag) return; const d = drag; drag = null;
-  if (d.moved){ computeWarnings(); save(); renderDancers(); renderWarnings(); }
+  if (d.prop){
+    if (d.moved){ computeWarnings(); save(); renderWarnings(); } else UI.selProp = UI.selProp === d.prop ? null : d.prop;
+    renderProps(true); needDraw = true; updateFHint(); return;
+  }
+  if (d.moved){ computeWarnings(); save(); renderDancers(); renderWarnings(); renderProps(true); }
   else { UI.sel = UI.sel === d.id ? null : d.id; UI.hl = null; renderDancers(); }
   needDraw = true; updateFHint();
+});
+
+/* props panel */
+function renderProps(force){
+  const box = $('plist'); if (!box || !cur) return;
+  if (!force && box.contains(document.activeElement)) return;
+  const S = stateAt(beatAt(aud.currentTime||0)), F = cur.formations, f = !S.moving && S.idx >= 0 ? F[S.idx] : null, prev = f && S.idx > 0 ? F[S.idx-1] : null;
+  box.innerHTML = '';
+  if (!cur.props.length){ box.innerHTML = '<p class="muted" style="margin:0">No props yet. Add chairs, boxes, benches or anything else that goes on stage, then choose who moves them.</p>'; return; }
+  const whoOpts = sel => `<option value="" ${!sel?'selected':''}>Nobody chosen</option><option value="crew" ${sel==='crew'?'selected':''}>Stage crew</option>` + cur.dancers.map(d => `<option value="${d.id}" ${sel===d.id?'selected':''}>${esc(d.name)}</option>`).join('');
+  cur.props.forEach(pr => {
+    const row = document.createElement('div'); row.className = 'prow' + (UI.selProp === pr.id ? ' sel' : '');
+    let now = '';
+    if (!F.length) now = '<span>Appears on stage once you add a formation.</span>';
+    else if (S.moving){
+      const a = (F[S.idx].props||{})[pr.id], z = (F[S.next].props||{})[pr.id];
+      now = propMoved(a, z) ? `<span>${esc(propMoveText(pr, a, z))}. Moved by <b>${esc(moverName(z && z.mover))}</b>.</span>` : '<span>Not moving right now.</span>';
+    } else {
+      const s = f.props[pr.id] || {on:false}, moved = prev && propMoved((prev.props||{})[pr.id], s);
+      now = `<select data-a="on" aria-label="${esc(pr.name)}: on stage or off"><option value="1" ${s.on?'selected':''}>On stage</option><option value="0" ${!s.on?'selected':''}>Offstage</option></select>`
+        + (s.on ? `<button class="btn small" data-a="rot" type="button">Rotate 45°</button>` : '')
+        + (moved ? `<label class="inline">Moved by <select data-a="who">${whoOpts(s.mover)}</select></label>`
+                 : `<span>${S.idx === 0 ? (s.on ? 'Set on stage before the number starts.' : '') : "Doesn't move into this formation."}</span>`);
+    }
+    row.innerHTML = `<div class="prow-top"><span class="prop-swatch${pr.round ? ' round' : ''}" aria-hidden="true"></span><input type="text" value="${esc(pr.name)}" aria-label="Prop name"><span class="muted mono">${pr.w}×${pr.d} ft</span><button class="x" data-a="del" type="button" aria-label="Remove ${esc(pr.name)}">✕</button></div><div class="prow-now">${now}</div>`;
+    const name = row.querySelector('input[type="text"]');
+    name.addEventListener('input', e => { pr.name = e.target.value || 'Prop'; save(); needDraw = true; });
+    name.addEventListener('change', () => { computeWarnings(); renderWarnings(); });
+    row.querySelector('[data-a="del"]').addEventListener('click', () => {
+      cur.props = cur.props.filter(q => q !== pr); cur.formations.forEach(fm => { if (fm.props) delete fm.props[pr.id]; });
+      if (UI.selProp === pr.id) UI.selProp = null; computeWarnings(); save(); renderProps(true); renderWarnings(); needDraw = true; toast(`Removed ${pr.name}.`);
+    });
+    const on = row.querySelector('[data-a="on"]');
+    if (on) on.addEventListener('change', e => {
+      const s = Object.assign({}, f.props[pr.id] || {});
+      if (e.target.value === '1'){ s.on = true; if (s.x == null){ s.x = 0; s.y = 12; s.rot = 0; } } else s.on = false;
+      f.props[pr.id] = s; UI.selProp = pr.id; computeWarnings(); save(); renderProps(true); renderWarnings(); needDraw = true;
+    });
+    const rot = row.querySelector('[data-a="rot"]');
+    if (rot) rot.addEventListener('click', () => { const s = f.props[pr.id]; s.rot = ((s.rot||0) + 45) % 360; UI.selProp = pr.id; computeWarnings(); save(); renderProps(true); renderWarnings(); needDraw = true; });
+    const who = row.querySelector('[data-a="who"]');
+    if (who) who.addEventListener('change', e => { f.props[pr.id].mover = e.target.value; computeWarnings(); save(); renderWarnings(); renderProps(true); renderFollow(); needDraw = true; });
+    row.addEventListener('click', e => { if (e.target.closest('input, select, button')) return; UI.selProp = UI.selProp === pr.id ? null : pr.id; renderProps(true); needDraw = true; });
+    box.appendChild(row);
+  });
+}
+$('addProp').addEventListener('click', () => {
+  const kind = $('propKind').value, K = PROP_KINDS[kind] || PROP_KINDS.other, n = cur.props.filter(q => q.kind === kind).length + 1;
+  const pr = {id:uid('pr'), name:`${K.label} ${n}`, kind, w:K.w, d:K.d, round:!!K.round};
+  cur.props.push(pr);
+  const S = stateAt(beatAt(aud.currentTime||0)), from = cur.formations.length ? (S.moving ? S.next : Math.max(0, S.idx)) : 0, slot = (cur.props.length - 1) % 5;
+  cur.formations.forEach((fm, i) => { fm.props = fm.props || {}; fm.props[pr.id] = i < from ? {on:false} : {on:true, x:-8 + slot*4, y:20, rot:0, mover:''}; });
+  UI.selProp = pr.id; computeWarnings(); save(); renderProps(true); renderWarnings(); needDraw = true;
+  toast(cur.formations.length ? `Added ${pr.name} from "${cur.formations[from].name}" on. Drag it into place${from > 0 ? ' and choose who brings it on' : ''}.` : `Added ${pr.name}. It appears on stage once you add a formation.`);
 });
 function updateFHint(){
   const S = stateAt(beatAt(aud.currentTime||0)), F = cur.formations; let h;
@@ -1088,8 +1327,11 @@ function addFormationHere(){
   const pos = {};
   if (cur.formations.length){ const S = stateAt(b); cur.dancers.forEach(d => { if (S.pos[d.id]) pos[d.id] = S.pos[d.id].map(v => Math.round(v*2)/2); }); }
   else { const n = cur.dancers.length; cur.dancers.forEach((d,i) => pos[d.id] = [Math.round((-((n-1)*3)/2 + i*3)*2)/2, 8]); }
+  const fprops = {}, had = cur.formations.length, PP = had ? propsAt(stateAt(b)) : {};
+  cur.props.forEach((pr, i) => { const s = PP[pr.id];
+    fprops[pr.id] = had ? (s ? {on:true, x:Math.round(s.x*2)/2, y:Math.round(s.y*2)/2, rot:Math.round(s.rot||0), mover:''} : {on:false}) : {on:true, x:-8 + (i%5)*4, y:20, rot:0, mover:''}; });
   const prev = [...cur.formations].reverse().find(f => f.at < b);
-  cur.formations.push({id:uid('f'), name:`Formation ${cur.formations.length+1}`, at:b, travel: prev ? Math.min(4, b-prev.at) : 0, pos});
+  cur.formations.push({id:uid('f'), name:`Formation ${cur.formations.length+1}`, at:b, travel: prev ? Math.min(4, b-prev.at) : 0, pos, props:fprops});
   sortF(); computeWarnings(); save(); seekBeat(b); lastIdx = null; renderFPanel(true); renderWarnings();
   const n = $('fName'); if (n){ n.focus(); n.select(); }
   toast(`Added a formation on ${beatLabel(b)}. Drag dancers to their spots.`);
@@ -1113,7 +1355,7 @@ function renderDancers(){
     row.querySelector('.dot').addEventListener('click', tog); row.querySelector('[data-a="f"]').addEventListener('click', tog);
     row.querySelector('input').addEventListener('input', e => { d.name = e.target.value || 'Dancer'; save(); needDraw = true; renderCues(); });
     row.querySelector('input').addEventListener('change', () => { computeWarnings(); renderWarnings(); renderDancers(); renderFollow(); });
-    row.querySelector('[data-a="d"]').addEventListener('click', () => { cur.dancers = cur.dancers.filter(x => x !== d); cur.formations.forEach(f => delete f.pos[d.id]); if (UI.sel === d.id) UI.sel = null; computeWarnings(); save(); renderDancers(); renderWarnings(); renderFollow(); needDraw = true; });
+    row.querySelector('[data-a="d"]').addEventListener('click', () => { cur.dancers = cur.dancers.filter(x => x !== d); cur.formations.forEach(f => { delete f.pos[d.id]; Object.values(f.props||{}).forEach(s => { if (s.mover === d.id) s.mover = ''; }); }); if (UI.sel === d.id) UI.sel = null; computeWarnings(); save(); renderDancers(); renderWarnings(); renderFollow(); needDraw = true; });
     box.appendChild(row);
   });
   renderCues();
@@ -1123,11 +1365,12 @@ function renderCues(){
   if (!d){ box.innerHTML = cur.dancers.length ? '<p class="muted" style="margin:12px 0 0">Pick a dancer to see their spots for the whole number.</p>' : ''; return; }
   let h = '<div class="cues">';
   cur.formations.forEach((f,i) => { const p = f.pos[d.id]; if (!p) return; const when = i === 0 ? `Start · ${beatLabel(f.at)}` : `Arrive ${beatLabel(f.at)} · travel ${f.at - travelStart(i)} counts`;
-    h += `<div class="cue" data-at="${f.at}"><span class="cue-n">${i+1}</span><div><div class="cue-name">${esc(f.name)}</div><div class="cue-when">${esc(when)}</div><div class="cue-spot">${esc(spotText(p[0],p[1]))}</div></div></div>`; });
+    const jobs = propJobsFor(d.id, i).map(j => `<div class="cue-prop">Prop: ${esc(j)}</div>`).join('');
+    h += `<div class="cue" data-at="${f.at}"><span class="cue-n">${i+1}</span><div><div class="cue-name">${esc(f.name)}</div><div class="cue-when">${esc(when)}</div><div class="cue-spot">${esc(spotText(p[0],p[1]))}</div>${jobs}</div></div>`; });
   box.innerHTML = h + '</div>';
   box.querySelectorAll('.cue').forEach(c => c.addEventListener('click', () => seekBeat(+c.dataset.at)));
 }
-function renderFormsSide(){ renderFPanel(true); renderWarnings(); renderDancers(); updateFHint(); renderFStrip(stateAt(beatAt(aud.currentTime||0))); }
+function renderFormsSide(){ renderFPanel(true); renderProps(true); renderWarnings(); renderDancers(); updateFHint(); renderFStrip(stateAt(beatAt(aud.currentTime||0))); }
 $('snapChk').addEventListener('change', e => { UI.snap = e.target.checked; updateFHint(); });
 $('ghostChk').addEventListener('change', e => { UI.ghosts = e.target.checked; needDraw = true; });
 $('addDancer').addEventListener('click', () => {
@@ -1140,7 +1383,7 @@ $('addDancer').addEventListener('click', () => {
 /* ================= share & print ================= */
 function shareObject(){
   return {app:'choreo-workbook', format:1, exported:new Date().toISOString(), project:{title:cur.title, style:cur.style, bpm:cur.bpm, offset:cur.offset, phrase:cur.phrase,
-    sections:cur.sections, notes:cur.notes, dancers:cur.dancers, formations:cur.formations, peaks:cur.peaks,
+    sections:cur.sections, notes:cur.notes, dancers:cur.dancers, formations:cur.formations, props:cur.props, peaks:cur.peaks,
     audio:cur.audio ? {name:cur.audio.name, duration:cur.audio.duration, demo:!!cur.audio.demo} : null, video:cur.video ? {name:cur.video.name, offset:cur.video.offset, mirror:cur.video.mirror} : null}};
 }
 let lastSharePath = null;
@@ -1168,6 +1411,8 @@ function printStage(f){
   for (let x=-16;x<=16;x+=4) h += `<line x1="${X(x)}" y1="15" x2="${X(x)}" y2="255" stroke="#DADDE4" stroke-width="${x===0?1.2:.6}"/><text x="${X(x)}" y="272" text-anchor="middle" font-size="11" font-family="JetBrains Mono, monospace" fill="#4A5060">${x===0?'C':Math.abs(x)/2}</text>`;
   h += `<line x1="20" y1="${Y(8)}" x2="380" y2="${Y(8)}" stroke="#DADDE4" stroke-dasharray="4 3"/><line x1="20" y1="${Y(16)}" x2="380" y2="${Y(16)}" stroke="#DADDE4" stroke-dasharray="4 3"/>`;
   h += `<text x="200" y="287" text-anchor="middle" font-size="9" letter-spacing="1.5" fill="#4A5060">AUDIENCE</text>`;
+  cur.props.forEach(pr => { const s = (f.props||{})[pr.id]; if (!isOn(s)) return; const x = X(s.x), y = Y(s.y), w = pr.w*10, d = pr.d*10;
+    h += `<g transform="translate(${x} ${y}) rotate(${s.rot||0})">${pr.round ? `<ellipse rx="${w/2}" ry="${d/2}" fill="#E8DCC6" stroke="#8A6A3A" stroke-width="1.2"/>` : `<rect x="${-w/2}" y="${-d/2}" width="${w}" height="${d}" rx="2" fill="#E8DCC6" stroke="#8A6A3A" stroke-width="1.2"/>`}</g><text x="${x}" y="${y - Math.max(w,d)/2 - 3}" text-anchor="middle" font-size="8" font-family="Inter, sans-serif" fill="#6B4F26">${esc(pr.name)}</text>`; });
   cur.dancers.forEach(d => { const p = f.pos[d.id]; if (!p) return; h += `<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="10" fill="#fff" stroke="#15171C" stroke-width="1.4"/><text x="${X(p[0])}" y="${Y(p[1])+4}" text-anchor="middle" font-size="10" font-weight="600" font-family="Inter, sans-serif" fill="#15171C">${esc(initials(d))}</text>`; });
   return h + '</svg>';
 }
@@ -1183,6 +1428,13 @@ function renderPaper(){
     h += `<h4 style="margin-top:24px">Formations · ${cur.dancers.length} dancers</h4><div class="pforms">`;
     cur.formations.forEach((f,i) => { h += `<div class="pform"><b>${i+1}. ${esc(f.name)}</b><span>Arrive ${esc(beatLabel(f.at))}${i>0 ? ` · travel ${f.at - travelStart(i)} counts` : ''}</span>${printStage(f)}</div>`; });
     h += `</div><p style="margin-top:10px;color:#4A5060;font-size:11px">${cur.dancers.map(d => `${esc(initials(d))} = ${esc(d.name)}`).join(' · ')}</p>`;
+    if (cur.props.length){
+      const F = cur.formations, rows = [];
+      cur.props.forEach(pr => { const s = (F[0].props||{})[pr.id]; if (isOn(s)) rows.push(`<tr><td class="n" style="width:auto">Before the number</td><td>Preset ${esc(pr.name)}: ${esc(spotText(s.x, s.y).replace(/^./, c => c.toLowerCase()))}</td><td>Stage crew</td></tr>`); });
+      F.forEach((f, i) => { if (!i) return; cur.props.forEach(pr => { const a = (F[i-1].props||{})[pr.id], s = (f.props||{})[pr.id]; if (!propMoved(a, s)) return;
+        rows.push(`<tr><td class="n" style="width:auto">${esc(beatLabel(travelStart(i), true))} to ${esc(beatLabel(f.at, true))}</td><td>${esc(propMoveText(pr, a, s))}</td><td>${esc(moverName(s && s.mover))}</td></tr>`); }); });
+      if (rows.length) h += `<h4 style="margin-top:20px">Props · who moves what</h4><table>${rows.join('')}</table>`;
+    }
   }
   P.innerHTML = h;
 }
@@ -1220,7 +1472,7 @@ tl.addEventListener('click', e => { const r = tl.getBoundingClientRect(), x = e.
 
 /* ================= render + frame ================= */
 function renderAll(){
-  if (!cur) return; sortSections(); updateTempoUI(); buildDots(); updateLoopUI(); updateVideoUI(); renderFollow();
+  if (!cur) return; sortSections(); updateTempoUI(); buildDots(); renderRepeat(); updateLoopUI(); updateVideoUI(); renderFollow();
   if (UI.tab === 'counts'){ renderGrid(); renderSheet(); }
   if (UI.tab === 'forms') renderFormsSide();
   if (UI.tab === 'share') renderPaper();
@@ -1232,7 +1484,12 @@ function frame(){
   requestAnimationFrame(frame);
   if (!cur) return;
   const t = aud.currentTime || 0;
-  if (UI.loop && !aud.paused){ const [ls,le] = loopTimes(); if (t >= le - 0.012){ aud.currentTime = ls + 0.001; } }
+  if (UI.loop && !aud.paused){ const [ls,le] = loopTimes(); if (t >= le - 0.012){
+    const L = UI.loop; L.done++;
+    aud.currentTime = ls + 0.001;
+    if (L.times && L.done >= L.times){ aud.pause(); const txt = loopText(L); clearLoop(); toast(`Done: ${L.times} times through ${txt}.`); }
+    else { if (L.countIn){ aud.pause(); play(true); } updateLoopUI(); }
+  } }
   // video follows the music
   if (cur.video && vid.src && !vid.hidden){
     const target = t - (cur.video.offset||0);
@@ -1268,7 +1525,7 @@ function frame(){
     if (cur.formations.length) fStage.renderDyn(S, UI.sel, UI.hl, wn, editable(S)); else fStage.dg.innerHTML = '';
     $('fNow').textContent = !cur.formations.length ? 'No formations yet' : S.moving ? 'Travelling' : cur.formations[S.idx].name;
     $('fNowSub').textContent = pos.lead ? 'Lead-in' : `${phraseLabel(pos.phrase)}, count ${pos.count}`;
-    if (S.idx !== lastIdx || S.moving !== lastMoving){ lastIdx = S.idx; lastMoving = S.moving; renderFStrip(S); if (aud.paused) renderFPanel(); updateFHint(); }
+    if (S.idx !== lastIdx || S.moving !== lastMoving){ lastIdx = S.idx; lastMoving = S.moving; renderFStrip(S); if (aud.paused) renderFPanel(); renderProps(); updateFHint(); }
   }
   $('tCur').textContent = fmt(t, true);
   drawTimeline(t);
@@ -1284,7 +1541,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'ArrowRight'){ e.preventDefault(); stepPhrase(1); }
   else if (e.key === 'l' || e.key === 'L'){ if (UI.loop) clearLoop(); else $('loopPhraseBtn').click(); }
   else if (e.key === 'm' || e.key === 'M') $('mirrorBtn').click();
-  else if (e.key === 'Escape'){ UI.sel = null; UI.hl = null; if (UI.tab === 'forms') renderDancers(); needDraw = true; }
+  else if (e.key === 'Escape'){ UI.sel = null; UI.hl = null; UI.selProp = null; if (UI.tab === 'forms'){ renderDancers(); renderProps(true); } needDraw = true; }
 });
 
 /* ================= start ================= */

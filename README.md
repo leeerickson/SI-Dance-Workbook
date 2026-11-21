@@ -8,6 +8,8 @@ A desktop app for dance teachers, choreographers and dancers to build, rehearse,
 - **Counts and notes.** Beat detection finds the tempo and count 1, which you can correct with tap tempo or ±10 ms nudges. Name your sections and write a note for every 8-count. 6-, 12-, 4- and 16-count phrases also work.
 - **Rehearse.** Play at 50, 75, 90 or 100% speed with no pitch change. Loop an 8-count, a section or any range, with a "5, 6, 7, 8" count-off and optional clicks. The current count and note show in large type, next to the live formation.
 - **Video.** Add a video of the choreography. It stays locked to the music, so mirroring, slowing down and looping apply to it too.
+- **Repeat sections.** Pick a section, or a run of sections such as Verse through Chorus, and repeat it 2–10 times or until you stop. You can turn on a count-in before each time.
+- **Props.** Add chairs, boxes, benches, tables or anything else, drag them on stage in each formation, and choose who moves each prop (a dancer or the stage crew). The app flags props nobody is moving, movers who end too far from their prop, dancers moving two props at once, and anyone standing on a prop. Prop jobs show on each dancer's cues and in a "who moves what" table on the printout.
 - **Formations.** Drag dancers on a numbered stage. Each formation arrives on a count, and the app warns when dancers come within 2 ft of each other. Each dancer gets their own cue list.
 - **Print.** Print the count sheet and formation charts, or save them as a PDF (Ctrl+P, Ctrl+Shift+P).
 - **Share.** Save a `.dance` file (Ctrl+S) and send it like any attachment. The other teacher opens it with Ctrl+O, or by double-clicking it if they used the installer.
@@ -17,7 +19,7 @@ A desktop app for dance teachers, choreographers and dancers to build, rehearse,
 A `.dance` file is a zip:
 
 ```
-project.json        counts, sections, notes, dancers, formations, format version
+project.json        counts, sections, notes, dancers, formations, props, format version
 media/audio.<ext>   only when "Everything, including music and video" is chosen
 media/video.<ext>   same
 ```
