@@ -8,7 +8,7 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // versionCode must go up with every build Android should accept as an update.
-        versionCode (System.getenv("BUILD_NUMBER") ?: "1").toInteger()
+        versionCode Integer.parseInt(System.getenv("BUILD_NUMBER") ?: "1")
         versionName "0.1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
