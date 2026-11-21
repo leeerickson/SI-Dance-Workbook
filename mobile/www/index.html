@@ -68,7 +68,7 @@ select{min-height:40px; padding:6px 10px; border:1px solid var(--line); border-r
 .tag{display:inline-block; padding:2px 9px; border-radius:999px; background:var(--warn-bg); color:var(--warn); font-size:12px}
 
 /* Player */
-.stage{position:relative; aspect-ratio:4/3; max-width:100%; background:var(--stage); color:var(--stage-ink); border-radius:16px; overflow:hidden; container-type:inline-size; display:grid; place-items:center; margin-bottom:10px}
+.stage{position:relative; aspect-ratio:4/3; max-width:100%; background:var(--stage); color:var(--stage-ink); border-radius:16px; overflow:hidden; container-type:inline-size; display:grid; place-items:center; margin-bottom:8px}
 .stage video{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000}
 .stage video.mirror{transform:scaleX(-1)}
 .cd{position:relative; display:grid; justify-items:center; gap:1.4cqw; text-align:center; z-index:1}
@@ -85,6 +85,16 @@ select{min-height:40px; padding:6px 10px; border:1px solid var(--line); border-r
 .stage.has-video .cd-count{font-size:15cqw}
 .stage.has-video .cd-section{font-size:3.4cqw}
 .stage.has-video .cd-phrase{font-size:3cqw}
+.stage.has-floor{aspect-ratio:auto; display:block; padding:10px 8px 8px}
+.stage.has-floor .cd{grid-template-columns:auto 1fr; grid-template-areas:"count section" "count phrase" "count beats"; justify-items:start; align-items:center; text-align:left; gap:0 4cqw; padding:0 6px 8px}
+.stage.has-floor .cd-count{grid-area:count; font-size:19cqw}
+.stage.has-floor .cd-section{grid-area:section; font-size:4.4cqw}
+.stage.has-floor .cd-phrase{grid-area:phrase; font-size:3.4cqw}
+.stage.has-floor .cd-beats{grid-area:beats; margin-top:.4cqw}
+.stage.has-floor .floor{padding:0}
+.stage.has-floor .floor-bar{padding:0 4px 2px}
+.stage.has-floor .badges{top:12px; right:12px}
+#stageFloorSlot:empty,#cardFloorSlot:empty{display:none}
 .badges{position:absolute; top:3cqw; right:3cqw; display:flex; gap:6px; z-index:2}
 .badge{font-family:var(--f-mono); font-size:12px; padding:3px 9px; border-radius:999px; background:rgba(255,255,255,.14); color:var(--stage-ink)}
 .badge.loop{background:var(--accent); color:var(--accent-ink)}
@@ -109,7 +119,8 @@ select{min-height:40px; padding:6px 10px; border:1px solid var(--line); border-r
 .seg label{flex:1; text-align:center; padding:9px 0; cursor:pointer; font-family:var(--f-mono); font-size:13.5px; border-left:1px solid var(--line)}
 .seg label:first-of-type{border-left:none}
 .seg input:checked + label{background:var(--ink); color:var(--bg)}
-.note-now{font-size:21px; line-height:1.35; font-weight:500; min-height:2.7em}
+.notecard{padding:12px 14px; margin-bottom:10px}
+.note-now{font-size:19px; line-height:1.35; font-weight:500; min-height:2.7em}
 .note-now.empty{color:var(--muted); font-size:16px; font-weight:400}
 .note-next{font-size:14px; color:var(--muted); margin-top:6px}
 .note-next b{color:var(--ink); font-weight:600}
@@ -125,6 +136,7 @@ select{min-height:40px; padding:6px 10px; border:1px solid var(--line); border-r
 .view-toggle{display:inline-flex; border:1px solid var(--floor-line); border-radius:8px; overflow:hidden}
 .view-toggle button{border:none; background:transparent; color:var(--floor-muted); padding:6px 10px; font-size:12.5px; cursor:pointer}
 .view-toggle button[aria-pressed="true"]{background:var(--floor-ink); color:var(--stage)}
+#cardFloorSlot:not(:empty) + #followRow{margin-top:10px}
 .cue{margin-top:10px; font-size:14.5px}
 .cue b{font-weight:600}
 .banner{display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:12px 14px; border-radius:12px; background:var(--warn-bg); margin-bottom:12px; font-size:14px}
@@ -173,8 +185,15 @@ select{min-height:40px; padding:6px 10px; border:1px solid var(--line); border-r
       <div class="cd-phrase" id="cdPhrase"></div>
       <div class="cd-beats" id="cdBeats"></div>
     </div>
+    <div id="stageFloorSlot"></div>
     <div class="countoff" id="countoff" hidden></div>
   </div>
+  <div class="card notecard">
+    <span class="label" id="noteLabel">Note</span>
+    <div class="note-now" id="noteNow"></div>
+    <div class="note-next" id="noteNext"></div>
+  </div>
+
   <canvas id="timeline" class="timeline" aria-label="Song timeline. Tap or drag to jump."></canvas>
 
   <div class="transport">
@@ -198,14 +217,8 @@ select{min-height:40px; padding:6px 10px; border:1px solid var(--line); border-r
   <div class="row" style="margin-bottom:12px">
     <button class="btn small" id="coBtn" type="button" aria-pressed="true">Count-off</button>
     <button class="btn small" id="loopBtn" type="button" aria-pressed="false">Loop this 8-count</button>
-    <button class="btn small" id="vidBtn" type="button" aria-pressed="true" hidden>Video</button>
+    <button class="btn small" id="vidBtn" type="button" aria-pressed="true" hidden>Show formation</button>
     <button class="btn small" id="mirrorBtn" type="button" aria-pressed="false" hidden>Mirror</button>
-  </div>
-
-  <div class="card">
-    <span class="label" id="noteLabel">Note</span>
-    <div class="note-now" id="noteNow"></div>
-    <div class="note-next" id="noteNext"></div>
   </div>
 
   <div class="card">
@@ -223,14 +236,14 @@ select{min-height:40px; padding:6px 10px; border:1px solid var(--line); border-r
   </div>
 
   <div class="card" id="formCard">
-    <div class="floor">
+    <div id="cardFloorSlot"><div class="floor" id="floorBox">
       <div class="floor-bar">
         <div><div class="floor-title">Formation</div><div class="floor-sub" id="formName"></div></div>
         <div class="view-toggle" role="group" aria-label="Stage view"><button type="button" data-view="aud" aria-pressed="true">Audience</button><button type="button" data-view="dan" aria-pressed="false">Dancer</button></div>
       </div>
       <svg id="stageSvg" viewBox="0 0 400 310" aria-label="Where everyone is on stage right now"><g class="st-static"></g><g class="st-dyn"></g></svg>
-    </div>
-    <div class="row" style="margin-top:10px"><span class="label">Follow</span><select id="followSel" aria-label="Dancer to follow" style="flex:1"></select></div>
+    </div></div>
+    <div class="row" id="followRow"><span class="label">Follow</span><select id="followSel" aria-label="Dancer to follow" style="flex:1"></select></div>
     <div class="cue" id="cue"></div>
   </div>
   <p class="foot">Tap the timeline to jump. The screen stays on while this song is open.</p>
@@ -364,7 +377,7 @@ async function renderLib(){
 
 /* ---------- counting ---------- */
 let cur = null;
-const UI = {rate:1, countoff:true, loop:null, counting:false, follow:'', view:'aud', duration:0, hasAudio:false, vidOn:true};
+const UI = {rate:1, countoff:true, loop:null, counting:false, follow:'', view:'aud', duration:0, hasAudio:false, vidOn:true, hasVideo:false};
 const word = () => cur.phrase === 8 ? '8-count' : `${cur.phrase}-count`;
 const beatLen = () => 60 / cur.bpm;
 const beatAt = t => (t - cur.offset) / beatLen();
@@ -465,6 +478,19 @@ function updateCue(S){
   box.innerHTML = h + job(d.id, 'Prop job:');
 }
 
+/* Formation goes in the top area when there's no video showing; otherwise in its card. */
+function placeFloor(){
+  const has = cur && cur.formations.length > 0, inStage = has && !(UI.hasVideo && UI.vidOn);
+  (inStage ? $('stageFloorSlot') : $('cardFloorSlot')).appendChild($('floorBox'));
+  $('stage').classList.toggle('has-floor', !!inStage);
+  $('stage').classList.toggle('has-video', !!(UI.hasVideo && UI.vidOn));
+  vid.hidden = !(UI.hasVideo && UI.vidOn);
+  $('vidBtn').textContent = UI.vidOn ? (has ? 'Show formation' : 'Hide video') : 'Show video';
+  $('vidBtn').setAttribute('aria-pressed', String(!UI.vidOn));
+  $('mirrorBtn').hidden = !(UI.hasVideo && UI.vidOn);
+  needDraw = true;
+}
+
 /* ---------- open a song ---------- */
 let audioUrl = null, videoUrl = null, wakeLock = null;
 async function keepAwake(on){ try { if (on && 'wakeLock' in navigator && !wakeLock){ wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => wakeLock = null); } if (!on && wakeLock){ await wakeLock.release(); wakeLock = null; } } catch(e){} }
@@ -481,15 +507,15 @@ async function openSong(id){
   aud.load(); aud.currentTime = 0;
   vid.hidden = true; vid.removeAttribute('src'); $('stage').classList.remove('has-video');
   const v = cur.video ? await getMedia(cur.id + ':video') : null;
-  $('vidBtn').hidden = $('mirrorBtn').hidden = !v;
-  if (v){ videoUrl = URL.createObjectURL(v); vid.src = videoUrl; vid.hidden = !UI.vidOn; $('stage').classList.toggle('has-video', UI.vidOn); vid.classList.toggle('mirror', !!cur.video.mirror); $('mirrorBtn').setAttribute('aria-pressed', String(!!cur.video.mirror)); }
+  UI.hasVideo = !!v; $('vidBtn').hidden = !v;
+  if (v){ videoUrl = URL.createObjectURL(v); vid.src = videoUrl; vid.classList.toggle('mirror', !!cur.video.mirror); $('mirrorBtn').setAttribute('aria-pressed', String(!!cur.video.mirror)); }
   $('pTitle').textContent = cur.title;
   $('musicBanner').hidden = UI.hasAudio; $('playBtn').disabled = !UI.hasAudio;
   if (!UI.hasAudio) $('musicText').textContent = `This number came without music. Add your copy of "${cur.audio ? cur.audio.name : 'the song'}"${cur.audio && cur.audio.duration ? ` (${fmt(cur.audio.duration)})` : ''}.`;
   $('formCard').hidden = !cur.formations.length;
   const dots = $('cdBeats'); dots.innerHTML = ''; for (let i=0;i<cur.phrase;i++) dots.appendChild(document.createElement('i'));
   $('coBtn').textContent = `Count-off ${countoffNums().join(', ')}`; $('loopBtn').textContent = `Loop this ${word()}`;
-  renderRepeat(); renderFollow(); renderStatic(); updateLoopUI();
+  renderRepeat(); renderFollow(); renderStatic(); updateLoopUI(); placeFloor();
   $('libView').hidden = true; $('playView').hidden = false; window.scrollTo(0,0);
   sizeCanvas(); lastBeat = lastPhrase = null; needDraw = true; keepAwake(true);
   if (!(history.state && history.state.v === 'song')) history.pushState({v:'song'}, '');
@@ -530,7 +556,7 @@ function step(dir){ const t = aud.currentTime || 0, pos = posAt(t); let p = pos.
 $('prevBtn').addEventListener('click', () => step(-1)); $('nextBtn').addEventListener('click', () => step(1));
 document.querySelectorAll('input[name="speed"]').forEach(r => r.addEventListener('change', e => { UI.rate = parseFloat(e.target.value); aud.playbackRate = UI.rate; aud.preservesPitch = true; vid.playbackRate = UI.rate; $('speedBadge').hidden = UI.rate === 1; $('speedBadge').textContent = `${Math.round(UI.rate*100)}%`; }));
 $('coBtn').addEventListener('click', () => { UI.countoff = !UI.countoff; $('coBtn').setAttribute('aria-pressed', String(UI.countoff)); });
-$('vidBtn').addEventListener('click', () => { UI.vidOn = !UI.vidOn; $('vidBtn').setAttribute('aria-pressed', String(UI.vidOn)); vid.hidden = !UI.vidOn; $('stage').classList.toggle('has-video', UI.vidOn); if (!UI.vidOn) vid.pause(); });
+$('vidBtn').addEventListener('click', () => { UI.vidOn = !UI.vidOn; if (!UI.vidOn) vid.pause(); placeFloor(); });
 $('mirrorBtn').addEventListener('click', () => { if (!cur.video) return; cur.video.mirror = !cur.video.mirror; vid.classList.toggle('mirror', cur.video.mirror); $('mirrorBtn').setAttribute('aria-pressed', String(cur.video.mirror)); putProject(cur); });
 
 /* ---------- loop and repeat ---------- */

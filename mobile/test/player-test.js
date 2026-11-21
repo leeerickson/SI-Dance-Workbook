@@ -40,7 +40,10 @@ const types = { '.html':'text/html', '.js':'text/javascript', '.woff2':'font/wof
   await page.waitForTimeout(300);
   ok((await page.textContent('#noteNow')).includes('pirouette'), 'note for Verse 2 shows');
   ok((await page.textContent('#formName')) === 'Walk into V', 'formation for Verse 2 shows');
+  ok(await page.$('#stage.has-floor #stageFloorSlot #stageSvg') !== null, 'with no video, the formation fills the top area');
+  ok(await page.isVisible('#noteNow'), 'the note is still shown under it');
   await page.selectOption('#followSel', 'd4'); await page.waitForTimeout(200);
+  await page.evaluate(() => window.scrollTo(0, 0)); await page.waitForTimeout(150);
   if (shots) await page.screenshot({ path: path.join(shots, 'player-top.png') });
 
   // Jump to the Bridge: chairs on stage, and Zoe's view
