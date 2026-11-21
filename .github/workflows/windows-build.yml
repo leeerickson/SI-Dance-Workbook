@@ -15,6 +15,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+      - name: Test the app (launches it, saves a .dance file, a PDF and a video)
+        run: npm test
+        timeout-minutes: 10
       - run: npm run dist
       - uses: actions/upload-artifact@v4
         with:

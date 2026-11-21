@@ -1,0 +1,50 @@
+name: Mac build
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: macos-latest
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+      # Not signed with an Apple Developer ID yet; the app is ad-hoc signed so it runs on Apple silicon.
+      CSC_IDENTITY_AUTO_DISCOVERY: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Test the app on macOS (launches it, saves a .dance file, a PDF and a video)
+        run: npm test
+        timeout-minutes: 10
+      - run: npm run dist:mac
+      - id: ver
+        run: echo "v=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: choreography-workbook-mac
+          path: |
+            dist/*.dmg
+            dist/*-mac.zip
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: mac-v${{ steps.ver.outputs.v }}-build${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: Choreography Workbook ${{ steps.ver.outputs.v }} for Mac (build ${{ github.run_number }})
+          prerelease: true
+          make_latest: false
+          files: dist/*.dmg
+          body: |
+            **Choreography Workbook for Mac** (works on Apple silicon and Intel Macs).
+
+            **To install:** download **Choreography-Workbook-…-mac.dmg** below, open it, and drag the app into Applications.
+
+            **The first time you open it**, macOS will say it can't check the app for malware, because it isn't signed with an Apple Developer ID yet:
+            1. Click **Done** (or **OK**).
+            2. Open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to Choreography Workbook.
+            3. Confirm with **Open Anyway** and your Mac password. After that it opens normally.
+
+            Test build, not yet signed or notarised by Apple.

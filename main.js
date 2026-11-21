@@ -13,6 +13,12 @@ let pendingOpen = null; // a .dance path passed on the command line before the p
 /* ---------- single instance + file association ---------- */
 const findDanceArg = argv => argv.find(a => typeof a === 'string' && a.toLowerCase().endsWith('.' + SHARE_EXT) && fs.existsSync(a));
 
+// macOS hands files over with an 'open-file' event (double-click, drag onto the Dock icon).
+app.on('open-file', (e, filePath) => {
+  e.preventDefault();
+  if (win && !win.webContents.isLoading()) sendOpen(filePath); else pendingOpen = filePath;
+});
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
@@ -21,7 +27,7 @@ if (!app.requestSingleInstanceLock()) {
     if (win) { if (win.isMinimized()) win.restore(); win.focus(); if (f) sendOpen(f); }
   });
   app.whenReady().then(() => {
-    pendingOpen = findDanceArg(process.argv);
+    pendingOpen = pendingOpen || findDanceArg(process.argv);
     createWindow();
   });
   app.on('window-all-closed', () => app.quit());
@@ -58,7 +64,11 @@ function sendOpen(filePath) {
 /* ---------- menu ---------- */
 function buildMenu() {
   const cmd = name => () => win && win.webContents.send('menu', name);
+  const mac = process.platform === 'darwin';
   const template = [
+    ...(mac ? [{ label: app.name, submenu: [
+      { role: 'about' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }
+    ]}] : []),
     { label: 'File', submenu: [
       { label: 'New project from a song…', accelerator: 'CmdOrCtrl+N', click: cmd('new') },
       { label: 'Open share file…', accelerator: 'CmdOrCtrl+O', click: cmd('open') },
@@ -69,8 +79,7 @@ function buildMenu() {
       { label: 'Make video…', accelerator: 'CmdOrCtrl+Shift+V', click: cmd('video') },
       { type: 'separator' },
       { label: 'Back to library', accelerator: 'CmdOrCtrl+L', click: cmd('library') },
-      { type: 'separator' },
-      { role: 'quit', label: 'Exit' }
+      ...(mac ? [] : [{ type: 'separator' }, { role: 'quit', label: 'Exit' }])
     ]},
     { label: 'Edit', submenu: [ { role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' } ] },
     { label: 'View', submenu: [

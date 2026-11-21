@@ -559,7 +559,7 @@ function step(dir){ const t = aud.currentTime || 0, pos = posAt(t); let p = pos.
   if (dir < 0){ const into = t - phraseTime(Math.max(1,p)); p = (p >= 1 && into > beatLen()*0.5) ? p : p - 1; } else p = p + 1;
   if (p < 1) seek(0); else seek(phraseTime(p) + 0.001); }
 $('prevBtn').addEventListener('click', () => step(-1)); $('nextBtn').addEventListener('click', () => step(1));
-document.querySelectorAll('input[name="speed"]').forEach(r => r.addEventListener('change', e => { UI.rate = parseFloat(e.target.value); aud.playbackRate = UI.rate; aud.preservesPitch = true; vid.playbackRate = UI.rate; $('speedBadge').hidden = UI.rate === 1; $('speedBadge').textContent = `${Math.round(UI.rate*100)}%`; }));
+document.querySelectorAll('input[name="speed"]').forEach(r => r.addEventListener('change', e => { UI.rate = parseFloat(e.target.value); aud.playbackRate = UI.rate; aud.preservesPitch = true; aud.webkitPreservesPitch = true; vid.playbackRate = UI.rate; $('speedBadge').hidden = UI.rate === 1; $('speedBadge').textContent = `${Math.round(UI.rate*100)}%`; }));
 $('coBtn').addEventListener('click', () => { UI.countoff = !UI.countoff; $('coBtn').setAttribute('aria-pressed', String(UI.countoff)); });
 $('vidBtn').addEventListener('click', () => { UI.vidOn = !UI.vidOn; if (!UI.vidOn) vid.pause(); placeFloor(); });
 $('mirrorBtn').addEventListener('click', () => { if (!cur.video) return; cur.video.mirror = !cur.video.mirror; vid.classList.toggle('mirror', cur.video.mirror); $('mirrorBtn').setAttribute('aria-pressed', String(cur.video.mirror)); putProject(cur); });

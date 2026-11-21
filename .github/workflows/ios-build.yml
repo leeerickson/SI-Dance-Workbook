@@ -1,0 +1,83 @@
+name: iPhone build
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: mobile
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+      - id: ver
+        run: echo "v=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Test the player in Safari's engine on an iPhone-sized screen
+        run: |
+          mkdir -p shots
+          npm install --no-save --no-audit --no-fund playwright@1.63.0
+          npx playwright install webkit
+          ENGINE=webkit DEVICE="iPhone 15" node test/player-test.js "" shots
+      - name: Copy the player into the Xcode project
+        run: npm run vendor && npx cap sync ios
+      - name: Build for the iPhone Simulator
+        run: |
+          set -o pipefail
+          xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Debug -sdk iphonesimulator \
+            -derivedDataPath build/sim CODE_SIGNING_ALLOWED=NO \
+            MARKETING_VERSION=${{ steps.ver.outputs.v }} CURRENT_PROJECT_VERSION=${{ github.run_number }} build | tail -25
+      - name: Launch it in the Simulator and take a screenshot
+        run: |
+          UDID=$(xcrun simctl list devices available -j | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8')).devices; const all=Object.entries(d).filter(([k])=>k.includes('iOS')).flatMap(([,v])=>v); const p=all.find(x=>/^iPhone \d+( Pro)?$/.test(x.name))||all.find(x=>x.name.startsWith('iPhone')); console.log(p.udid); console.error('Simulator: '+p.name)")
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          APP=$(find build/sim -name App.app -path '*iphonesimulator*' | head -1)
+          xcrun simctl install "$UDID" "$APP"
+          xcrun simctl launch "$UDID" app.choreographyworkbook.player
+          sleep 12
+          xcrun simctl io "$UDID" screenshot shots/simulator-launch.png
+      - name: Build an unsigned .ipa (to sign with your Apple ID using Sideloadly or AltStore)
+        run: |
+          set -o pipefail
+          xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Release -sdk iphoneos \
+            -derivedDataPath build/dev CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            MARKETING_VERSION=${{ steps.ver.outputs.v }} CURRENT_PROJECT_VERSION=${{ github.run_number }} build | tail -25
+          APP=$(find build/dev -name App.app -path '*Release-iphoneos*' | head -1)
+          rm -rf ipa && mkdir -p ipa/Payload && cp -R "$APP" ipa/Payload/
+          (cd ipa && zip -qry "../Workbook-Player-${{ steps.ver.outputs.v }}-unsigned.ipa" Payload)
+          ls -la *.ipa
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: workbook-player-iphone
+          path: |
+            mobile/shots/*.png
+            mobile/*.ipa
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ios-v${{ steps.ver.outputs.v }}-build${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: Workbook Player ${{ steps.ver.outputs.v }} for iPhone (build ${{ github.run_number }}, unsigned)
+          prerelease: true
+          make_latest: false
+          files: |
+            mobile/*.ipa
+            mobile/shots/*.png
+          body: |
+            **Workbook Player for iPhone**: opens .dance files and plays them. No editing.
+
+            This build is **not signed**, so it can't be installed by tapping it. Until the Apple Developer account is ready (then it goes to TestFlight), you can install it on your own iPhone with a free tool:
+            1. On a Mac or Windows PC, install **Sideloadly** (sideloadly.io) and plug in your iPhone.
+            2. Drag **Workbook-Player-…-unsigned.ipa** into Sideloadly, enter your Apple ID, and click **Start**.
+            3. On the iPhone: **Settings → General → VPN & Device Management**, trust your Apple ID; on iOS 16+ also turn on **Settings → Privacy & Security → Developer Mode**.
+            Apps signed with a free Apple ID stop opening after 7 days; reinstall to refresh.
+
+            The screenshots show the app's automated test in Safari's engine and its first launch in the iPhone Simulator.

@@ -76,6 +76,8 @@ const AdmZip = require('adm-zip');
   await win.waitForFunction(() => !document.getElementById('vDone').hidden, null, { timeout: 120000 });
   const mp4 = fs.readFileSync(videoPath);
   ok(mp4.slice(4, 8).toString() === 'ftyp' && mp4.length > 100000, `video saved as an MP4 (${Math.round(mp4.length / 1024)} KB)`);
+  const audioFmt = mp4.includes(Buffer.from('mp4a')) ? 'AAC (plays everywhere)' : mp4.includes(Buffer.from('Opus')) ? 'Opus (VLC, browsers, most players)' : 'none';
+  console.log(`INFO video sound format on ${process.platform}: ${audioFmt}`);
 
   await app.evaluate(({ dialog }, p) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [p] }); }, sharePath);
   await win.click('#backBtn');

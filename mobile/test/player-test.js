@@ -1,12 +1,14 @@
 // Tests the Android player's web layer in a phone-sized Chromium.
 // Usage: node test/player-test.js path/to/file.dance [screenshot-dir]
-const { chromium, devices } = require('playwright');
+const playwright = require('playwright'), { devices } = playwright;
+// ENGINE=webkit DEVICE='iPhone 15' tests the way an iPhone renders it; default is Chromium on a Pixel 7 (Android).
+const ENGINE = process.env.ENGINE || 'chromium', DEVICE = process.env.DEVICE || 'Pixel 7';
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
 
 const www = path.join(__dirname, '..', 'www');
-const dance = process.argv[2];
+const dance = process.argv[2] || path.join(__dirname, 'fixtures', 'spotlight.dance');
 const shots = process.argv[3];
 const types = { '.html':'text/html', '.js':'text/javascript', '.woff2':'font/woff2', '.txt':'text/plain' };
 
@@ -18,8 +20,9 @@ const types = { '.html':'text/html', '.js':'text/javascript', '.woff2':'font/wof
     res.writeHead(200, { 'Content-Type': types[path.extname(f)] || 'application/octet-stream' }); fs.createReadStream(f).pipe(res);
   }).listen(0);
   const url = `http://127.0.0.1:${server.address().port}/`;
-  const browser = await chromium.launch();
-  const ctx = await browser.newContext({ ...devices['Pixel 7'] });
+  const browser = await playwright[ENGINE].launch();
+  const ctx = await browser.newContext({ ...devices[DEVICE] });
+  console.log(`Testing with ${ENGINE} as ${DEVICE}`);
   const page = await ctx.newPage();
   const errors = []; page.on('pageerror', e => errors.push(e.message));
   const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process.exitCode = 1; };
@@ -67,7 +70,7 @@ const types = { '.html':'text/html', '.js':'text/javascript', '.woff2':'font/wof
   }
   await page.selectOption('#followSel', 'd4'); await page.waitForTimeout(200);
   await page.evaluate(() => window.scrollTo(0, 0)); await page.waitForTimeout(150);
-  if (shots) await page.screenshot({ path: path.join(shots, 'player-top.png') });
+  if (shots) await page.screenshot({ path: path.join(shots, `player-top-${ENGINE}.png`) });
 
   // Jump to the Bridge: chairs on stage, and Zoe's view
   await page.selectOption('#repFrom', '3'); await page.selectOption('#repTo', '3'); await page.selectOption('#repTimes', '2');
@@ -81,7 +84,7 @@ const types = { '.html':'text/html', '.js':'text/javascript', '.woff2':'font/wof
   await page.selectOption('#followSel', 'crew'); await page.waitForTimeout(200);
   ok((await page.textContent('#cue')).includes('take Chair A off'), 'stage crew view lists the next prop job');
   await page.evaluate(() => window.scrollTo(0, 99999)); await page.waitForTimeout(150);
-  if (shots) await page.screenshot({ path: path.join(shots, 'player-bottom.png'), fullPage: false });
+  if (shots) await page.screenshot({ path: path.join(shots, `player-bottom-${ENGINE}.png`), fullPage: false });
 
   // Persistence and back navigation
   await page.goBack(); await page.waitForSelector('#libView:not([hidden])');
