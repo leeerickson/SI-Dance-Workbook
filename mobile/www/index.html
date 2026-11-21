@@ -1,0 +1,636 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#191E33">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: data:; font-src 'self'; connect-src 'self' blob: data:">
+<title>Workbook Player</title>
+<style>
+@font-face{font-family:"Archivo"; src:url("fonts/archivo.woff2") format("woff2"); font-weight:100 900; font-stretch:62% 125%; font-display:swap}
+@font-face{font-family:"Inter"; src:url("fonts/inter.woff2") format("woff2"); font-weight:100 900; font-display:swap}
+@font-face{font-family:"JetBrains Mono"; src:url("fonts/jetbrains-mono.woff2") format("woff2"); font-weight:100 800; font-display:swap}
+/* Phone player: one column. Dark stage with the big count on top, then the note, transport, repeat and the live formation. Spike-tape colours mark sections, as in the desktop app. */
+:root{
+  --bg:#EDF0F5; --surface:#FFFFFF; --surface-2:#E2E7EF; --ink:#141A2E; --muted:#59627A; --line:#CBD3DF;
+  --accent:#4338CA; --accent-ink:#FFFFFF; --warn:#B42318; --warn-bg:#FDECEA;
+  --stage:#191E33; --stage-ink:#F3F4FA; --stage-muted:#9CA3BF;
+  --floor:#262B3B; --floor-line:#3A4157; --floor-ink:#E9EBF4; --floor-muted:#8F97B3;
+  --tape-1:#F2C200; --tape-2:#E8508A; --tape-3:#19A7BC; --tape-4:#45A852; --tape-5:#F07B24; --tape-6:#9A6BF7;
+  --f-display:"Archivo","Arial Narrow",system-ui,sans-serif;
+  --f-body:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --bg:#0F121B; --surface:#171B27; --surface-2:#222839; --ink:#E7EAF3; --muted:#98A1B7; --line:#2D3447;
+    --accent:#8F89FF; --accent-ink:#0D0F1E; --warn:#FF8A7A; --warn-bg:#3A1D1D; --stage:#080B14; --floor:#1E2232; --floor-line:#323950; color-scheme:dark; }
+}
+[hidden]{display:none!important}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+html,body{margin:0}
+body{background:var(--bg); color:var(--ink); font-family:var(--f-body); font-size:15px; line-height:1.45;
+  padding:env(safe-area-inset-top,0) max(14px, env(safe-area-inset-right,0px)) calc(28px + env(safe-area-inset-bottom,0px)) max(14px, env(safe-area-inset-left,0px))}
+button,input,select{font:inherit; color:inherit}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.mono{font-family:var(--f-mono); font-variant-numeric:tabular-nums}
+h1,h2{font-family:var(--f-display); margin:0}
+h2{font-stretch:112%; font-weight:750; font-size:13px; letter-spacing:.07em; text-transform:uppercase}
+.top{display:flex; align-items:center; gap:10px; padding:12px 0 10px; min-height:56px}
+.brand-mark{display:grid; gap:3px; flex:0 0 auto}
+.brand-mark span{display:block; width:24px; height:5px; border-radius:1px; transform:rotate(-6deg)}
+.brand-mark span:nth-child(1){background:var(--tape-1)} .brand-mark span:nth-child(2){background:var(--tape-2); margin-left:4px} .brand-mark span:nth-child(3){background:var(--tape-3)}
+.top-title{font-family:var(--f-display); font-stretch:115%; font-weight:850; font-size:19px; line-height:1.15; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1}
+.btn{display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:42px; padding:8px 14px; border:1px solid var(--line); background:var(--surface); color:var(--ink); border-radius:10px; font-weight:500; font-size:14.5px; cursor:pointer; white-space:nowrap}
+.btn.primary{background:var(--accent); color:var(--accent-ink); border-color:transparent}
+.btn[aria-pressed="true"]{background:var(--ink); color:var(--bg); border-color:var(--ink)}
+.btn.small{min-height:36px; padding:6px 11px; font-size:13.5px}
+.btn.danger{color:var(--warn)}
+.back{width:42px; height:42px; border-radius:50%; border:1px solid var(--line); background:var(--surface); display:grid; place-items:center; cursor:pointer; flex:0 0 auto}
+.back svg{width:20px; height:20px; fill:currentColor}
+.card{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:12px}
+.card-head{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; flex-wrap:wrap}
+.muted{color:var(--muted); font-size:13.5px}
+.label{font-size:11.5px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--muted)}
+select{min-height:40px; padding:6px 10px; border:1px solid var(--line); border-radius:10px; background:var(--surface); max-width:100%}
+.toast{position:fixed; left:50%; bottom:calc(18px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%); background:var(--ink); color:var(--bg); padding:10px 14px; border-radius:12px; font-size:14px; z-index:50; width:max-content; max-width:calc(100% - 28px)}
+
+/* Library */
+.hero{padding:6px 0 14px}
+.hero h1{font-stretch:118%; font-weight:850; font-size:26px; line-height:1.1}
+.hero p{margin:6px 0 12px; color:var(--muted)}
+.hero .row{display:flex; flex-wrap:wrap; gap:8px}
+.song{display:grid; gap:6px; cursor:pointer}
+.song-tapes{display:flex; gap:3px}
+.song-tapes i{display:block; width:16px; height:5px; border-radius:1px; transform:rotate(-6deg)}
+.song h3{margin:0; font-size:17px; font-weight:600; overflow-wrap:anywhere}
+.song-meta{display:flex; flex-wrap:wrap; gap:2px 12px; color:var(--muted); font-size:13px}
+.song-actions{display:flex; gap:8px; margin-top:4px}
+.tag{display:inline-block; padding:2px 9px; border-radius:999px; background:var(--warn-bg); color:var(--warn); font-size:12px}
+
+/* Player */
+.stage{position:relative; aspect-ratio:4/3; max-width:100%; background:var(--stage); color:var(--stage-ink); border-radius:16px; overflow:hidden; container-type:inline-size; display:grid; place-items:center; margin-bottom:10px}
+.stage video{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000}
+.stage video.mirror{transform:scaleX(-1)}
+.cd{position:relative; display:grid; justify-items:center; gap:1.4cqw; text-align:center; z-index:1}
+.cd-section{display:flex; align-items:center; gap:2cqw; font-family:var(--f-display); font-stretch:118%; font-weight:750; font-size:5cqw; letter-spacing:.08em; text-transform:uppercase}
+.tape{display:inline-block; width:6cqw; height:2.2cqw; border-radius:1px; transform:rotate(-6deg); background:var(--tape-1)}
+.cd-count{font-family:var(--f-display); font-stretch:125%; font-weight:900; font-size:36cqw; line-height:.86; font-variant-numeric:tabular-nums}
+.cd-count.lead{color:var(--stage-muted)}
+.cd-phrase{font-family:var(--f-mono); font-size:3.8cqw; color:var(--stage-muted)}
+.cd-beats{display:flex; gap:1.8cqw; margin-top:1cqw}
+.cd-beats i{display:block; width:2.4cqw; height:2.4cqw; border-radius:50%; background:color-mix(in srgb, var(--stage-ink) 18%, transparent)}
+.cd-beats i.on{background:var(--cur-tape, var(--tape-1))}
+.cd-beats i.past{background:color-mix(in srgb, var(--stage-ink) 45%, transparent)}
+.stage.has-video .cd{position:absolute; left:3cqw; bottom:3cqw; justify-items:start; text-align:left; gap:.5cqw; padding:2cqw 3cqw; border-radius:12px; background:rgba(8,10,20,.74)}
+.stage.has-video .cd-count{font-size:15cqw}
+.stage.has-video .cd-section{font-size:3.4cqw}
+.stage.has-video .cd-phrase{font-size:3cqw}
+.badges{position:absolute; top:3cqw; right:3cqw; display:flex; gap:6px; z-index:2}
+.badge{font-family:var(--f-mono); font-size:12px; padding:3px 9px; border-radius:999px; background:rgba(255,255,255,.14); color:var(--stage-ink)}
+.badge.loop{background:var(--accent); color:var(--accent-ink)}
+.countoff{position:absolute; inset:0; display:grid; place-items:center; background:rgba(8,10,20,.84); font-family:var(--f-display); font-stretch:125%; font-weight:900; font-size:40cqw; color:var(--tape-1); z-index:3}
+.countoff.pop{animation:pop .22s ease-out}
+@keyframes pop{from{transform:scale(1.25); opacity:.4} to{transform:scale(1); opacity:1}}
+@media (prefers-reduced-motion: reduce){ .countoff.pop{animation:none} }
+.timeline{display:block; width:100%; height:56px; border-radius:12px; border:1px solid var(--line); background:var(--surface); touch-action:none; margin-bottom:10px}
+.transport{display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:10px; margin-bottom:10px}
+.tbtns{display:flex; align-items:center; gap:10px}
+.play{width:64px; height:64px; border-radius:50%; border:none; background:var(--accent); color:var(--accent-ink); display:grid; place-items:center; cursor:pointer}
+.play:disabled{opacity:.4}
+.play svg{width:28px; height:28px; fill:currentColor}
+.icon-btn{width:48px; height:48px; border-radius:50%; border:1px solid var(--line); background:var(--surface); display:grid; place-items:center; cursor:pointer}
+.icon-btn svg{width:22px; height:22px; fill:currentColor}
+.tnow{text-align:right; line-height:1.25}
+.tnow b{display:block; font-family:var(--f-display); font-stretch:115%; font-size:14px; letter-spacing:.04em; text-transform:uppercase}
+.tnow span{font-family:var(--f-mono); font-size:12.5px; color:var(--muted)}
+.row{display:flex; flex-wrap:wrap; align-items:center; gap:8px}
+.seg{display:flex; border:1px solid var(--line); border-radius:10px; overflow:hidden; flex:1 1 auto}
+.seg input{position:absolute; opacity:0; pointer-events:none}
+.seg label{flex:1; text-align:center; padding:9px 0; cursor:pointer; font-family:var(--f-mono); font-size:13.5px; border-left:1px solid var(--line)}
+.seg label:first-of-type{border-left:none}
+.seg input:checked + label{background:var(--ink); color:var(--bg)}
+.note-now{font-size:21px; line-height:1.35; font-weight:500; min-height:2.7em}
+.note-now.empty{color:var(--muted); font-size:16px; font-weight:400}
+.note-next{font-size:14px; color:var(--muted); margin-top:6px}
+.note-next b{color:var(--ink); font-weight:600}
+.rep-grid{display:grid; grid-template-columns:1fr auto 1fr; gap:8px; align-items:center}
+.rep-grid select{width:100%}
+.rep-status{font-size:13.5px; color:var(--muted)}
+.rep-status b{color:var(--ink)}
+.floor{background:var(--stage); border-radius:14px; padding:8px; color:var(--floor-ink)}
+.floor svg{display:block; width:100%; height:auto}
+.floor-bar{display:flex; align-items:center; justify-content:space-between; gap:8px; padding:4px 4px 8px; flex-wrap:wrap}
+.floor-title{font-family:var(--f-display); font-stretch:115%; font-weight:700; font-size:13px; letter-spacing:.06em; text-transform:uppercase}
+.floor-sub{font-family:var(--f-mono); font-size:12px; color:var(--floor-muted)}
+.view-toggle{display:inline-flex; border:1px solid var(--floor-line); border-radius:8px; overflow:hidden}
+.view-toggle button{border:none; background:transparent; color:var(--floor-muted); padding:6px 10px; font-size:12.5px; cursor:pointer}
+.view-toggle button[aria-pressed="true"]{background:var(--floor-ink); color:var(--stage)}
+.cue{margin-top:10px; font-size:14.5px}
+.cue b{font-weight:600}
+.banner{display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:12px 14px; border-radius:12px; background:var(--warn-bg); margin-bottom:12px; font-size:14px}
+.foot{color:var(--muted); font-size:12.5px; margin-top:8px}
+</style>
+</head>
+<body>
+
+<!-- LIBRARY -->
+<section id="libView">
+  <header class="top">
+    <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+    <span class="top-title">Workbook Player</span>
+  </header>
+  <div class="hero">
+    <h1>Your numbers</h1>
+    <p>Open a .dance file a teacher sent you and rehearse it: counts, notes, formations, props and video.</p>
+    <div class="row">
+      <label class="btn primary" for="openFile">Open a .dance file</label>
+      <input type="file" id="openFile" hidden>
+      <button class="btn" id="demoBtn" type="button">Try the demo</button>
+    </div>
+  </div>
+  <div id="songs"></div>
+  <p class="foot" id="libFoot">Files you open stay on this phone. Nothing is uploaded.</p>
+</section>
+
+<!-- PLAYER -->
+<section id="playView" hidden>
+  <header class="top">
+    <button class="back" id="backBtn" type="button" aria-label="Back to your numbers"><svg viewBox="0 0 24 24"><path d="M15.4 5.4 14 4l-8 8 8 8 1.4-1.4L8.8 12z"/></svg></button>
+    <span class="top-title" id="pTitle"></span>
+  </header>
+  <div class="banner" id="musicBanner" hidden>
+    <span id="musicText"></span>
+    <label class="btn small primary" for="musicFile">Add my copy</label>
+    <input type="file" id="musicFile" accept="audio/*,video/*" hidden>
+  </div>
+
+  <div class="stage" id="stage">
+    <video id="vid" playsinline muted hidden></video>
+    <div class="badges"><span class="badge" id="speedBadge" hidden></span><span class="badge loop" id="loopBadge" hidden>REPEAT</span></div>
+    <div class="cd" id="cd">
+      <div class="cd-section"><span class="tape" id="cdTape"></span><span id="cdSection"></span></div>
+      <div class="cd-count" id="cdCount">1</div>
+      <div class="cd-phrase" id="cdPhrase"></div>
+      <div class="cd-beats" id="cdBeats"></div>
+    </div>
+    <div class="countoff" id="countoff" hidden></div>
+  </div>
+  <canvas id="timeline" class="timeline" aria-label="Song timeline. Tap or drag to jump."></canvas>
+
+  <div class="transport">
+    <div class="tbtns">
+      <button class="icon-btn" id="prevBtn" type="button" aria-label="Back one 8-count"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
+      <button class="play" id="playBtn" type="button" aria-label="Play"><svg viewBox="0 0 24 24" id="playIcon"><path d="M7 4v16l13-8z"/></svg></button>
+      <button class="icon-btn" id="nextBtn" type="button" aria-label="Forward one 8-count"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+    </div>
+    <span></span>
+    <div class="tnow"><b id="tWhere">Lead-in</b><span><span id="tCur">0:00</span> / <span id="tDur">0:00</span></span></div>
+  </div>
+
+  <div class="row" style="margin-bottom:10px">
+    <div class="seg" role="radiogroup" aria-label="Speed">
+      <input type="radio" name="speed" id="sp50" value="0.5"><label for="sp50">50%</label>
+      <input type="radio" name="speed" id="sp75" value="0.75"><label for="sp75">75%</label>
+      <input type="radio" name="speed" id="sp90" value="0.9"><label for="sp90">90%</label>
+      <input type="radio" name="speed" id="sp100" value="1" checked><label for="sp100">100%</label>
+    </div>
+  </div>
+  <div class="row" style="margin-bottom:12px">
+    <button class="btn small" id="coBtn" type="button" aria-pressed="true">Count-off</button>
+    <button class="btn small" id="loopBtn" type="button" aria-pressed="false">Loop this 8-count</button>
+    <button class="btn small" id="vidBtn" type="button" aria-pressed="true" hidden>Video</button>
+    <button class="btn small" id="mirrorBtn" type="button" aria-pressed="false" hidden>Mirror</button>
+  </div>
+
+  <div class="card">
+    <span class="label" id="noteLabel">Note</span>
+    <div class="note-now" id="noteNow"></div>
+    <div class="note-next" id="noteNext"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Repeat</h2><span class="rep-status" id="repStatus"></span></div>
+    <div class="rep-grid">
+      <select id="repFrom" aria-label="Repeat from section"></select>
+      <span class="muted">to</span>
+      <select id="repTo" aria-label="Repeat through section"></select>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <select id="repTimes" aria-label="How many times"><option value="0">Until I stop</option><option value="2">2 times</option><option value="3" selected>3 times</option><option value="4">4 times</option><option value="5">5 times</option><option value="8">8 times</option><option value="10">10 times</option></select>
+      <label class="row muted" style="gap:6px"><input type="checkbox" id="repCountIn" checked> Count in each time</label>
+    </div>
+    <button class="btn primary" id="repGo" type="button" style="width:100%; margin-top:10px">Start repeating</button>
+  </div>
+
+  <div class="card" id="formCard">
+    <div class="floor">
+      <div class="floor-bar">
+        <div><div class="floor-title">Formation</div><div class="floor-sub" id="formName"></div></div>
+        <div class="view-toggle" role="group" aria-label="Stage view"><button type="button" data-view="aud" aria-pressed="true">Audience</button><button type="button" data-view="dan" aria-pressed="false">Dancer</button></div>
+      </div>
+      <svg id="stageSvg" viewBox="0 0 400 310" aria-label="Where everyone is on stage right now"><g class="st-static"></g><g class="st-dyn"></g></svg>
+    </div>
+    <div class="row" style="margin-top:10px"><span class="label">Follow</span><select id="followSel" aria-label="Dancer to follow" style="flex:1"></select></div>
+    <div class="cue" id="cue"></div>
+  </div>
+  <p class="foot">Tap the timeline to jump. The screen stays on while this song is open.</p>
+</section>
+<div class="toast" id="toast" hidden></div>
+
+<script src="vendor/jszip.min.js"></script>
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const aud = new Audio(); aud.preload = 'auto';
+const vid = $('vid');
+const TAPES = ['--tape-1','--tape-2','--tape-3','--tape-4','--tape-5','--tape-6'];
+const DCOL = ['#D9480F','#1971C2','#2F9E44','#9C36B5','#C2255C','#0C8599','#E67700','#5F3DC4','#364FC7','#A61E4D','#087F5B','#862E9C'];
+const STAGE_W = 36, STAGE_D = 24;
+const MIME = {mp3:'audio/mpeg', m4a:'audio/mp4', aac:'audio/aac', wav:'audio/wav', ogg:'audio/ogg', flac:'audio/flac', mp4:'video/mp4', mov:'video/quicktime', webm:'video/webm', m4v:'video/mp4'};
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+const fmt = t => { t = Math.max(0, t||0); const m = Math.floor(t/60); return `${m}:${String(Math.floor(t - m*60)).padStart(2,'0')}`; };
+let toastTimer; const toast = m => { const t = $('toast'); t.textContent = m; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.hidden = true, 3200); };
+
+/* ---------- storage (IndexedDB on the phone) ---------- */
+let db = null; const mem = {projects:new Map(), media:new Map()};
+const openDB = () => new Promise(res => { try { const r = indexedDB.open('workbook-player', 1); r.onupgradeneeded = () => { r.result.createObjectStore('projects', {keyPath:'id'}); r.result.createObjectStore('media'); }; r.onsuccess = () => { db = r.result; res(true); }; r.onerror = () => res(false); } catch(e){ res(false); } });
+const tx = (store, mode, fn) => new Promise(res => { if (!db) return res(fn(null)); try { const t = db.transaction(store, mode), r = fn(t.objectStore(store)); t.oncomplete = () => res(r && r.result !== undefined ? r.result : undefined); t.onerror = () => res(undefined); } catch(e){ res(undefined); } });
+const allProjects = async () => db ? (await tx('projects','readonly', s => s.getAll())) || [] : [...mem.projects.values()];
+const putProject = async p => { const c = JSON.parse(JSON.stringify(p)); if (!db) return mem.projects.set(p.id, c); await tx('projects','readwrite', s => s.put(c)); };
+const delProject = async id => { if (!db) return mem.projects.delete(id); await tx('projects','readwrite', s => s.delete(id)); };
+const putMedia = async (k, b) => { if (!db) return mem.media.set(k, b); await tx('media','readwrite', s => s.put(b, k)); };
+const getMedia = async k => db ? tx('media','readonly', s => s.get(k)) : mem.media.get(k);
+const delMedia = async k => { if (!db) return mem.media.delete(k); await tx('media','readwrite', s => s.delete(k)); };
+
+/* ---------- demo track (same as the desktop app) ---------- */
+async function buildDemo(){
+  const sr = 22050, b = 0.5, start = 1.0, phrases = 16, P = 8, dur = start + phrases*P*b + 2;
+  const oc = new OfflineAudioContext(1, Math.ceil(dur*sr), sr);
+  const noise = oc.createBuffer(1, sr, sr); const nd = noise.getChannelData(0); for (let i=0;i<nd.length;i++) nd[i] = Math.random()*2-1;
+  const out = oc.createGain(); out.gain.value = 0.55; out.connect(oc.destination);
+  const sec = p => p<=2?'intro':p<=6?'verse':p<=10?'chorus':p<=12?'bridge':'final';
+  const roots = {intro:[110,110], verse:[110,87.31,130.81,98], chorus:[87.31,130.81,98,110], bridge:[73.42,82.41], final:[87.31,130.81,98,110]}, secStart = {intro:1, verse:3, chorus:7, bridge:11, final:13};
+  const env = (n,t,pk,a,d) => { n.gain.setValueAtTime(0.0001,t); n.gain.exponentialRampToValueAtTime(pk,t+a); n.gain.exponentialRampToValueAtTime(0.0001,t+a+d); };
+  const kick = t => { const o=oc.createOscillator(), g=oc.createGain(); o.frequency.setValueAtTime(140,t); o.frequency.exponentialRampToValueAtTime(45,t+0.12); env(g,t,0.9,0.003,0.3); o.connect(g).connect(out); o.start(t); o.stop(t+0.35); };
+  const nz = (t,type,f,pk,d) => { const s=oc.createBufferSource(); s.buffer=noise; const fl=oc.createBiquadFilter(); fl.type=type; fl.frequency.value=f; const g=oc.createGain(); env(g,t,pk,0.002,d); s.connect(fl).connect(g).connect(out); s.start(t, Math.random()*0.5, d+0.05); };
+  const bass = (t,f) => { const o=oc.createOscillator(); o.type='sawtooth'; o.frequency.value=f; const fl=oc.createBiquadFilter(); fl.type='lowpass'; fl.frequency.value=520; const g=oc.createGain(); env(g,t,0.22,0.01,0.38); o.connect(fl).connect(g).connect(out); o.start(t); o.stop(t+0.42); };
+  const bell = t => { const o=oc.createOscillator(); o.frequency.value=1318.5; const g=oc.createGain(); env(g,t,0.12,0.004,0.8); o.connect(g).connect(out); o.start(t); o.stop(t+0.85); };
+  const pad = (t,len,f) => [1,1.26,1.5].forEach(r => { const o=oc.createOscillator(); o.type='triangle'; o.frequency.value=f*2*r; const g=oc.createGain(); g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.035,t+0.4); g.gain.setValueAtTime(0.035,t+len-0.3); g.gain.exponentialRampToValueAtTime(0.0001,t+len); o.connect(g).connect(out); o.start(t); o.stop(t+len+0.05); });
+  for (let p=1;p<=phrases;p++){ const s = sec(p), list = roots[s], root = list[(p-secStart[s]) % list.length], pt = start + (p-1)*P*b;
+    bell(pt); if (s==='chorus'||s==='final'||s==='bridge') pad(pt, P*b, root);
+    for (let k=0;k<P;k++){ const t = pt + k*b; if (s!=='intro' || k%4===0) kick(t); if ((s==='verse'||s==='chorus'||s==='final') && k%2===1) nz(t,'bandpass',1800,0.32,0.17); if (s!=='intro') nz(t+b/2,'highpass',7000,0.1,0.05); if (s!=='intro') bass(t, root); } }
+  return oc.startRendering();
+}
+function toWav(buf){
+  const ch = buf.getChannelData(0), sr = buf.sampleRate, n = ch.length, ab = new ArrayBuffer(44+n*2), v = new DataView(ab), w = (o,s)=>{ for (let i=0;i<s.length;i++) v.setUint8(o+i, s.charCodeAt(i)); };
+  w(0,'RIFF'); v.setUint32(4,36+n*2,true); w(8,'WAVE'); w(12,'fmt '); v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true); v.setUint32(24,sr,true); v.setUint32(28,sr*2,true); v.setUint16(32,2,true); v.setUint16(34,16,true); w(36,'data'); v.setUint32(40,n*2,true);
+  let o = 44; for (let i=0;i<n;i++){ const s = Math.max(-1,Math.min(1,ch[i])); v.setInt16(o, s<0?s*0x8000:s*0x7fff, true); o+=2; }
+  return new Blob([ab], {type:'audio/wav'});
+}
+let demoUrl = null, demoPeaks = null;
+async function demoAudio(){ if (!demoUrl){ const b = await buildDemo(); demoUrl = URL.createObjectURL(toWav(b)); demoPeaks = peaksOf(b); } return demoUrl; }
+function peaksOf(buf){ const d = buf.getChannelData(0), N = 800, st = d.length/N, o = []; let mx = 0; for (let i=0;i<N;i++){ let m = 0; for (let j=Math.floor(i*st); j<Math.floor((i+1)*st); j+=4){ const x = Math.abs(d[j]); if (x>m) m=x; } o.push(m); if (m>mx) mx=m; } return o.map(v => mx ? v/mx : 0); }
+
+/* ---------- the demo number ---------- */
+function assign(prev, pts, dancers){
+  const o = {}; if (!prev){ dancers.forEach((d,i) => o[d.id] = pts[i].slice()); return o; }
+  const pairs = []; dancers.forEach(d => pts.forEach((p,j) => { const a = prev[d.id]; pairs.push([Math.hypot(a[0]-p[0], a[1]-p[1]), d.id, j]); }));
+  pairs.sort((a,b)=>a[0]-b[0]); const used = new Set(), done = {};
+  for (const [,id,j] of pairs){ if (done[id] || used.has(j)) continue; done[id]=1; used.add(j); o[id] = pts[j].slice(); }
+  const ids = dancers.map(d=>d.id), sq = (a,b) => (a[0]-b[0])**2 + (a[1]-b[1])**2;
+  for (let pass=0, imp=true; imp && pass<20; pass++){ imp=false; for (let i=0;i<ids.length;i++) for (let j=i+1;j<ids.length;j++){ const A=ids[i], B=ids[j]; if (sq(prev[A],o[B])+sq(prev[B],o[A])+1e-9 < sq(prev[A],o[A])+sq(prev[B],o[B])){ const t=o[A]; o[A]=o[B]; o[B]=t; imp=true; } } }
+  return o;
+}
+function demoProject(){
+  const dancers = ['Maya','Ava','Sofia','Lily','Zoe','Emma','Chloe','Nora'].map((n,i)=>({id:'d'+i, name:n, color:DCOL[i]}));
+  const circle = Array.from({length:8}, (_,i)=>{ const a=i*Math.PI/4; return [Math.round(7*Math.sin(a)*10)/10, Math.round((12+7*Math.cos(a))*10)/10]; });
+  const shapes = [['Opening clump',0,0,[[-3,19],[-1,19],[1,19],[3,19],[-3,21.5],[-1,21.5],[1,21.5],[3,21.5]]],['Walk into V',16,8,[[-2,6],[2,6],[-5,9],[5,9],[-8,12],[8,12],[-11,15],[11,15]]],['Two lines',32,4,[[-12,7],[-4,7],[4,7],[12,7],[-12,14],[-4,14],[4,14],[12,14]]],['Chorus diamond',48,4,[[0,5],[-4,9],[4,9],[-8,13],[0,13],[8,13],[-4,17],[4,17]]],['Pinwheel circle',72,8,circle],['Bridge rows',80,6,[[-6,6],[0,6],[6,6],[-9,11],[-3,11],[3,11],[9,11],[0,16]]],['Final wedge',96,4,[[0,5],[-3,8],[3,8],[-6,11],[6,11],[-9,14],[9,14],[0,11]]],['Final pose',126,6,[[0,4],[-2.5,5],[2.5,5],[-5,6.5],[5,6.5],[-1.5,7.5],[1.5,7.5],[0,10]]]];
+  let prev = null; const formations = shapes.map(([name,at,travel,pts]) => { const pos = assign(prev, pts, dancers); prev = pos; return {id:uid('f'), name, at, travel, pos, props:{}}; });
+  const props = [{id:'prop-a', name:'Chair A', kind:'chair', w:1.5, d:1.5}, {id:'prop-b', name:'Chair B', kind:'chair', w:1.5, d:1.5}];
+  formations.forEach(f => props.forEach(pr => f.props[pr.id] = {on:false}));
+  const B = formations[5], who = (x,y) => (Object.entries(B.pos).find(([,v]) => v[0]===x && v[1]===y)||[''])[0];
+  B.props['prop-a'] = {on:true, x:-9, y:13, rot:0, mover:who(-9,11)}; B.props['prop-b'] = {on:true, x:9, y:13, rot:0, mover:who(9,11)};
+  formations[6].props['prop-a'] = {on:false, mover:'crew'}; formations[6].props['prop-b'] = {on:false, mover:'crew'};
+  return {id:'demo-spotlight', title:'Spotlight (demo)', style:'Jazz', added:Date.now(), bpm:120, offset:1, phrase:8,
+    sections:[{name:'Intro',start:1},{name:'Verse',start:3},{name:'Chorus',start:7},{name:'Bridge',start:11},{name:'Final chorus',start:13}],
+    notes:{1:'Hold opening pose, head down. Lift chin on 7, 8.',2:'Walk 4 into the V (R, L, R, L). Arms up through 1st to 5th on 5–8.',3:'Jazz square R (1–4), ball change 5-6, hip roll 7-8.',4:'Chassé R, pas de bourrée L, single pirouette R from 4th on 5-6, land 7, plié 8.',5:'Travel into two lines on 5–8. Repeat 8-count 1 to the left.',6:'Kick ball change ×2, fan kick R on 7, land in lunge on 8.',7:'Hits on 1, 3, 5-6-7. Sharp arms. Front row only.',8:'Body roll down 1–4, slide R 5-6, turn to face back 7-8.',9:'Leap R on 1, run run 2-3, toe touch 4. Start the pinwheel.',10:'Pinwheel circle, 2 counts per spot. Finish facing front on 8.',11:'Slow. Contemporary arms, développé L on 3-4, roll down 5–8.',12:'Rise 1–4 in canon by rows. Everyone up by 8.',13:'Same as Chorus 8-count 1, bigger.',14:'Same as Chorus 8-count 2.',15:'Switch leaps on 1 and 5. Travel into the final pose.',16:'Final pose on 7. Hold 8 and freeze.'},
+    dancers, formations, props, audio:{name:'Demo track', duration:67, demo:true}, hasAudio:true, video:null};
+}
+
+/* ---------- opening .dance files ---------- */
+async function openDance(file){
+  let zip; try { zip = await JSZip.loadAsync(file); } catch(e){ toast("That file isn't a .dance file."); return; }
+  const pj = zip.file('project.json'); if (!pj){ toast("That file wasn't made by Choreography Workbook."); return; }
+  let data; try { data = JSON.parse(await pj.async('string')); } catch(e){ toast('That .dance file is damaged.'); return; }
+  if (data.app !== 'choreo-workbook' || !data.project){ toast("That file wasn't made by Choreography Workbook."); return; }
+  if ((data.format || 1) > 1){ toast('This file needs a newer version of Workbook Player.'); return; }
+  const s = data.project, id = uid('p');
+  const p = {id, title:s.title || file.name.replace(/\.dance$/i,'') || 'Number', style:s.style || '', added:Date.now(), bpm:+s.bpm||120, offset:+s.offset||0, phrase:+s.phrase||8,
+    sections:Array.isArray(s.sections) && s.sections.length ? s.sections : [{name:'Song', start:1}], notes:s.notes||{}, dancers:s.dancers||[], formations:s.formations||[], props:Array.isArray(s.props) ? s.props : [],
+    peaks:s.peaks||null, audio:s.audio||null, hasAudio:!!(s.audio && s.audio.demo), video:null};
+  p.formations.forEach(f => { f.props = f.props || {}; });
+  for (const e of Object.values(zip.files)){
+    const m = /^media\/(audio|video)\.([a-z0-9]+)$/i.exec(e.name); if (!m) continue;
+    const blob = new Blob([await e.async('arraybuffer')], {type:MIME[m[2].toLowerCase()]||''});
+    await putMedia(id + ':' + m[1], blob);
+    if (m[1] === 'audio'){ p.hasAudio = true; if (p.audio) p.audio.demo = false; }
+    else p.video = s.video || {offset:0, mirror:false};
+  }
+  await putProject(p); toast(`Added "${p.title}".`); await renderLib();
+}
+$('openFile').addEventListener('change', async e => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) await openDance(f); });
+$('demoBtn').addEventListener('click', async () => { await putProject(demoProject()); await renderLib(); openSong('demo-spotlight'); });
+
+/* ---------- library ---------- */
+async function renderLib(){
+  const list = (await allProjects()).sort((a,b) => (b.opened||b.added||0) - (a.opened||a.added||0)), box = $('songs'); box.innerHTML = '';
+  $('demoBtn').hidden = list.some(p => p.id === 'demo-spotlight');
+  if (!list.length){ box.innerHTML = '<div class="card muted">No numbers yet. When a teacher sends you a .dance file, save it to your phone, then tap <b>Open a .dance file</b>.</div>'; return; }
+  list.forEach(p => {
+    const c = document.createElement('div'); c.className = 'card song';
+    c.innerHTML = `<div class="song-tapes">${p.sections.map((s,i)=>`<i style="background:var(${TAPES[i%6]})"></i>`).join('')}</div><h3>${esc(p.title)}</h3>
+      <div class="song-meta">${p.style ? `<span>${esc(p.style)}</span>` : ''}<span class="mono">${p.bpm} BPM</span>${p.audio && p.audio.duration ? `<span class="mono">${fmt(p.audio.duration)}</span>` : ''}<span>${p.formations.length} formations</span>${p.props.length ? `<span>${p.props.length} props</span>` : ''}${p.video ? '<span>video</span>' : ''}</div>
+      ${p.hasAudio ? '' : '<div><span class="tag">Needs your copy of the music</span></div>'}
+      <div class="song-actions"><button class="btn small primary" data-a="open" type="button">Rehearse</button><button class="btn small danger" data-a="del" type="button">Remove</button></div>`;
+    c.addEventListener('click', e => { if (!e.target.closest('[data-a="del"]')) openSong(p.id); });
+    const del = c.querySelector('[data-a="del"]');
+    del.addEventListener('click', async e => { e.stopPropagation();
+      if (del.dataset.armed !== '1'){ del.dataset.armed = '1'; del.textContent = 'Tap again to remove'; setTimeout(() => { del.dataset.armed = ''; del.textContent = 'Remove'; }, 3000); return; }
+      await delProject(p.id); await delMedia(p.id+':audio'); await delMedia(p.id+':video'); toast(`Removed "${p.title}".`); renderLib(); });
+    box.appendChild(c);
+  });
+}
+
+/* ---------- counting ---------- */
+let cur = null;
+const UI = {rate:1, countoff:true, loop:null, counting:false, follow:'', view:'aud', duration:0, hasAudio:false, vidOn:true};
+const word = () => cur.phrase === 8 ? '8-count' : `${cur.phrase}-count`;
+const beatLen = () => 60 / cur.bpm;
+const beatAt = t => (t - cur.offset) / beatLen();
+const timeOfBeat = b => cur.offset + b*beatLen();
+const phraseTime = p => timeOfBeat((p-1)*cur.phrase);
+const dur = () => UI.duration || (cur.audio && cur.audio.duration) || 60;
+const totalPhrases = () => Math.max(1, Math.floor((dur() - cur.offset)/(beatLen()*cur.phrase) + 0.4));
+function posAt(t){ const beat = Math.floor((t - cur.offset)/beatLen() + 1e-4); return beat < 0 ? {beat, phrase:0, count:0, lead:true} : {beat, phrase:Math.floor(beat/cur.phrase)+1, count:(beat % cur.phrase)+1, lead:false}; }
+function sectionFor(p){ let i = -1; cur.sections.forEach((s,j) => { if (s.start <= p) i = j; }); return i; }
+function sectionEnd(i){ return i < cur.sections.length-1 ? cur.sections[i+1].start-1 : totalPhrases(); }
+function phraseLabel(p){ const i = sectionFor(p); return i < 0 ? `${word()} ${p}` : `${cur.sections[i].name} ${p - cur.sections[i].start + 1}`; }
+function beatLabel(b){ const ph = Math.floor(b/cur.phrase)+1, ct = ((b % cur.phrase)+cur.phrase)%cur.phrase + 1; return `${phraseLabel(ph)}, count ${ct}`; }
+
+/* ---------- formations + props (read-only) ---------- */
+const ease = k => 0.5 - 0.5*Math.cos(Math.PI*Math.max(0, Math.min(1, k)));
+function travelStart(i){ const F = cur.formations; return i === 0 ? F[0].at : Math.max(F[i-1].at, F[i].at - F[i].travel); }
+function stateAt(b){
+  const F = cur.formations; if (!F.length) return {pos:{}, idx:-1, moving:false, b};
+  let i = 0; while (i+1 < F.length && F[i+1].at <= b) i++;
+  const c = F[i], n = F[i+1];
+  if (!n || b < c.at) return {pos:c.pos, idx:i, moving:false, b};
+  const ts = travelStart(i+1); if (b <= ts) return {pos:c.pos, idx:i, moving:false, b};
+  const k = ease((b-ts)/(n.at-ts)), pos = {};
+  cur.dancers.forEach(d => { const a = c.pos[d.id] || n.pos[d.id], z = n.pos[d.id] || a; if (a) pos[d.id] = [a[0]+(z[0]-a[0])*k, a[1]+(z[1]-a[1])*k]; });
+  return {pos, idx:i, next:i+1, moving:true, ts, b};
+}
+const isOn = s => !!(s && s.on);
+function propMoved(a, z){ const A = isOn(a), Z = isOn(z); if (!A && !Z) return false; if (A !== Z) return true; return Math.hypot(a.x-z.x, a.y-z.y) > 0.4 || (a.rot||0) !== (z.rot||0); }
+const wingOf = s => ({x: s.x < 0 ? -19.5 : 19.5, y: s.y, rot: s.rot||0});
+function propsAt(S){
+  const F = cur.formations, out = {}; if (S.idx < 0) return out;
+  const c = F[S.idx], n = S.moving ? F[S.next] : null, k = n ? ease((S.b - S.ts)/(n.at - S.ts)) : 0;
+  cur.props.forEach(pr => { const a = (c.props||{})[pr.id];
+    if (!n){ if (isOn(a)) out[pr.id] = {x:a.x, y:a.y, rot:a.rot||0}; return; }
+    const z = (n.props||{})[pr.id]; if (!isOn(a) && !isOn(z)) return;
+    if (!propMoved(a, z)){ out[pr.id] = {x:a.x, y:a.y, rot:a.rot||0}; return; }
+    const f = isOn(a) ? a : wingOf(z), t = isOn(z) ? z : wingOf(a);
+    out[pr.id] = {x:f.x+(t.x-f.x)*k, y:f.y+(t.y-f.y)*k, rot:(f.rot||0)+((t.rot||0)-(f.rot||0))*k, moving:true, mover:z ? z.mover : ''}; });
+  return out;
+}
+function spotText(x, y){
+  const depth = y < 8 ? 'Downstage' : y < 16 ? 'Centre' : 'Upstage', side = x > 0 ? 'stage left' : 'stage right', ax = Math.abs(x), near = Math.round(ax/4)*4, num = near/2;
+  let spot; if (Math.abs(ax-near) <= 1) spot = num === 0 ? 'on centre' : `on ${num} ${side}`; else { const lo = Math.floor(ax/4)*2; spot = lo === 0 ? `between centre and 2 ${side}` : `between ${lo} and ${lo+2} ${side}`; }
+  return `${depth}, ${spot}`;
+}
+const lc = s => s.replace(/^./, c => c.toLowerCase());
+function propMoveText(pr, a, z){ const A = isOn(a), Z = isOn(z);
+  if (!A && Z) return `bring ${pr.name} on from ${z.x < 0 ? 'stage right' : 'stage left'} to ${lc(spotText(z.x, z.y))}`;
+  if (A && !Z) return `take ${pr.name} off, ${a.x < 0 ? 'stage right' : 'stage left'}`;
+  if (Math.hypot(a.x-z.x, a.y-z.y) <= 0.4) return `turn ${pr.name}`;
+  return `move ${pr.name} to ${lc(spotText(z.x, z.y))}`; }
+function propJobsFor(who, i){ if (i <= 0) return []; const F = cur.formations, f = F[i], pv = F[i-1];
+  return cur.props.filter(pr => { const s = (f.props||{})[pr.id]; return s && s.mover === who && propMoved((pv.props||{})[pr.id], s); }).map(pr => propMoveText(pr, (pv.props||{})[pr.id], f.props[pr.id])); }
+function initials(d){ const f = (d.name.trim()[0]||'?').toUpperCase(); return cur.dancers.some(o => o !== d && (o.name.trim()[0]||'').toUpperCase() === f) ? (d.name.trim().slice(0,2)||'?').replace(/^./, c=>c.toUpperCase()) : f; }
+
+const svg = $('stageSvg'), sg = svg.querySelector('.st-static'), dg = svg.querySelector('.st-dyn');
+const toS = (x,y) => UI.view === 'aud' ? [200 + x*10, 275 - y*10] : [200 - x*10, 35 + y*10];
+function renderStatic(){
+  const [x0,y0] = toS(-STAGE_W/2, STAGE_D), [x1,y1] = toS(STAGE_W/2, 0);
+  let h = `<rect x="${Math.min(x0,x1)}" y="${Math.min(y0,y1)}" width="${Math.abs(x1-x0)}" height="${Math.abs(y1-y0)}" rx="3" fill="var(--floor)"/>`;
+  for (let y=4;y<STAGE_D;y+=4){ const [a,b]=toS(-STAGE_W/2,y), [c,d]=toS(STAGE_W/2,y), z=y===8||y===16; h += `<line x1="${a}" y1="${b}" x2="${c}" y2="${d}" stroke="var(--floor-line)" stroke-width="${z?1:.6}" ${z?'stroke-dasharray="4 3"':''}/>`; }
+  for (let x=-16;x<=16;x+=4){ const [a,b]=toS(x,0), [c,d]=toS(x,STAGE_D); h += `<line x1="${a}" y1="${b}" x2="${c}" y2="${d}" stroke="var(--floor-line)" stroke-width="${x===0?1:.7}"/>`; }
+  const fr = UI.view === 'aud' ? 1 : -1;
+  for (let x=-16;x<=16;x+=4){ const [a,b]=toS(x,0), n=Math.abs(x)/2; h += `<rect x="${a-3.5}" y="${b-1.6}" width="7" height="3.2" fill="var(--tape-1)" transform="rotate(-6 ${a} ${b})"/><text x="${a}" y="${b+fr*13+3}" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="var(--floor-ink)">${n===0?'C':n}</text>`; }
+  const lab = (x,y,t,r) => `<text x="${x}" y="${y}" text-anchor="middle" font-family="Archivo, sans-serif" font-weight="700" font-size="9" letter-spacing="1.6" fill="var(--floor-muted)" ${r?`transform="rotate(${r} ${x} ${y})"`:''}>${t}</text>`;
+  h += UI.view === 'aud' ? lab(200,24,'UPSTAGE')+lab(200,306,'AUDIENCE')+lab(391,155,'STAGE LEFT',90)+lab(9,155,'STAGE RIGHT',-90) : lab(200,12,'AUDIENCE')+lab(200,296,'UPSTAGE')+lab(391,155,'STAGE RIGHT',90)+lab(9,155,'STAGE LEFT',-90);
+  sg.innerHTML = h;
+}
+function renderDyn(S){
+  const sel = UI.follow; let h = '';
+  const PP = propsAt(S);
+  cur.props.forEach(pr => { const s = PP[pr.id]; if (!s) return; const [x,y] = toS(s.x, s.y), w = pr.w*10, d = pr.d*10, half = Math.max(w,d)/2;
+    const mover = s.moving && s.mover ? (s.mover === 'crew' ? {id:'crew', name:'Stage crew', color:'#8F97B3'} : cur.dancers.find(z => z.id === s.mover)) : null;
+    const dim = sel && !(mover && mover.id === sel);
+    h += `<g opacity="${dim?0.45:1}"><g transform="translate(${x} ${y}) rotate(${s.rot||0})">${pr.round ? `<ellipse rx="${w/2}" ry="${d/2}" fill="#B98B4E" stroke="#F1DFBE" stroke-width=".8"/>` : `<rect x="${-w/2}" y="${-d/2}" width="${w}" height="${d}" rx="2" fill="#B98B4E" stroke="#F1DFBE" stroke-width=".8" ${s.moving?'stroke-dasharray="2.5 1.5"':''}/>`}</g>`
+      + `<text x="${x}" y="${y-half-3}" text-anchor="middle" font-family="Inter, sans-serif" font-size="7" font-weight="600" fill="#E9CFA0">${esc(pr.name)}</text>`
+      + (mover ? `<text x="${x}" y="${y+half+9}" text-anchor="middle" font-family="Inter, sans-serif" font-size="7" fill="var(--floor-ink)">${esc(mover.name)} moves it</text>` : '') + `</g>`; });
+  cur.dancers.forEach(d => { const p = S.pos[d.id]; if (!p) return; const [x,y] = toS(p[0],p[1]), dim = sel && sel !== d.id;
+    h += `<g opacity="${dim?0.3:1}">${d.id === sel ? `<circle cx="${x}" cy="${y}" r="15" fill="none" stroke="var(--floor-ink)" stroke-width="1.6"/>` : ''}<circle cx="${x}" cy="${y}" r="11" fill="${d.color}" stroke="rgba(0,0,0,.35)" stroke-width=".8"/><text x="${x}" y="${y+3.6}" text-anchor="middle" font-family="Inter, sans-serif" font-weight="600" font-size="10" fill="#fff">${esc(initials(d))}</text><text x="${x}" y="${y+21}" text-anchor="middle" font-family="Inter, sans-serif" font-size="7.5" fill="var(--floor-ink)">${esc(d.name)}</text></g>`; });
+  dg.innerHTML = h;
+}
+document.querySelectorAll('.view-toggle button').forEach(b => b.addEventListener('click', () => { UI.view = b.dataset.view; document.querySelectorAll('.view-toggle button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); renderStatic(); needDraw = true; }));
+function renderFollow(){
+  const s = $('followSel');
+  s.innerHTML = '<option value="">Everyone</option>' + cur.dancers.map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join('') + (cur.props.length ? '<option value="crew">Stage crew (props)</option>' : '');
+  s.value = UI.follow; if (s.value !== UI.follow) UI.follow = s.value = '';
+}
+$('followSel').addEventListener('change', e => { UI.follow = e.target.value; try { localStorage.setItem('follow:' + cur.id, UI.follow); } catch(_){} needDraw = true; });
+function updateCue(S){
+  const box = $('cue'), F = cur.formations, start = S.moving ? S.next : S.idx + 1;
+  const job = (who, label) => { for (let j = start; j < F.length; j++){ const jobs = propJobsFor(who, j); if (jobs.length) return `<div style="margin-top:6px"><b>${label}</b> ${esc(jobs.join('; '))}, between ${esc(beatLabel(travelStart(j)))} and ${esc(beatLabel(F[j].at))}.</div>`; } return ''; };
+  if (UI.follow === 'crew'){ box.innerHTML = job('crew', 'Next crew job:') || '<span class="muted">No more stage crew jobs in this number.</span>'; return; }
+  const d = cur.dancers.find(x => x.id === UI.follow);
+  if (!d){ box.innerHTML = '<span class="muted">Choose yourself to see your spot, where you go next, and your prop jobs.</span>'; return; }
+  const p = S.pos[d.id]; let h = '';
+  if (S.moving){ const n = F[S.next], np = n.pos[d.id]; h += `<div><b>${esc(d.name)}</b>: travelling into <b>${esc(n.name)}</b>, arriving on ${esc(beatLabel(n.at))}.</div>${np ? `<div class="muted">Going to: ${esc(spotText(np[0], np[1]))}</div>` : ''}`; }
+  else if (p){ h += `<div><b>${esc(d.name)}</b>: ${esc(F[S.idx].name)}, ${esc(lc(spotText(p[0], p[1])))}.</div>`; const n = F[S.idx+1]; if (n && n.pos[d.id]) h += `<div class="muted">Next: start moving on ${esc(beatLabel(travelStart(S.idx+1)))} to ${esc(lc(spotText(n.pos[d.id][0], n.pos[d.id][1])))}.</div>`; }
+  box.innerHTML = h + job(d.id, 'Prop job:');
+}
+
+/* ---------- open a song ---------- */
+let audioUrl = null, videoUrl = null, wakeLock = null;
+async function keepAwake(on){ try { if (on && 'wakeLock' in navigator && !wakeLock){ wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => wakeLock = null); } if (!on && wakeLock){ await wakeLock.release(); wakeLock = null; } } catch(e){} }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && cur) keepAwake(true); });
+async function openSong(id){
+  const p = (await allProjects()).find(x => x.id === id); if (!p) return;
+  cancelCountoff(); aud.pause();
+  cur = p; cur.opened = Date.now(); putProject(cur);
+  UI.loop = null; UI.duration = cur.audio && cur.audio.duration || 0; UI.hasAudio = false;
+  try { UI.follow = localStorage.getItem('follow:' + cur.id) || ''; } catch(_){ UI.follow = ''; }
+  if (audioUrl){ URL.revokeObjectURL(audioUrl); audioUrl = null; } if (videoUrl){ URL.revokeObjectURL(videoUrl); videoUrl = null; }
+  if (cur.audio && cur.audio.demo){ aud.src = await demoAudio(); UI.hasAudio = true; if (!cur.peaks) cur.peaks = demoPeaks; }
+  else { const m = await getMedia(cur.id + ':audio'); if (m){ audioUrl = URL.createObjectURL(m); aud.src = audioUrl; UI.hasAudio = true; } else aud.removeAttribute('src'); }
+  aud.load(); aud.currentTime = 0;
+  vid.hidden = true; vid.removeAttribute('src'); $('stage').classList.remove('has-video');
+  const v = cur.video ? await getMedia(cur.id + ':video') : null;
+  $('vidBtn').hidden = $('mirrorBtn').hidden = !v;
+  if (v){ videoUrl = URL.createObjectURL(v); vid.src = videoUrl; vid.hidden = !UI.vidOn; $('stage').classList.toggle('has-video', UI.vidOn); vid.classList.toggle('mirror', !!cur.video.mirror); $('mirrorBtn').setAttribute('aria-pressed', String(!!cur.video.mirror)); }
+  $('pTitle').textContent = cur.title;
+  $('musicBanner').hidden = UI.hasAudio; $('playBtn').disabled = !UI.hasAudio;
+  if (!UI.hasAudio) $('musicText').textContent = `This number came without music. Add your copy of "${cur.audio ? cur.audio.name : 'the song'}"${cur.audio && cur.audio.duration ? ` (${fmt(cur.audio.duration)})` : ''}.`;
+  $('formCard').hidden = !cur.formations.length;
+  const dots = $('cdBeats'); dots.innerHTML = ''; for (let i=0;i<cur.phrase;i++) dots.appendChild(document.createElement('i'));
+  $('coBtn').textContent = `Count-off ${countoffNums().join(', ')}`; $('loopBtn').textContent = `Loop this ${word()}`;
+  renderRepeat(); renderFollow(); renderStatic(); updateLoopUI();
+  $('libView').hidden = true; $('playView').hidden = false; window.scrollTo(0,0);
+  sizeCanvas(); lastBeat = lastPhrase = null; needDraw = true; keepAwake(true);
+  if (!(history.state && history.state.v === 'song')) history.pushState({v:'song'}, '');
+}
+async function closeSong(){ cancelCountoff(); aud.pause(); vid.pause(); keepAwake(false); cur = null; $('playView').hidden = true; $('libView').hidden = false; await renderLib(); window.scrollTo(0,0); }
+$('backBtn').addEventListener('click', () => { if (history.state && history.state.v === 'song') history.back(); else closeSong(); });
+$('musicFile').addEventListener('change', async e => {
+  const f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return;
+  await putMedia(cur.id + ':audio', f); cur.hasAudio = true; if (cur.audio) cur.audio.demo = false; await putProject(cur);
+  if (audioUrl) URL.revokeObjectURL(audioUrl); audioUrl = URL.createObjectURL(f); aud.src = audioUrl; aud.load(); UI.hasAudio = true;
+  $('musicBanner').hidden = true; $('playBtn').disabled = false;
+  aud.addEventListener('loadedmetadata', () => { const want = cur && cur.audio && cur.audio.duration; toast(want && Math.abs(aud.duration - want) > 2 ? `Music added, but it's ${fmt(aud.duration)} long and the original was ${fmt(want)}. It may be a different version.` : 'Music added. The counts line up.'); }, {once:true});
+});
+history.replaceState({v:'lib'}, ''); window.addEventListener('popstate', () => { if (cur) closeSong(); });
+
+/* ---------- transport ---------- */
+let ac = null; const getAC = () => { if (!ac){ const C = window.AudioContext || window.webkitAudioContext; if (!C) return null; ac = new C(); } if (ac.state === 'suspended') ac.resume(); return ac; };
+function beep(when, accent){ const a = getAC(); if (!a) return; const o = a.createOscillator(), g = a.createGain(); o.type = 'square'; o.frequency.value = accent ? 1760 : 1175; g.gain.setValueAtTime(0.0001, when); g.gain.exponentialRampToValueAtTime(accent ? 0.22 : 0.13, when+0.003); g.gain.exponentialRampToValueAtTime(0.0001, when+0.06); o.connect(g).connect(a.destination); o.start(when); o.stop(when+0.08); }
+const countoffNums = () => { const n = Math.min(4, cur.phrase), o = []; for (let i = cur.phrase-n+1; i <= cur.phrase; i++) o.push(i); return o; };
+let coTimers = [];
+function cancelCountoff(){ coTimers.forEach(clearTimeout); coTimers = []; UI.counting = false; $('countoff').hidden = true; updatePlay(); }
+function play(force){
+  const a = getAC(); if ((!UI.countoff && !force) || !a){ aud.play(); return; }
+  const iv = beatLen()/UI.rate, nums = countoffNums(), co = $('countoff'); UI.counting = true; updatePlay(); co.textContent = ''; co.hidden = false;
+  const t0 = a.currentTime + 0.06;
+  nums.forEach((n,i) => { beep(t0 + i*iv, i === 0); coTimers.push(setTimeout(() => { co.textContent = n; co.classList.remove('pop'); void co.offsetWidth; co.classList.add('pop'); }, 60 + i*iv*1000)); });
+  coTimers.push(setTimeout(() => { co.hidden = true; UI.counting = false; aud.play(); updatePlay(); }, 60 + nums.length*iv*1000));
+}
+function togglePlay(){ if (!UI.hasAudio) return; getAC(); if (UI.counting){ cancelCountoff(); return; } if (aud.paused) play(); else aud.pause(); }
+function updatePlay(){ const on = !aud.paused || UI.counting; $('playIcon').innerHTML = on ? '<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>' : '<path d="M7 4v16l13-8z"/>'; $('playBtn').setAttribute('aria-label', on ? 'Pause' : 'Play'); }
+$('playBtn').addEventListener('click', togglePlay);
+aud.addEventListener('play', updatePlay); aud.addEventListener('pause', () => { updatePlay(); vid.pause(); });
+aud.addEventListener('loadedmetadata', () => { if (cur && isFinite(aud.duration) && aud.duration > 0){ UI.duration = aud.duration; renderRepeat(); } needDraw = true; });
+function seek(t){ t = Math.max(0, Math.min(dur(), t)); if (UI.loop){ const [a,b] = loopTimes(); if (t < a - 0.05 || t > b + 0.05) clearLoop(); } aud.currentTime = t; needDraw = true; }
+function step(dir){ const t = aud.currentTime || 0, pos = posAt(t); let p = pos.lead ? 0 : pos.phrase;
+  if (dir < 0){ const into = t - phraseTime(Math.max(1,p)); p = (p >= 1 && into > beatLen()*0.5) ? p : p - 1; } else p = p + 1;
+  if (p < 1) seek(0); else seek(phraseTime(p) + 0.001); }
+$('prevBtn').addEventListener('click', () => step(-1)); $('nextBtn').addEventListener('click', () => step(1));
+document.querySelectorAll('input[name="speed"]').forEach(r => r.addEventListener('change', e => { UI.rate = parseFloat(e.target.value); aud.playbackRate = UI.rate; aud.preservesPitch = true; vid.playbackRate = UI.rate; $('speedBadge').hidden = UI.rate === 1; $('speedBadge').textContent = `${Math.round(UI.rate*100)}%`; }));
+$('coBtn').addEventListener('click', () => { UI.countoff = !UI.countoff; $('coBtn').setAttribute('aria-pressed', String(UI.countoff)); });
+$('vidBtn').addEventListener('click', () => { UI.vidOn = !UI.vidOn; $('vidBtn').setAttribute('aria-pressed', String(UI.vidOn)); vid.hidden = !UI.vidOn; $('stage').classList.toggle('has-video', UI.vidOn); if (!UI.vidOn) vid.pause(); });
+$('mirrorBtn').addEventListener('click', () => { if (!cur.video) return; cur.video.mirror = !cur.video.mirror; vid.classList.toggle('mirror', cur.video.mirror); $('mirrorBtn').setAttribute('aria-pressed', String(cur.video.mirror)); putProject(cur); });
+
+/* ---------- loop and repeat ---------- */
+function loopTimes(){ return [phraseTime(UI.loop.a), phraseTime(UI.loop.b + 1)]; }
+function loopText(L){ const si = sectionFor(L.a), sj = sectionFor(L.b);
+  if (si >= 0 && sj >= 0 && L.a === cur.sections[si].start && L.b === Math.min(sectionEnd(sj), totalPhrases())) return si === sj ? cur.sections[si].name : `${cur.sections[si].name} to ${cur.sections[sj].name}`;
+  return `${phraseLabel(L.a)}${L.b !== L.a ? ' to ' + phraseLabel(L.b) : ''}`; }
+function setLoop(a, b, opts){ opts = opts || {}; UI.loop = {a, b, times:opts.times||0, countIn:!!opts.countIn, done:0}; const t = aud.currentTime, [ls,le] = loopTimes(); if (t < ls || t >= le) aud.currentTime = ls + 0.001; updateLoopUI(); needDraw = true; }
+function clearLoop(){ UI.loop = null; updateLoopUI(); needDraw = true; }
+function updateLoopUI(){
+  const L = UI.loop;
+  $('loopBadge').hidden = !L; $('repGo').textContent = L ? 'Stop repeating' : 'Start repeating'; $('repGo').classList.toggle('primary', !L);
+  $('loopBtn').setAttribute('aria-pressed', String(!!(L && L.a === L.b && !L.times)));
+  $('repStatus').innerHTML = L ? `${esc(loopText(L))} · ${L.times ? `<b>${Math.min(L.done+1, L.times)} of ${L.times}</b>` : `<b>time ${L.done+1}</b>`}` : '';
+}
+function renderRepeat(){
+  const f = $('repFrom'), t = $('repTo'), fi = +f.value || 0, ti = t.value === '' ? -1 : +t.value, opts = cur.sections.map((s,i) => `<option value="${i}">${esc(s.name)}</option>`).join('');
+  f.innerHTML = opts; t.innerHTML = opts; f.value = String(Math.min(fi, cur.sections.length-1)); t.value = String(Math.max(+f.value, Math.min(ti < 0 ? +f.value : ti, cur.sections.length-1)));
+}
+$('repFrom').addEventListener('change', () => { if (+$('repTo').value < +$('repFrom').value) $('repTo').value = $('repFrom').value; });
+$('repTo').addEventListener('change', () => { if (+$('repTo').value < +$('repFrom').value) $('repFrom').value = $('repTo').value; });
+$('repGo').addEventListener('click', () => {
+  if (UI.loop){ clearLoop(); if (UI.counting) cancelCountoff(); return; }
+  const a = cur.sections[+$('repFrom').value].start, b = Math.min(sectionEnd(+$('repTo').value), totalPhrases());
+  if (a > b){ toast('That section starts after the end of the song.'); return; }
+  setLoop(a, b, {times:+$('repTimes').value, countIn:$('repCountIn').checked}); aud.currentTime = phraseTime(a) + 0.001;
+  if (UI.hasAudio && aud.paused && !UI.counting){ getAC(); play($('repCountIn').checked); }
+  window.scrollTo({top:0, behavior:'smooth'});
+});
+$('loopBtn').addEventListener('click', () => { if (UI.loop && UI.loop.a === UI.loop.b && !UI.loop.times){ clearLoop(); return; } const p = Math.max(1, posAt(aud.currentTime||0).phrase); setLoop(p, p); });
+
+/* ---------- timeline ---------- */
+const tl = $('timeline'), tg = tl.getContext('2d'); let colors = {}, colorsAt = 0;
+function readColors(){ const cs = getComputedStyle(document.documentElement), v = n => cs.getPropertyValue(n).trim(); colors = {surface:v('--surface'), ink:v('--ink'), muted:v('--muted'), accent:v('--accent'), tapes:TAPES.map(v)}; colorsAt = performance.now(); }
+function sizeCanvas(){ const r = tl.getBoundingClientRect(), d = window.devicePixelRatio || 1; tl.width = Math.max(1, Math.round(r.width*d)); tl.height = Math.max(1, Math.round(r.height*d)); needDraw = true; }
+window.addEventListener('resize', () => { if (cur) sizeCanvas(); });
+function drawTimeline(t){
+  if (performance.now() - colorsAt > 800) readColors();
+  const W = tl.width, H = tl.height, dpr = window.devicePixelRatio || 1, D = dur(), X = s => s/D*W, band = 5*dpr, wH = H - band;
+  tg.clearRect(0,0,W,H); tg.fillStyle = colors.surface; tg.fillRect(0,0,W,H);
+  cur.sections.forEach((s,i) => { const a = X(phraseTime(s.start)), b = i < cur.sections.length-1 ? X(phraseTime(cur.sections[i+1].start)) : W; if (a >= W) return; tg.fillStyle = colors.tapes[i%6]; tg.globalAlpha = .12; tg.fillRect(a,0,b-a,wH); tg.globalAlpha = 1; tg.fillRect(a,wH,b-a,band); });
+  if (UI.loop){ const [a,b] = loopTimes(); tg.fillStyle = colors.accent; tg.globalAlpha = .2; tg.fillRect(X(a),0,X(b)-X(a),wH); tg.globalAlpha = 1; }
+  tg.fillStyle = colors.muted; tg.globalAlpha = .45; for (let p=0; timeOfBeat(p*cur.phrase) < D; p++) tg.fillRect(Math.round(X(timeOfBeat(p*cur.phrase))), 0, Math.max(1,dpr), wH); tg.globalAlpha = 1;
+  const px = X(t), pk = cur.peaks;
+  if (pk && pk.length){ const N = pk.length, mid = wH/2, step = 3*dpr; for (let x=0;x<W;x+=step){ const a = Math.floor(x/W*N), z = Math.max(a+1, Math.floor((x+step)/W*N)); let m = 0; for (let i=a;i<z&&i<N;i++) if (pk[i]>m) m = pk[i]; const h = Math.max(dpr, m*mid*.8); tg.fillStyle = x < px ? colors.ink : colors.muted; tg.globalAlpha = x < px ? .7 : .35; tg.fillRect(x, mid-h, Math.max(1, step-dpr), h*2); } tg.globalAlpha = 1; }
+  tg.fillStyle = colors.accent; cur.formations.forEach(f => { const x = X(timeOfBeat(f.at)), y = 8*dpr; tg.beginPath(); tg.moveTo(x, y-4*dpr); tg.lineTo(x+4*dpr, y); tg.lineTo(x, y+4*dpr); tg.lineTo(x-4*dpr, y); tg.closePath(); tg.fill(); });
+  tg.fillRect(Math.round(px - dpr), 0, 2*dpr, H);
+}
+let scrubbing = false;
+const scrubTo = e => { const r = tl.getBoundingClientRect(); seek((e.clientX - r.left)/r.width * dur()); };
+tl.addEventListener('pointerdown', e => { scrubbing = true; tl.setPointerCapture(e.pointerId); scrubTo(e); });
+tl.addEventListener('pointermove', e => { if (scrubbing) scrubTo(e); });
+tl.addEventListener('pointerup', () => { scrubbing = false; });
+
+/* ---------- frame loop ---------- */
+let needDraw = true, lastT = -1, lastBeat = null, lastPhrase = null;
+function frame(){
+  requestAnimationFrame(frame);
+  if (!cur) return;
+  const t = aud.currentTime || 0;
+  if (UI.loop && !aud.paused){ const [ls,le] = loopTimes(); if (t >= le - 0.012){ const L = UI.loop; L.done++; aud.currentTime = ls + 0.001;
+    if (L.times && L.done >= L.times){ aud.pause(); const txt = loopText(L); clearLoop(); toast(`Done: ${L.times} times through ${txt}.`); }
+    else { if (L.countIn){ aud.pause(); play(true); } updateLoopUI(); } } }
+  if (cur.video && vid.src && !vid.hidden){ const target = t - (cur.video.offset||0);
+    if (target < 0 || (vid.duration && target > vid.duration)){ if (!vid.paused) vid.pause(); }
+    else { if (Math.abs(vid.currentTime - target) > 0.2) vid.currentTime = target; if (!aud.paused && vid.paused) vid.play().catch(() => {}); if (aud.paused && !vid.paused) vid.pause(); } }
+  if (t === lastT && !needDraw) return;
+  const pos = posAt(t), b = beatAt(t);
+  if (pos.beat !== lastBeat){
+    lastBeat = pos.beat; const cc = $('cdCount'), dots = $('cdBeats').children;
+    if (pos.lead){ cc.textContent = '·'; cc.classList.add('lead'); $('cdSection').textContent = 'Lead-in'; $('cdPhrase').textContent = `Count 1 in ${Math.max(0, cur.offset - t).toFixed(1)} s`; $('cdTape').style.background = 'var(--stage-muted)'; for (const d of dots) d.className = ''; }
+    else { cc.textContent = pos.count; cc.classList.remove('lead'); for (let i=0;i<dots.length;i++) dots[i].className = i+1 === pos.count ? 'on' : (i+1 < pos.count ? 'past' : ''); }
+    $('tWhere').textContent = pos.lead ? 'Lead-in' : `${phraseLabel(pos.phrase)} · ${pos.count}`;
+  }
+  if (pos.phrase !== lastPhrase){
+    lastPhrase = pos.phrase; const si = pos.lead ? -1 : sectionFor(pos.phrase);
+    if (si >= 0){ const s = cur.sections[si], tv = `var(${TAPES[si%6]})`; $('cdSection').textContent = s.name; $('cdTape').style.background = tv; $('cd').style.setProperty('--cur-tape', tv); $('cdPhrase').textContent = `${word()} ${pos.phrase - s.start + 1} of ${Math.max(1, Math.min(sectionEnd(si), totalPhrases()) - s.start + 1)}`; }
+    const nn = $('noteNow'), nx = $('noteNext');
+    if (pos.lead){ $('noteLabel').textContent = 'Before count 1'; nn.textContent = 'Lead-in. Get into your opening position.'; nn.classList.add('empty'); const n1 = cur.notes[1]; nx.innerHTML = n1 ? `<b>First:</b> ${esc(n1)}` : ''; }
+    else { const n = cur.notes[pos.phrase]; $('noteLabel').textContent = `Note · ${phraseLabel(pos.phrase)}`; if (n && n.trim()){ nn.textContent = n; nn.classList.remove('empty'); } else { nn.textContent = `No note for this ${word()}.`; nn.classList.add('empty'); }
+      const nxt = cur.notes[pos.phrase+1]; nx.innerHTML = nxt && pos.phrase+1 <= totalPhrases() ? `<b>Next, ${esc(phraseLabel(pos.phrase+1))}:</b> ${esc(nxt)}` : ''; }
+  }
+  if (cur.formations.length){ const S = stateAt(b); renderDyn(S); $('formName').textContent = S.moving ? `Travelling into ${cur.formations[S.next].name}` : cur.formations[S.idx].name; updateCue(S); }
+  $('tCur').textContent = fmt(t); $('tDur').textContent = fmt(dur());
+  drawTimeline(t); lastT = t; needDraw = false;
+}
+
+/* ---------- start ---------- */
+(async () => {
+  readColors();
+  const ok = await openDB();
+  if (!ok) $('libFoot').textContent = "This phone isn't allowing storage, so numbers last only until you close the app.";
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch(e){}
+  await renderLib();
+  requestAnimationFrame(frame);
+  // Android back button: go back to the list instead of closing the app.
+  document.addEventListener('backbutton', () => { if (cur) closeSong(); });
+  if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) window.Capacitor.Plugins.App.addListener('backButton', () => { if (cur) closeSong(); else window.Capacitor.Plugins.App.exitApp(); });
+})();
+})();
+</script>
+</body>
+</html>

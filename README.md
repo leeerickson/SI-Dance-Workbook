@@ -75,3 +75,36 @@ Projects are stored in the app's own folder (`%APPDATA%\Choreography Workbook`).
 - **Code signing.** Without a signing certificate, Windows SmartScreen shows "Windows protected your PC" the first time someone runs the app. They need to click "More info", then "Run anyway". A certificate costs roughly $100–400 a year.
 - **Library backup.** There's no one-click backup or restore of the whole library yet.
 - **Automatic updates.**
+
+## Android player (`mobile/`)
+
+**Workbook Player** is a play-only Android app. It opens `.dance` files and plays them, with no editing:
+
+- big count, section and 8-count, plus the note for each 8-count and the next one
+- speed (50–100% without pitch change), count-off, loop this 8-count, and repeat sections a set number of times with a count-in
+- the live formation with props, in audience or dancer view; "Follow" a dancer for their spot, where they go next and their prop jobs, or follow the stage crew
+- the video, if the file includes it, locked to the music, with mirror
+- if the file came without music, add your own copy of the song
+- the screen stays on while a song is open, and numbers you open are kept on the phone
+
+It's the web page in `mobile/www/` wrapped with Capacitor. To build the APK, run the **Android build** workflow from the Actions tab. It publishes a release with the APK to install. To build it yourself you need Android Studio or the Android SDK, plus Java 17. Run each command from the `mobile/` folder.
+
+```bash
+npm ci
+```
+
+```bash
+npm run sync
+```
+
+```bash
+cd android && ./gradlew assembleDebug
+```
+
+To test the player in a phone-sized browser (uses Playwright):
+
+```bash
+node test/player-test.js path/to/file.dance
+```
+
+Test builds are signed with `android/app/test-signing.keystore`, which is kept in the repository so each build installs over the last one. Before publishing to the Play Store, create a private release key and keep it out of the repository.

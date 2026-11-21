@@ -1,0 +1,6 @@
+{
+  "appId": "app.choreographyworkbook.player",
+  "appName": "Workbook Player",
+  "webDir": "www",
+  "android": { "allowMixedContent": false, "backgroundColor": "#191E33" }
+}

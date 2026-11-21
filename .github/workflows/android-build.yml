@@ -1,0 +1,54 @@
+name: Android build
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+      - run: npm run sync
+      - name: Build the APK
+        working-directory: mobile/android
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+      - id: ver
+        run: echo "v=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+      - run: cp android/app/build/outputs/apk/debug/app-debug.apk "Workbook-Player-${{ steps.ver.outputs.v }}.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: workbook-player-android
+          path: mobile/Workbook-Player-*.apk
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-v${{ steps.ver.outputs.v }}-build${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: Workbook Player ${{ steps.ver.outputs.v }} for Android (build ${{ github.run_number }})
+          prerelease: true
+          make_latest: false
+          files: mobile/Workbook-Player-*.apk
+          body: |
+            **Workbook Player for Android**: opens .dance files and plays them. No editing.
+
+            **To install:** open this page on your Android phone, tap **Workbook-Player-…apk** below, then open the download.
+            Android will ask you to allow installing apps from your browser (or Files app): turn that on, go back, and tap **Install**.
+            Play Protect may warn that it doesn't recognise the app; tap **Install anyway**.
+
+            Test build: signed with a test key, not from the Play Store.
