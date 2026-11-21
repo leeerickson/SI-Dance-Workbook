@@ -42,6 +42,29 @@ const types = { '.html':'text/html', '.js':'text/javascript', '.woff2':'font/wof
   ok((await page.textContent('#formName')) === 'Walk into V', 'formation for Verse 2 shows');
   ok(await page.$('#stage.has-floor #stageFloorSlot #stageSvg') !== null, 'with no video, the formation fills the top area');
   ok(await page.isVisible('#noteNow'), 'the note is still shown under it');
+  // Layout must not move as counts, notes and formation names change.
+  {
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const spots = new Set(), toggles = new Set();
+    for (let i = 0; i < 20; i++){
+      await page.click('#nextBtn'); await page.waitForTimeout(60);
+      const b = await page.$eval('#playBtn', e => Math.round(e.getBoundingClientRect().top + window.scrollY));
+      const t = await page.$eval('#floorBox .view-toggle', e => Math.round(e.getBoundingClientRect().top + window.scrollY));
+      spots.add(b); toggles.add(t);
+    }
+    // mid-travel moments too (long formation names like "Travelling into Pinwheel circle")
+    for (const x of [0.22, 0.27, 0.4, 0.71, 0.86, 0.93]){
+      const box = await page.$eval('#timeline', e => { const r = e.getBoundingClientRect(); return {x:r.left, y:r.top + r.height/2, w:r.width}; });
+      await page.mouse.click(box.x + box.w * x, box.y); await page.waitForTimeout(60);
+      spots.add(await page.$eval('#playBtn', e => Math.round(e.getBoundingClientRect().top + window.scrollY)));
+      toggles.add(await page.$eval('#floorBox .view-toggle', e => Math.round(e.getBoundingClientRect().top + window.scrollY)));
+    }
+    ok(spots.size === 1, `play controls stay put while the song moves (${[...spots].join(', ')})`);
+    ok(toggles.size === 1, `Audience/Dancer switch stays on its line (${[...toggles].join(', ')})`);
+    for (let i = 0; i < 26; i++) await page.click('#prevBtn');
+    for (let i = 0; i < 4; i++) await page.click('#nextBtn');
+    await page.waitForTimeout(200);
+  }
   await page.selectOption('#followSel', 'd4'); await page.waitForTimeout(200);
   await page.evaluate(() => window.scrollTo(0, 0)); await page.waitForTimeout(150);
   if (shots) await page.screenshot({ path: path.join(shots, 'player-top.png') });

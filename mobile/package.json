@@ -1,6 +1,6 @@
 {
   "name": "workbook-player",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Choreography Workbook Player for Android: opens .dance files and plays them.",
   "scripts": {
