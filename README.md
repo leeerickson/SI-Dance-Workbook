@@ -12,6 +12,7 @@ A desktop app for dance teachers, choreographers and dancers to build, rehearse,
 - **Props.** Add chairs, boxes, benches, tables or anything else, drag them on stage in each formation, and choose who moves each prop (a dancer or the stage crew). The app flags props nobody is moving, movers who end too far from their prop, dancers moving two props at once, and anyone standing on a prop. Prop jobs show on each dancer's cues and in a "who moves what" table on the printout.
 - **Formations.** Drag dancers on a numbered stage. Each formation arrives on a count, and the app warns when dancers come within 2 ft of each other. Each dancer gets their own cue list.
 - **Print.** Print the count sheet and formation charts, or save them as a PDF (Ctrl+P, Ctrl+Shift+P).
+- **Make a video.** Save an MP4 of the formations moving to the music, with the count, the note for each 8-count and the timeline (Share & print tab, or Ctrl+Shift+V). Choose 16:9 landscape or 9:16 portrait, the whole song or some sections, 100/90/75/50% speed (the music keeps its pitch), audience or dancer view, highlight one dancer and their path, and include the choreography video picture-in-picture. Videos are drawn frame by frame, which is usually faster than real time.
 - **Share.** Save a `.dance` file (Ctrl+S) and send it like any attachment. The other teacher opens it with Ctrl+O, or by double-clicking it if they used the installer.
 
 ## The `.dance` file

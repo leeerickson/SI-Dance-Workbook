@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('workbook', {
   print: () => ipcRenderer.invoke('print'),
   savePdf: title => ipcRenderer.invoke('pdf:save', { title }),
   reveal: p => ipcRenderer.invoke('reveal', p),
+  chooseVideoPath: name => ipcRenderer.invoke('video:choose', { name }),
+  writeVideo: (filePath, data) => ipcRenderer.invoke('video:write', { filePath, data }),
   onIncomingShare: fn => ipcRenderer.on('share:incoming', (_e, share) => fn(share)),
   onMenu: fn => ipcRenderer.on('menu', (_e, name) => fn(name))
 });

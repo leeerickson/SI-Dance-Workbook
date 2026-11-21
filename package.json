@@ -1,7 +1,7 @@
 {
   "name": "choreography-workbook",
   "productName": "Choreography Workbook",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Build, rehearse, print and share dance choreography. No login; everything stays on your PC.",
   "main": "main.js",
   "author": "Choreography Workbook",
@@ -20,7 +20,8 @@
   "devDependencies": {
     "electron": "33.2.1",
     "electron-builder": "25.1.8",
-    "resedit": "^1.7.2"
+    "resedit": "^1.7.2",
+    "mp4-muxer": "^5.1.3"
   },
   "build": {
     "appId": "app.choreographyworkbook.desktop",

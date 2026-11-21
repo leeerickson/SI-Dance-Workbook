@@ -234,6 +234,13 @@ input[type="number"]{width:72px; font-family:var(--f-mono)}
 .prow-now b{color:var(--ink)}
 .cue-prop{font-size:13px; color:var(--accent); font-weight:500}
 
+/* Video maker */
+.vgrid{display:grid; grid-template-columns:auto minmax(0,1fr); gap:10px 14px; align-items:center}
+.vgrid .seg label{font-family:var(--f-body)}
+.vbar{height:8px; border-radius:4px; background:var(--surface-2); overflow:hidden; margin:12px 0 6px}
+.vbar i{display:block; height:100%; width:0; background:var(--accent); transition:width .2s}
+#vPreviewCanvas{display:block; width:100%; max-height:560px; object-fit:contain; margin-top:12px; border-radius:8px; background:#10131F}
+
 /* Share & print */
 .share-code{width:100%; min-height:120px; font-family:var(--f-mono); font-size:11.5px}
 .radio-row{display:grid; gap:8px}
@@ -485,6 +492,31 @@ input[type="number"]{width:72px; font-family:var(--f-mono)}
           <button class="btn small" id="revealShare" type="button">Show in folder</button>
         </div>
       </div>
+      <div class="panel" id="videoPanel">
+        <div class="panel-head"><h2>Make a video</h2></div>
+        <p class="muted" style="margin:0 0 12px">An MP4 of the formations moving to the music, with the counts, notes and timeline. Send it to dancers and parents who don't have the app, or post it to your studio's page.</p>
+        <div class="vgrid">
+          <span class="label">Shape</span>
+          <div class="seg" role="radiogroup" aria-label="Video shape">
+            <input type="radio" name="vShape" id="vs169" value="169" checked><label for="vs169">16:9 landscape</label>
+            <input type="radio" name="vShape" id="vs916" value="916"><label for="vs916">9:16 portrait</label>
+          </div>
+          <span class="label">Part</span>
+          <div class="inline"><select id="vFrom" aria-label="From section"></select><span class="muted">through</span><select id="vTo" aria-label="Through section"></select></div>
+          <span class="label">Speed</span>
+          <div class="inline"><select id="vSpeed" aria-label="Speed"><option value="1">100%</option><option value="0.9">90%</option><option value="0.75">75%</option><option value="0.5">50%</option></select><span class="muted">Slower videos keep the music's pitch.</span></div>
+          <span class="label">Stage</span>
+          <div class="inline" id="vFormRow"><select id="vView" aria-label="Stage view"><option value="aud">Audience view</option><option value="dan">Dancer view</option></select>
+            <select id="vDancer" aria-label="Highlight a dancer"></select></div>
+          <span class="label">Video</span>
+          <label class="inline" id="vIncVidLbl"><input type="checkbox" id="vIncVid" checked> Include the choreography video</label>
+        </div>
+        <div class="inline" style="margin-top:14px"><button class="btn primary" id="vMake" type="button">Make video…</button><button class="btn" id="vPreview" type="button">Preview a frame</button><button class="btn" id="vCancel" type="button" hidden>Cancel</button></div>
+        <div id="vProgress" hidden><div class="vbar"><i id="vBarFill"></i></div></div>
+        <p class="muted" id="vMsg" style="margin:8px 0 0"></p>
+        <div id="vDone" hidden style="margin-top:10px"><p id="vDoneMsg" style="margin:0 0 8px"></p><button class="btn small" id="vReveal" type="button">Show in folder</button></div>
+        <canvas id="vPreviewCanvas" hidden aria-label="Preview of one video frame"></canvas>
+      </div>
       <div class="panel">
         <div class="panel-head"><h2>How sharing works</h2></div>
         <ol class="muted" style="margin:0; padding-left:18px; display:grid; gap:4px">
@@ -512,6 +544,7 @@ input[type="number"]{width:72px; font-family:var(--f-mono)}
 </div>
 <div id="printRoot" aria-hidden="true"></div>
 
+<script src="vendor/mp4-muxer.js"></script>
 <script>
 (() => {
 const $ = id => document.getElementById(id);
@@ -972,7 +1005,7 @@ function setTab(t){
   ['rehearse','counts','forms','share'].forEach(x => $('tab-'+x).hidden = x !== t);
   if (t === 'counts'){ renderGrid(); renderSheet(); }
   if (t === 'forms'){ lastIdx = null; renderFormsSide(); }
-  if (t === 'share'){ renderPaper(); $('shareOut').hidden = true; }
+  if (t === 'share'){ renderPaper(); renderVideoUI(); $('shareOut').hidden = true; }
   if (t === 'rehearse') renderFollow();
   needDraw = true; lastBeat = null; lastPhrase = null;
 }
@@ -1440,6 +1473,326 @@ function renderPaper(){
 }
 $('prSheet').addEventListener('change', renderPaper); $('prForms').addEventListener('change', renderPaper);
 
+/* ================= video maker =================
+   Renders an MP4 of the formations moving to the music, with the count, the note and the
+   timeline, frame by frame on a canvas, encoded with WebCodecs and packed with mp4-muxer. */
+const VFPS = 30;
+const VC = {bg:'#10131F', panel:'#191E33', card:'#1D2338', floor:'#262B3B', line:'#3A4157', ink:'#F3F4FA', muted:'#9CA3BF', accent:'#8F89FF', prop:'#B98B4E', propEdge:'#F1DFBE', propText:'#E9CFA0'};
+const VTAPE = ['#F2C200','#E8508A','#19A7BC','#45A852','#F07B24','#9A6BF7'];
+let vJob = null;
+
+function renderVideoUI(){
+  if (!cur) return;
+  const f = $('vFrom'), t = $('vTo'), fi = f.value === '' ? 0 : +f.value, ti = t.value === '' ? cur.sections.length - 1 : +t.value;
+  const opts = cur.sections.map((s, i) => `<option value="${i}">${esc(s.name)}</option>`).join('');
+  f.innerHTML = opts; t.innerHTML = opts;
+  f.value = String(Math.min(fi, cur.sections.length - 1)); t.value = String(Math.max(+f.value, Math.min(ti, cur.sections.length - 1)));
+  const d = $('vDancer'), dv = d.value;
+  d.innerHTML = '<option value="">Nobody (everyone the same)</option>' + cur.dancers.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('');
+  d.value = cur.dancers.some(x => x.id === dv) ? dv : '';
+  $('vIncVid').disabled = !cur.video; if (!cur.video) $('vIncVid').checked = false;
+  $('vIncVidLbl').classList.toggle('muted', !cur.video);
+  $('vFormRow').hidden = !cur.formations.length;
+  vSummary();
+}
+function vRange(){
+  const fi = +$('vFrom').value, ti = +$('vTo').value, whole = fi === 0 && ti === cur.sections.length - 1;
+  const start = whole ? 0 : phraseTime(cur.sections[fi].start);
+  const end = whole ? dur() : Math.min(dur(), phraseTime(Math.min(sectionEnd(ti), totalPhrases()) + 1));
+  return {start, end, whole, label: whole ? 'whole song' : (fi === ti ? cur.sections[fi].name : `${cur.sections[fi].name} to ${cur.sections[ti].name}`)};
+}
+function vSummary(){
+  if (!cur || vJob) return;
+  const r = vRange(), rate = +$('vSpeed').value, len = (r.end - r.start) / rate;
+  $('vMsg').textContent = `${r.label}, ${fmt(len)} long${rate < 1 ? ` at ${Math.round(rate*100)}% speed` : ''}.`;
+}
+['vFrom','vTo','vSpeed'].forEach(id => $(id).addEventListener('change', () => {
+  if (id === 'vFrom' && +$('vTo').value < +$('vFrom').value) $('vTo').value = $('vFrom').value;
+  if (id === 'vTo' && +$('vTo').value < +$('vFrom').value) $('vFrom').value = $('vTo').value;
+  vSummary();
+}));
+
+function vLayout(shape){
+  if (shape === '916') return {W:1080, H:1920, shape,
+    title:{x:44, y:78, size:44}, count:{x:40, y:104, w:1000, h:250, big:230, dx:290},
+    stage:{x:40, y:370, w:1000, h:775}, pip:{x:618, y:430, w:400, h:225},
+    note:{x:40, y:1165, w:1000, h:585}, tl:{x:40, y:1770, w:1000, h:110}};
+  return {W:1920, H:1080, shape,
+    title:{x:44, y:62, size:38}, count:{x:1216, y:92, w:664, h:290, big:210, dx:250},
+    stage:{x:40, y:92, w:1136, h:880}, pip:{x:1216, y:398, w:664, h:374},
+    note:{x:1216, y:398, w:664, h:574}, noteVid:{x:1216, y:788, w:664, h:184}, tl:{x:40, y:996, w:1840, h:60}};
+}
+function vRound(c, x, y, w, h, r){ c.beginPath(); c.moveTo(x+r, y); c.arcTo(x+w, y, x+w, y+h, r); c.arcTo(x+w, y+h, x, y+h, r); c.arcTo(x, y+h, x, y, r); c.arcTo(x, y, x+w, y, r); c.closePath(); }
+function vFont(c, weight, size, family, stretch){ c.font = `${weight} ${size}px ${family}`; try { c.fontStretch = stretch || 'normal'; } catch(e){} }
+const VF = {display:'Archivo, "Arial Narrow", sans-serif', body:'Inter, "Segoe UI", sans-serif', mono:'"JetBrains Mono", Consolas, monospace'};
+function vEllipsis(c, text, maxW){ if (c.measureText(text).width <= maxW) return text; let t = text; while (t.length > 1 && c.measureText(t + '…').width > maxW) t = t.slice(0, -1); return t + '…'; }
+function vWrap(c, text, maxW){
+  const words = String(text).split(/\s+/), lines = []; let line = '';
+  for (const w of words){ const test = line ? line + ' ' + w : w; if (c.measureText(test).width <= maxW || !line) line = test; else { lines.push(line); line = w; } }
+  if (line) lines.push(line); return lines;
+}
+
+function vStage(c, L, songT, o){
+  const B = L.stage, k = B.w / 400, toS = (x, y) => o.view === 'aud' ? [B.x + (200 + x*10)*k, B.y + (275 - y*10)*k] : [B.x + (200 - x*10)*k, B.y + (35 + y*10)*k];
+  c.fillStyle = VC.panel; vRound(c, B.x, B.y, B.w, B.h, 22); c.fill();
+  const [ax, ay] = toS(-18, 24), [bx, by] = toS(18, 0);
+  c.fillStyle = VC.floor; c.fillRect(Math.min(ax, bx), Math.min(ay, by), Math.abs(bx - ax), Math.abs(by - ay));
+  c.lineWidth = Math.max(1, k*0.6); c.strokeStyle = VC.line;
+  for (let y = 4; y < 24; y += 4){ const [x1, y1] = toS(-18, y), [x2, y2] = toS(18, y); c.setLineDash(y === 8 || y === 16 ? [4*k, 3*k] : []); c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke(); }
+  c.setLineDash([]);
+  for (let x = -16; x <= 16; x += 4){ const [x1, y1] = toS(x, 0), [x2, y2] = toS(x, 24); c.strokeStyle = x === 0 ? '#59607A' : VC.line; c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke(); }
+  const fr = o.view === 'aud' ? 1 : -1;
+  vFont(c, 500, 10*k, VF.mono); c.textAlign = 'center';
+  for (let x = -16; x <= 16; x += 4){ const [px, py] = toS(x, 0); c.save(); c.translate(px, py); c.rotate(-6*Math.PI/180); c.fillStyle = VTAPE[0]; c.fillRect(-3.5*k, -1.6*k, 7*k, 3.2*k); c.restore(); c.fillStyle = VC.ink; c.fillText(x === 0 ? 'C' : String(Math.abs(x)/2), px, py + fr*13*k + 3.5*k); }
+  vFont(c, 700, 8.5*k, VF.display, 'expanded'); c.fillStyle = VC.muted;
+  const lab = (x, y, t, r) => { c.save(); c.translate(B.x + x*k, B.y + y*k); if (r) c.rotate(r*Math.PI/180); c.fillText(t, 0, 0); c.restore(); };
+  if (o.view === 'aud'){ lab(200, 24, 'UPSTAGE'); lab(200, 306, 'AUDIENCE'); lab(390, 155, 'STAGE LEFT', 90); lab(10, 155, 'STAGE RIGHT', -90); }
+  else { lab(200, 12, 'AUDIENCE'); lab(200, 296, 'UPSTAGE'); lab(390, 155, 'STAGE RIGHT', 90); lab(10, 155, 'STAGE LEFT', -90); }
+  if (!cur.formations.length){ vFont(c, 500, 14*k, VF.body); c.fillStyle = VC.muted; c.fillText('No formations in this number', B.x + B.w/2, B.y + B.h/2); return; }
+  const b = beatAt(songT), S = stateAt(b), sel = o.highlight;
+  // formation name, top left of the stage panel
+  c.textAlign = 'left'; vFont(c, 700, 11*k, VF.display, 'expanded'); c.fillStyle = VC.ink;
+  const fname = S.moving ? `Travelling into ${cur.formations[S.next].name}` : cur.formations[S.idx].name;
+  c.fillText(vEllipsis(c, fname.toUpperCase(), B.w*0.62), B.x + 16*k*0.9, B.y + 22*k*0.9);
+  // highlighted dancer's path
+  if (sel){ const d = cur.dancers.find(x => x.id === sel), pts = cur.formations.map(f => f.pos[sel]).filter(Boolean).map(p => toS(p[0], p[1]));
+    if (d && pts.length > 1){ c.strokeStyle = d.color; c.globalAlpha = .55; c.lineWidth = 1.6*k; c.beginPath(); pts.forEach((p, i) => i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1])); c.stroke(); c.globalAlpha = 1; } }
+  // props
+  const PP = propsAt(S);
+  cur.props.forEach(pr => { const s = PP[pr.id]; if (!s) return; const [x, y] = toS(s.x, s.y), w = pr.w*10*k, d = pr.d*10*k, half = Math.max(w, d)/2;
+    const mover = s.moving && s.mover ? (s.mover === 'crew' ? {id:'crew', name:'Stage crew'} : cur.dancers.find(z => z.id === s.mover)) : null;
+    c.globalAlpha = sel && !(mover && mover.id === sel) ? 0.45 : 1;
+    c.save(); c.translate(x, y); c.rotate((s.rot||0)*Math.PI/180); c.fillStyle = VC.prop; c.strokeStyle = VC.propEdge; c.lineWidth = .8*k;
+    if (s.moving) c.setLineDash([2.5*k, 1.5*k]);
+    if (pr.round){ c.beginPath(); c.ellipse(0, 0, w/2, d/2, 0, 0, Math.PI*2); c.fill(); c.stroke(); } else { vRound(c, -w/2, -d/2, w, d, 2*k); c.fill(); c.stroke(); }
+    c.restore(); c.setLineDash([]);
+    c.textAlign = 'center'; vFont(c, 600, 6.5*k, VF.body); c.fillStyle = VC.propText; c.fillText(pr.name, x, y - half - 3*k);
+    if (mover){ vFont(c, 400, 6.5*k, VF.body); c.fillStyle = VC.ink; c.fillText(`${mover.name} moves it`, x, y + half + 8*k); }
+    c.globalAlpha = 1; });
+  // dancers
+  cur.dancers.forEach(d => { const p = S.pos[d.id]; if (!p) return; const [x, y] = toS(p[0], p[1]);
+    c.globalAlpha = sel && sel !== d.id ? 0.3 : 1;
+    if (d.id === sel){ c.strokeStyle = VC.ink; c.lineWidth = 1.6*k; c.beginPath(); c.arc(x, y, 14*k, 0, Math.PI*2); c.stroke(); }
+    c.fillStyle = d.color; c.beginPath(); c.arc(x, y, 10*k, 0, Math.PI*2); c.fill(); c.strokeStyle = 'rgba(0,0,0,.35)'; c.lineWidth = .8*k; c.stroke();
+    c.textAlign = 'center'; vFont(c, 600, 9*k, VF.body); c.fillStyle = '#fff'; c.fillText(initials(d), x, y + 3.2*k);
+    vFont(c, 400, 6.8*k, VF.body); c.fillStyle = VC.ink; c.fillText(d.name, x, y + 19.5*k);
+    c.globalAlpha = 1; });
+}
+
+function vCount(c, L, songT){
+  const B = L.count, pos = posAt(songT);
+  c.fillStyle = VC.panel; vRound(c, B.x, B.y, B.w, B.h, 22); c.fill();
+  const si = pos.lead ? -1 : sectionFor(pos.phrase), tape = si >= 0 ? VTAPE[si % 6] : VC.muted;
+  const pad = 28, bigX = B.x + pad, baseY = B.y + B.h - 40, dx = B.x + B.dx;
+  c.textAlign = 'left'; vFont(c, 900, B.big, VF.display, 'expanded'); c.fillStyle = pos.lead ? VC.muted : VC.ink;
+  c.fillText(pos.lead ? '·' : String(pos.count), bigX, baseY);
+  c.save(); c.translate(dx + 22, B.y + 74); c.rotate(-6*Math.PI/180); c.fillStyle = tape; c.fillRect(-22, -9, 44, 18); c.restore();
+  vFont(c, 750, L.shape === '916' ? 46 : 38, VF.display, 'expanded'); c.fillStyle = VC.ink;
+  const sname = pos.lead ? 'LEAD-IN' : (si >= 0 ? cur.sections[si].name.toUpperCase() : word().toUpperCase());
+  c.fillText(vEllipsis(c, sname, B.x + B.w - dx - 76 - pad), dx + 60, B.y + 88);
+  vFont(c, 500, L.shape === '916' ? 34 : 30, VF.mono); c.fillStyle = VC.muted;
+  const ph = pos.lead ? `Count 1 in ${Math.max(0, cur.offset - songT).toFixed(1)} s` : (si >= 0 ? `${word()} ${pos.phrase - cur.sections[si].start + 1} of ${Math.max(1, Math.min(sectionEnd(si), totalPhrases()) - cur.sections[si].start + 1)}` : `${word()} ${pos.phrase}`);
+  c.fillText(ph, dx, B.y + 150);
+  const r = L.shape === '916' ? 13 : 11, gap = r*3;
+  for (let i = 0; i < cur.phrase; i++){ c.beginPath(); c.arc(dx + r + i*gap, B.y + 205, r, 0, Math.PI*2);
+    c.fillStyle = pos.lead ? 'rgba(243,244,250,.18)' : (i+1 === pos.count ? tape : (i+1 < pos.count ? 'rgba(243,244,250,.45)' : 'rgba(243,244,250,.18)')); c.fill(); }
+}
+
+function vNote(c, B, songT){
+  const pos = posAt(songT);
+  c.fillStyle = VC.card; vRound(c, B.x, B.y, B.w, B.h, 22); c.fill();
+  const pad = 30, w = B.w - pad*2, small = B.h < 260;
+  c.textAlign = 'left'; vFont(c, 600, small ? 20 : 24, VF.body); c.fillStyle = VC.muted;
+  const label = pos.lead ? 'BEFORE COUNT 1' : `NOTE · ${phraseLabel(pos.phrase).toUpperCase()}`;
+  c.fillText(label, B.x + pad, B.y + pad + (small ? 18 : 22));
+  const note = pos.lead ? 'Lead-in. Get into your opening position.' : ((cur.notes[pos.phrase]||'').trim() || `No note for this ${word()}.`);
+  const empty = pos.lead || !(cur.notes[pos.phrase]||'').trim();
+  const nextN = pos.lead ? cur.notes[1] : (pos.phrase + 1 <= totalPhrases() ? cur.notes[pos.phrase + 1] : '');
+  const nextH = nextN && !small ? 80 : 0, top = B.y + pad + (small ? 44 : 56), avail = B.y + B.h - pad - nextH - top;
+  let size = small ? 34 : 54, lines;
+  for (;;){ vFont(c, empty ? 400 : 500, size, VF.body); lines = vWrap(c, note, w); if (lines.length * size * 1.25 <= avail || size <= 20) break; size -= 2; }
+  const maxLines = Math.max(1, Math.floor(avail / (size*1.25)));
+  if (lines.length > maxLines){ lines = lines.slice(0, maxLines); lines[maxLines-1] = vEllipsis(c, lines[maxLines-1] + ' …', w); }
+  c.fillStyle = empty ? VC.muted : VC.ink;
+  lines.forEach((ln, i) => c.fillText(ln, B.x + pad, top + size + i*size*1.25 - size*0.2));
+  if (nextH){
+    vFont(c, 600, 24, VF.body); c.fillStyle = VC.ink; const lab = pos.lead ? 'First: ' : `Next, ${phraseLabel(pos.phrase + 1)}: `;
+    const lw = c.measureText(lab).width, y = B.y + B.h - pad - 46;
+    c.fillText(lab, B.x + pad, y); vFont(c, 400, 24, VF.body); c.fillStyle = VC.muted;
+    const nl = vWrap(c, nextN, w - lw); c.fillText(nl[0] || '', B.x + pad + lw, y);
+    if (nl.length > 1) c.fillText(vEllipsis(c, nl.slice(1).join(' '), w), B.x + pad, y + 32);
+  }
+}
+
+function vTimelineStatic(L, range){
+  const B = L.tl, cv = document.createElement('canvas'); cv.width = B.w; cv.height = B.h; const c = cv.getContext('2d');
+  const D = dur(), X = s => s / D * B.w, labelH = L.shape === '916' ? 34 : 0, band = 8, wH = B.h - band - labelH;
+  c.fillStyle = VC.panel; vRound(c, 0, 0, B.w, B.h, 12); c.fill();
+  cur.sections.forEach((s, i) => { const a = X(phraseTime(s.start)), b = i < cur.sections.length - 1 ? X(phraseTime(cur.sections[i+1].start)) : B.w; if (a >= B.w) return;
+    c.fillStyle = VTAPE[i % 6]; c.globalAlpha = .16; c.fillRect(a, 0, b - a, wH); c.globalAlpha = 1; c.fillRect(a, wH, b - a, band);
+    if (labelH){ vFont(c, 600, 20, VF.body); c.fillStyle = VC.muted; c.textAlign = 'left'; c.fillText(vEllipsis(c, s.name, Math.max(10, b - a - 8)), a + 4, B.h - 8); } });
+  const pk = cur.peaks;
+  if (pk && pk.length){ const N = pk.length, mid = wH/2; c.fillStyle = VC.muted; c.globalAlpha = .55; for (let x = 0; x < B.w; x += 3){ const a = Math.floor(x/B.w*N), z = Math.max(a+1, Math.floor((x+3)/B.w*N)); let m = 0; for (let i = a; i < z && i < N; i++) if (pk[i] > m) m = pk[i]; const h = Math.max(1, m*mid*.8); c.fillRect(x, mid - h, 2, h*2); } c.globalAlpha = 1; }
+  c.fillStyle = VC.muted; c.globalAlpha = .4; for (let p = 0; timeOfBeat(p*cur.phrase) < D; p++) c.fillRect(Math.round(X(timeOfBeat(p*cur.phrase))), 0, 1, wH); c.globalAlpha = 1;
+  c.fillStyle = VC.accent; cur.formations.forEach(f => { const x = X(timeOfBeat(f.at)); c.beginPath(); c.moveTo(x, 4); c.lineTo(x + 6, 10); c.lineTo(x, 16); c.lineTo(x - 6, 10); c.closePath(); c.fill(); });
+  if (!range.whole){ c.fillStyle = VC.bg; c.globalAlpha = .6; c.fillRect(0, 0, X(range.start), wH + band); c.fillRect(X(range.end), 0, B.w - X(range.end), wH + band); c.globalAlpha = 1; }
+  return {img:cv, X, wH, band};
+}
+
+function vFrame(c, L, songT, o, tl, pipEl, pipShow){
+  c.fillStyle = VC.bg; c.fillRect(0, 0, L.W, L.H);
+  // title row
+  c.textAlign = 'left'; vFont(c, 850, L.title.size, VF.display, 'expanded'); c.fillStyle = VC.ink;
+  const right = (o.rate < 1 ? `${Math.round(o.rate*100)}% SPEED   ` : '') + fmt(songT);
+  vFont(c, 500, L.shape === '916' ? 30 : 26, VF.mono); const rw = c.measureText(right).width;
+  vFont(c, 850, L.title.size, VF.display, 'expanded'); c.fillText(vEllipsis(c, cur.title, L.W - L.title.x*2 - rw - 30), L.title.x, L.title.y);
+  vFont(c, 500, L.shape === '916' ? 30 : 26, VF.mono); c.fillStyle = o.rate < 1 ? VC.accent : VC.muted; c.textAlign = 'right'; c.fillText(right, L.W - L.title.x, L.title.y - 4);
+  vStage(c, L, songT, o);
+  vCount(c, L, songT);
+  const withVid = pipEl && o.video;
+  if (withVid){ const P = L.pip; c.save(); vRound(c, P.x, P.y, P.w, P.h, 16); c.clip(); c.fillStyle = '#000'; c.fillRect(P.x, P.y, P.w, P.h);
+    const vw = pipEl.videoWidth || 16, vh = pipEl.videoHeight || 9, s = Math.min(P.w/vw, P.h/vh), dw = vw*s, dh = vh*s, dx = P.x + (P.w - dw)/2, dy = P.y + (P.h - dh)/2;
+    if (pipShow){ if (cur.video.mirror){ c.translate(dx + dw, dy); c.scale(-1, 1); c.drawImage(pipEl, 0, 0, dw, dh); } else c.drawImage(pipEl, dx, dy, dw, dh); }
+    c.restore(); c.strokeStyle = 'rgba(243,244,250,.5)'; c.lineWidth = 2; vRound(c, P.x, P.y, P.w, P.h, 16); c.stroke(); }
+  vNote(c, withVid && L.noteVid ? L.noteVid : L.note, songT);
+  // timeline + playhead
+  const B = L.tl; c.drawImage(tl.img, B.x, B.y);
+  const px = B.x + tl.X(songT); c.fillStyle = VC.ink; c.fillRect(Math.round(px - 2), B.y - 4, 4, tl.wH + tl.band + 8);
+}
+
+// Pitch-preserving slow-down for the soundtrack (WSOLA). Positions are found on a mono mix
+// and applied to every channel so the stereo image stays together.
+function vStretch(chans, rate){
+  const N = 2048, Hs = 1024, Ha = Hs*rate, tol = 512, inLen = chans[0].length, outLen = Math.floor(inLen / rate);
+  if (inLen < N*2) return chans;
+  const win = new Float32Array(N); for (let i = 0; i < N; i++) win[i] = 0.5 - 0.5*Math.cos(2*Math.PI*i/N);
+  const mono = new Float32Array(inLen); for (let i = 0; i < inLen; i++) mono[i] = (chans[0][i] + chans[chans.length-1][i]) * 0.5;
+  const out = chans.map(() => new Float32Array(outLen + N)), norm = new Float32Array(outLen + N), last = inLen - N - 1;
+  let prev = 0;
+  for (let k = 0; k*Hs < outLen; k++){
+    const ideal = Math.min(last, Math.round(k*Ha)); let best = ideal;
+    if (k > 0){
+      const nat = Math.min(last, prev + Hs), lo = Math.max(0, ideal - tol), hi = Math.min(last, ideal + tol);
+      const score = (cnd, step) => { let s = 0; for (let j = 0; j < N; j += step) s += mono[cnd + j] * mono[nat + j]; return s; };
+      let bs = -Infinity; for (let cnd = lo; cnd <= hi; cnd += 8){ const s = score(cnd, 8); if (s > bs){ bs = s; best = cnd; } }
+      const lo2 = Math.max(lo, best - 8), hi2 = Math.min(hi, best + 8); bs = -Infinity; let b2 = best;
+      for (let cnd = lo2; cnd <= hi2; cnd++){ const s = score(cnd, 4); if (s > bs){ bs = s; b2 = cnd; } } best = b2;
+    }
+    const op = k*Hs;
+    for (let ch = 0; ch < chans.length; ch++){ const src = chans[ch], dst = out[ch]; for (let j = 0; j < N; j++) dst[op + j] += src[best + j] * win[j]; }
+    for (let j = 0; j < N; j++) norm[op + j] += win[j];
+    prev = best;
+  }
+  return out.map(o => { const r = new Float32Array(outLen); for (let i = 0; i < outLen; i++) r[i] = norm[i] > 1e-3 ? o[i] / norm[i] : 0; return r; });
+}
+async function vAudio(range, rate){
+  let blob = null;
+  if (cur.audio && cur.audio.demo){ if (!demoBuf) demoBuf = await buildDemo(); blob = toWav(demoBuf); }
+  else blob = await getMedia(cur.id + ':audio');
+  if (!blob) return null;
+  const ab = await blob.arrayBuffer(), oc = new OfflineAudioContext(2, 1, 48000);
+  const buf = await new Promise((res, rej) => { const p = oc.decodeAudioData(ab, res, rej); if (p && p.then) p.then(res, rej); });
+  const sr = buf.sampleRate, s0 = Math.max(0, Math.floor(range.start*sr)), s1 = Math.min(buf.length, Math.floor(range.end*sr));
+  let chans = [0, 1].map(ch => buf.getChannelData(Math.min(ch, buf.numberOfChannels - 1)).slice(s0, s1));
+  if (rate !== 1) chans = vStretch(chans, rate);
+  const fade = Math.min(Math.floor(0.03*sr), Math.floor(chans[0].length/2));
+  chans.forEach(ch => { for (let i = 0; i < fade; i++){ const g = i / fade; ch[i] *= g; ch[ch.length - 1 - i] *= g; } });
+  return {chans, sr};
+}
+const vTick = () => new Promise(r => setTimeout(r, 0));
+async function vPick(list, test){ for (const x of list){ try { const s = await test(x); if (s && s.supported) return x; } catch(e){} } return null; }
+
+async function makeVideo(){
+  if (vJob) return;
+  if (typeof VideoEncoder === 'undefined' || typeof Mp4Muxer === 'undefined'){ toast("This version of Windows can't make videos from the app."); return; }
+  const shape = document.querySelector('input[name="vShape"]:checked').value, rate = +$('vSpeed').value, range = vRange();
+  const o = {view:$('vView').value, highlight:$('vDancer').value, video:$('vIncVid').checked && !!cur.video, rate};
+  const outDur = (range.end - range.start) / rate, frames = Math.max(1, Math.ceil(outDur * VFPS));
+  const name = `${cur.title} - ${range.whole ? 'formations' : range.label}${rate < 1 ? ` ${Math.round(rate*100)}pct` : ''} (${shape === '169' ? '16x9' : '9x16'})`;
+  const filePath = await window.workbook.chooseVideoPath(name);
+  if (!filePath) return;
+  stopAll();
+  const job = vJob = {cancel:false};
+  const ui = busy => { $('vMake').disabled = busy; $('vCancel').hidden = !busy; $('vProgress').hidden = !busy; if (busy) $('vDone').hidden = true; };
+  const progress = (f, msg) => { $('vBarFill').style.width = `${Math.round(f*100)}%`; $('vMsg').textContent = msg; };
+  ui(true); progress(0, 'Getting ready…');
+  let pipEl = null, pipUrl = null;
+  try {
+    await Promise.all([document.fonts.load('900 100px Archivo'), document.fonts.load('600 40px Inter'), document.fonts.load('500 30px "JetBrains Mono"')]).catch(() => {});
+    const L = vLayout(shape), canvas = document.createElement('canvas'); canvas.width = L.W; canvas.height = L.H;
+    const c = canvas.getContext('2d', {alpha:false}), tl = vTimelineStatic(L, range);
+    progress(0.01, rate < 1 ? 'Slowing down the music…' : 'Preparing the music…'); await vTick();
+    const audio = await vAudio(range, rate);
+    if (job.cancel) throw new Error('cancelled');
+    if (o.video){ const vb = await getMedia(cur.id + ':video'); if (vb){ pipUrl = URL.createObjectURL(vb); pipEl = document.createElement('video'); pipEl.muted = true; pipEl.preload = 'auto'; pipEl.src = pipUrl; await new Promise(r => { pipEl.onloadeddata = r; pipEl.onerror = r; setTimeout(r, 5000); }); } }
+    const vcodec = await vPick(['avc1.640028', 'avc1.4d0028', 'avc1.42002a'], cd => VideoEncoder.isConfigSupported({codec:cd, width:L.W, height:L.H, bitrate:7e6, framerate:VFPS}));
+    if (!vcodec) throw new Error("this PC can't encode H.264 video");
+    const acodec = audio ? await vPick(['mp4a.40.2', 'opus'], cd => AudioEncoder.isConfigSupported({codec:cd, sampleRate:audio.sr, numberOfChannels:2, bitrate:192000})) : null;
+    const muxer = new Mp4Muxer.Muxer({target:new Mp4Muxer.ArrayBufferTarget(), fastStart:'in-memory', firstTimestampBehavior:'offset',
+      video:{codec:'avc', width:L.W, height:L.H, frameRate:VFPS},
+      ...(acodec ? {audio:{codec:acodec === 'opus' ? 'opus' : 'aac', numberOfChannels:2, sampleRate:audio.sr}} : {})});
+    let encErr = null;
+    if (acodec){
+      progress(0.03, 'Adding the music…');
+      const ae = new AudioEncoder({output:(ch, meta) => muxer.addAudioChunk(ch, meta), error:e => encErr = e});
+      ae.configure({codec:acodec, sampleRate:audio.sr, numberOfChannels:2, bitrate:192000});
+      const [L0, R0] = audio.chans, n = L0.length;
+      for (let i = 0; i < n; i += 1024){
+        const m = Math.min(1024, n - i), data = new Float32Array(m*2); data.set(L0.subarray(i, i+m), 0); data.set(R0.subarray(i, i+m), m);
+        const ad = new AudioData({format:'f32-planar', sampleRate:audio.sr, numberOfFrames:m, numberOfChannels:2, timestamp:Math.round(i / audio.sr * 1e6), data});
+        ae.encode(ad); ad.close();
+        if (ae.encodeQueueSize > 64) await vTick();
+        if (encErr) throw encErr;
+      }
+      await ae.flush(); ae.close();
+    }
+    const ve = new VideoEncoder({output:(ch, meta) => muxer.addVideoChunk(ch, meta), error:e => encErr = e});
+    ve.configure({codec:vcodec, width:L.W, height:L.H, bitrate:L.shape === '916' ? 7e6 : 7e6, framerate:VFPS, latencyMode:'quality', avc:{format:'avc'}});
+    const t0 = performance.now();
+    for (let i = 0; i < frames; i++){
+      if (job.cancel) throw new Error('cancelled');
+      if (encErr) throw encErr;
+      const songT = range.start + (i / VFPS) * rate;
+      if (pipEl){ const target = songT - (cur.video.offset || 0);
+        if (target >= 0 && target <= (pipEl.duration || 0)){ if (Math.abs(pipEl.currentTime - target) > 0.001){ pipEl.currentTime = target; await new Promise(r => { const done = () => { pipEl.removeEventListener('seeked', done); r(); }; pipEl.addEventListener('seeked', done); setTimeout(done, 600); }); } } }
+      const vt = pipEl ? songT - (cur.video.offset||0) : -1;
+      vFrame(c, L, songT, o, tl, pipEl, !!pipEl && vt >= 0 && vt <= (pipEl.duration||0));
+      const vf = new VideoFrame(canvas, {timestamp:Math.round(i * 1e6 / VFPS), duration:Math.round(1e6 / VFPS)});
+      ve.encode(vf, {keyFrame: i % (VFPS*2) === 0}); vf.close();
+      while (ve.encodeQueueSize > 6) await vTick();
+      if (i % 10 === 0){ const el = (performance.now() - t0)/1000, left = el / (i+1) * (frames - i - 1);
+        progress(0.05 + 0.93 * (i+1)/frames, `Drawing frame ${i+1} of ${frames}${i > 30 ? ` · about ${left < 60 ? Math.ceil(left) + ' s' : Math.ceil(left/60) + ' min'} left` : ''}`); await vTick(); }
+    }
+    await ve.flush(); ve.close(); if (encErr) throw encErr;
+    progress(0.99, 'Saving…');
+    muxer.finalize();
+    const res = await window.workbook.writeVideo(filePath, muxer.target.buffer);
+    if (!res || !res.ok) throw new Error(res && res.error || 'the file could not be saved');
+    vLastPath = res.path;
+    $('vDoneMsg').textContent = `Saved ${res.path} (${(res.size/1048576).toFixed(1)} MB, ${fmt(outDur)}).${acodec === 'opus' ? ' The sound is in Opus format; if a player has no sound, try VLC.' : ''}${!audio ? ' This number has no music, so the video is silent.' : ''}`;
+    $('vDone').hidden = false;
+  } catch(err){
+    if (err && err.message === 'cancelled') toast('Video cancelled.');
+    else { toast(`Couldn't make the video: ${err && err.message ? err.message : err}`); }
+  } finally {
+    if (pipUrl) URL.revokeObjectURL(pipUrl);
+    vJob = null; ui(false); vSummary();
+  }
+}
+let vLastPath = null;
+$('vMake').addEventListener('click', makeVideo);
+$('vCancel').addEventListener('click', () => { if (vJob) vJob.cancel = true; });
+$('vReveal').addEventListener('click', () => { if (vLastPath) window.workbook.reveal(vLastPath); });
+// Preview one frame in the app, so the layout can be checked before rendering.
+$('vPreview').addEventListener('click', async () => {
+  await Promise.all([document.fonts.load('900 100px Archivo'), document.fonts.load('600 40px Inter'), document.fonts.load('500 30px "JetBrains Mono"')]).catch(() => {});
+  const shape = document.querySelector('input[name="vShape"]:checked').value, range = vRange(), L = vLayout(shape), cv = $('vPreviewCanvas');
+  cv.width = L.W; cv.height = L.H; cv.hidden = false;
+  const o = {view:$('vView').value, highlight:$('vDancer').value, video:false, rate:+$('vSpeed').value};
+  const t = Math.min(range.end - 0.01, Math.max(range.start, aud.currentTime || range.start));
+  vFrame(cv.getContext('2d'), L, t, o, vTimelineStatic(L, range), null, false);
+});
+
 /* ================= timeline ================= */
 const tl = $('timeline'), tg = tl.getContext('2d');
 let colors = {}, colorsAt = 0;
@@ -1565,6 +1918,7 @@ document.addEventListener('keydown', e => {
     else if (name === 'share'){ setTab('share'); $('makeShare').click(); }
     else if (name === 'print'){ setTab('share'); $('printBtn').click(); }
     else if (name === 'pdf'){ setTab('share'); $('pdfBtn').click(); }
+    else if (name === 'video'){ setTab('share'); $('videoPanel').scrollIntoView({behavior:'smooth', block:'start'}); }
   });
 })();
 })();

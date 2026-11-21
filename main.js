@@ -66,6 +66,7 @@ function buildMenu() {
       { label: 'Save share file…', accelerator: 'CmdOrCtrl+S', click: cmd('share') },
       { label: 'Print…', accelerator: 'CmdOrCtrl+P', click: cmd('print') },
       { label: 'Save printout as PDF…', accelerator: 'CmdOrCtrl+Shift+P', click: cmd('pdf') },
+      { label: 'Make video…', accelerator: 'CmdOrCtrl+Shift+V', click: cmd('video') },
       { type: 'separator' },
       { label: 'Back to library', accelerator: 'CmdOrCtrl+L', click: cmd('library') },
       { type: 'separator' },
@@ -166,3 +167,22 @@ ipcMain.handle('pdf:save', async (_e, { title }) => {
 });
 
 ipcMain.handle('reveal', (_e, p) => { if (p && fs.existsSync(p)) shell.showItemInFolder(p); });
+
+/* ---------- video export ----------
+   The page renders the MP4 itself (WebCodecs); main only asks where to save it
+   and writes the bytes, and only to the path the user just chose. */
+let videoPath = null;
+ipcMain.handle('video:choose', async (_e, { name }) => {
+  const res = await dialog.showSaveDialog(win, {
+    title: 'Save video',
+    defaultPath: path.join(app.getPath('videos'), safeName(name) + '.mp4'),
+    filters: [{ name: 'MP4 video', extensions: ['mp4'] }]
+  });
+  videoPath = res.canceled || !res.filePath ? null : res.filePath;
+  return videoPath;
+});
+ipcMain.handle('video:write', async (_e, { filePath, data }) => {
+  if (!filePath || filePath !== videoPath) return { ok: false, error: 'Choose where to save the video first.' };
+  try { fs.writeFileSync(filePath, Buffer.from(data)); videoPath = null; return { ok: true, path: filePath, size: fs.statSync(filePath).size }; }
+  catch (err) { return { ok: false, error: friendly(err) }; }
+});

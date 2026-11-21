@@ -68,6 +68,15 @@ const AdmZip = require('adm-zip');
   const pdf = fs.readFileSync(pdfPath);
   ok(pdf.slice(0, 4).toString() === '%PDF' && pdf.length > 20000, `printout saved as a PDF (${Math.round(pdf.length / 1024)} KB)`);
 
+  // Video: 9:16 of the Intro
+  const videoPath = path.join(tmp, 'Intro.mp4');
+  await app.evaluate(({ dialog }, p) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: p }); }, videoPath);
+  await win.click('label[for=vs916]'); await win.selectOption('#vFrom', '0'); await win.selectOption('#vTo', '0');
+  await win.click('#vMake');
+  await win.waitForFunction(() => !document.getElementById('vDone').hidden, null, { timeout: 120000 });
+  const mp4 = fs.readFileSync(videoPath);
+  ok(mp4.slice(4, 8).toString() === 'ftyp' && mp4.length > 100000, `video saved as an MP4 (${Math.round(mp4.length / 1024)} KB)`);
+
   await app.evaluate(({ dialog }, p) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [p] }); }, sharePath);
   await win.click('#backBtn');
   await win.waitForSelector('.card');
