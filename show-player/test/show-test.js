@@ -160,6 +160,32 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await waitFor(() => SP.S.live.state === 'standby');
   ok(await sp(() => SP.S.live.standbyId === SP.S.show.tracks[0].id), 'Shift+Esc stops and stands by on the same song');
 
+  // Restart and play again
+  await win.click('#tabShow');
+  await sp(() => { SP.S.show.tracks[0].endAt = 3; });
+  await win.keyboard.press('Space');
+  await waitFor(() => SP.S.live.state === 'playing');
+  await sleep(1500);
+  await win.keyboard.press('r');
+  await sleep(300);
+  const rs = await sp(() => ({ id: SP.S.live.currentId, t: SP.active.time, st: SP.S.live.state }));
+  ok(rs.st === 'playing' && rs.t < 0.8, `R restarts the playing song from the top (now at ${rs.t.toFixed(2)} s)`);
+  await waitFor(() => SP.S.live.state === 'standby', null, 6000);
+  ok(await sp(id => SP.S.live.standbyId !== id && SP.S.live.played.has(id), rs.id), 'when it ends, the next song stands by and this one is marked played');
+  await win.keyboard.press('r');
+  await sleep(200);
+  ok(await sp(id => SP.S.live.standbyId === id && !SP.S.live.played.has(id), rs.id), 'R after it ends stands it by again, no longer marked played');
+  ok(await win.isVisible('#plist .row.standby') && (await win.textContent('#plist .row.standby .t1')).includes('Tiny Tots Tap'), 'the playlist shows it standing by');
+  await sp(() => { SP.S.live.played.add(SP.S.show.tracks[2].id); SP.S.live.standbyId = SP.S.show.tracks[3].id; });
+  await win.click('#plist .row >> nth=2'); await sleep(150);
+  ok((await win.textContent('#iCueNext')) === 'Play this again', 'a played song offers "Play this again"');
+  await win.click('#iCueNext'); await sleep(150);
+  ok(await sp(() => SP.S.live.standbyId === SP.S.show.tracks[2].id && !SP.S.live.played.has(SP.S.show.tracks[2].id)), '"Play this again" stands it by and un-dims it');
+  await win.evaluate(() => { window.confirm = () => true; });
+  await win.click('#bResetShow'); await sleep(150);
+  ok(await sp(() => SP.S.live.played.size === 0 && SP.S.live.standbyId === SP.S.show.tracks[0].id), 'Reset show clears every played mark and stands by on the first song');
+  await sp(() => { SP.S.show.tracks[0].endAt = 0; });
+
   // Drag to reorder: move the Finale to the top
   await win.click('#tabShow');
   await win.dragAndDrop('#plist .row >> nth=4', '#plist .row >> nth=0', { targetPosition: { x: 40, y: 3 } });

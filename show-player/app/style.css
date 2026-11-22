@@ -142,6 +142,7 @@ input[type="range"]{accent-color:var(--accent)}
 .tb b{font-weight:650; font-size:13.5px}
 .tb span{font-family:var(--f-mono); font-size:11px; color:var(--muted)}
 .tb.danger b{color:var(--warn)}
+.tbtns .tb.danger{grid-column:1 / -1}
 .tb:hover{border-color:var(--muted)}
 .transmode{display:grid; align-content:center; gap:6px}
 .seg{display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden}

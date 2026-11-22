@@ -42,6 +42,7 @@
     <div class="tabpanel" id="panelShow">
       <div class="list-head">
         <button class="btn primary small" id="bAdd">+ Add music or video</button>
+        <button class="btn small" id="bResetShow" title="Mark every song as not played and stand by on the first one">Reset show</button>
         <span class="muted mono" id="showTotal"></span>
       </div>
       <ol class="plist" id="plist" aria-label="Show playlist"></ol>
@@ -82,6 +83,7 @@
         <button class="tb" id="bFade" title="Fade into the next song now (F)"><b>Fade to next</b><span>F</span></button>
         <button class="tb" id="bFadeOut" title="Fade out and wait (Esc)"><b>Fade out</b><span>Esc</span></button>
         <button class="tb" id="bPause" title="Pause or resume (P)"><b id="pauseTxt">Pause</b><span>P</span></button>
+        <button class="tb" id="bRestart" title="Play this song again from the start (R). After it ends, stands it by again."><b>Restart</b><span>R</span></button>
         <button class="tb danger" id="bStop" title="Stop now and go back to the start of this song (Shift+Esc)"><b>Stop</b><span>Shift+Esc</span></button>
       </div>
       <div class="transmode">
@@ -315,6 +317,7 @@
       <tr><td><kbd>Esc</kbd></td><td>Fade out, then stand by on the next song</td></tr>
       <tr><td><kbd>Shift</kbd>+<kbd>Esc</kbd></td><td>Stop now and stand by on the same song</td></tr>
       <tr><td><kbd>P</kbd></td><td>Pause or resume</td></tr>
+      <tr><td><kbd>R</kbd></td><td>Restart the song from the top (after it ends: stand it by to play again)</td></tr>
       <tr><td><kbd>C</kbd></td><td>Add a cue at the playhead</td></tr>
       <tr><td><kbd>1</kbd>–<kbd>8</kbd></td><td>Hot sounds (press again to stop)</td></tr>
       <tr><td><kbd>B</kbd></td><td>Pre-show music: play or fade out</td></tr>

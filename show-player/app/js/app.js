@@ -59,7 +59,7 @@
   const newShow = () => ({ id: uid(), name: 'Recital', tracks: [], filler: [], fillerOpts: { loop: true, shuffle: false, levelDb: -6 }, hotCues: Array(8).fill(null) });
   const S = {
     settings: { ...DEFAULTS }, show: newShow(), filePath: null, dirty: false, selectedId: null,
-    live: { state: 'idle', currentId: null, standbyId: null, nextId: null, played: new Set(), lastCue: null, lastPos: 0, busy: false, fadingOut: false, xfade: null, endsAt: 0 },
+    live: { state: 'idle', currentId: null, standbyId: null, nextId: null, played: new Set(), lastId: null, lastCue: null, lastPos: 0, busy: false, fadingOut: false, xfade: null, endsAt: 0 },
     phones: { message: '', intermissionEnds: 0 }
   };
   const tracks = () => S.show.tracks;
@@ -220,7 +220,7 @@
       await deck.play(1, xfade > 0 ? xfade : fadeIn);
       active = deck;
       L.currentId = t.id; L.standbyId = null; if (L.nextId === t.id) L.nextId = null;
-      L.played.add(t.id); L.lastPos = deck.time; L.fadingOut = false; L.lastCue = null;
+      L.played.add(t.id); L.lastId = t.id; L.lastPos = deck.time; L.fadingOut = false; L.lastCue = null;
       stall.t = deck.time; stall.at = performance.now();
       showVideo();
       setState('playing');
@@ -290,9 +290,48 @@
   function cueNext(id) {
     const L = S.live, t = byId(id); if (!t) return;
     if (!t.enabled) { t.enabled = true; changed(); }
+    if (id !== L.currentId) L.played.delete(id);
     if (L.state === 'playing' || L.state === 'paused') { L.nextId = id === L.currentId ? null : id; preload = { deck: null, id: null, promise: null }; toast(`Next: ${label(t)}`); }
     else { L.standbyId = id; if (L.state === 'idle' || L.state === 'ended') L.state = 'standby'; toast(`Standing by: ${label(t)}. Press GO.`); }
     renderTransport(); renderLists(); pushStatus(true);
+  }
+  // Restart (R): while a song plays, jump back to its start and keep going (a quick dip so there's no click).
+  // When nothing is playing, stand the song that just played by again, so GO plays it once more.
+  function restart() {
+    const L = S.live;
+    if ((L.state === 'playing' || L.state === 'paused') && active && active.track && !L.busy) {
+      const t = active.track, deck = active, wasPaused = L.state === 'paused';
+      if (L.xfade) finishXfade(L.xfade.from);
+      L.fadingOut = false;
+      const go = () => {
+        deck.el.currentTime = effStart(t);
+        L.lastPos = effStart(t); L.lastCue = null; stall.t = L.lastPos; stall.at = performance.now();
+        preload = { deck: null, id: null, promise: null };
+        if (!wasPaused) deck.fade(1, 0.12);
+        renderTransport(); pushStatus(true);
+      };
+      if (wasPaused) { deck.fader.gain.value = 1; go(); }
+      else { deck.fade(0, 0.06); setTimeout(safe(go), 70); }
+      log('restart', label(t));
+      toast(`Restarted “${label(t)}” from the top.`);
+      return;
+    }
+    const t = byId(L.lastId) || byId(L.standbyId);
+    if (!t) { toast('Nothing has played yet. Click a song and choose "Play this again", or press GO.'); return; }
+    cueNext(t.id);
+  }
+  // Reset show: every song back to "not played", standing by on the first one.
+  function resetShow() {
+    const L = S.live;
+    if (L.state === 'playing' || L.state === 'paused') { toast('Stop the music first, then reset the show.'); return; }
+    if (L.played.size && !confirm('Mark every song as not played and stand by on the first one?')) return;
+    L.played = new Set(); L.lastId = null; L.nextId = null; L.lastCue = null;
+    const first = firstTrack();
+    L.standbyId = first ? first.id : null;
+    setState(first ? 'standby' : 'idle');
+    renderInspector();
+    toast(first ? `Show reset. Standing by on “${label(first)}”.` : 'Show reset.');
+    log('reset show');
   }
   function deckError(deck, err) {
     log('deck error', deck.name, deck.url, err && err.code);
@@ -434,6 +473,7 @@
     $('inspEmpty').hidden = !!t; $('inspBody').hidden = !t;
     if (!t) return;
     $('iHead').textContent = `Song ${t.enabled ? numberOf(t) : '(not in show)'}`;
+    $('iCueNext').textContent = S.live.played.has(t.id) && t.id !== S.live.currentId ? 'Play this again' : 'Play this next';
     $('iFile').textContent = t.path + (t.missing ? '  (missing)' : '');
     const setv = (id, v) => { const el = $(id); if (document.activeElement !== el) el.value = v; };
     setv('iDance', t.dance); setv('iTitle', t.title); setv('iClass', t.cls); setv('iNotes', t.notes);
@@ -856,7 +896,9 @@
     S.selectedId = (tracks()[i] || tracks()[i - 1] || {}).id || null;
     changed(); renderLists(); renderInspector(); renderTransport();
   });
-  on('iCueNext', 'click', () => { const t = sel(); if (t) cueNext(t.id); });
+  on('iCueNext', 'click', () => { const t = sel(); if (t) { cueNext(t.id); renderInspector(); } });
+  on('bRestart', 'click', restart);
+  on('bResetShow', 'click', resetShow);
   on('bAddCue', 'click', () => {
     const t = sel(); if (!t) return;
     const L = S.live, isCur = active && active.track === t && (L.state === 'playing' || L.state === 'paused');
@@ -890,6 +932,7 @@
     else if (k === 'f' || k === 'F') fadeToNext();
     else if (k === 'p' || k === 'P') pause();
     else if (k === 'c' || k === 'C') { const L = S.live; if (active && active.track && (L.state === 'playing' || L.state === 'paused')) addCue(active.track, active.time); else if (sel()) $('bAddCue').click(); }
+    else if (k === 'r' || k === 'R') restart();
     else if (k === 'b' || k === 'B') fillerState.playing && !fillerState.fading ? fillerFadeOut(3) : fillerPlay();
     else if (/^[1-8]$/.test(k) && !e.repeat) fireHot(+k - 1);
     else if (e.altKey && (k === 'ArrowUp' || k === 'ArrowDown')) { e.preventDefault(); moveSelected(k === 'ArrowUp' ? -1 : 1); }
@@ -935,7 +978,7 @@
     for (const t of [...S.show.tracks, ...S.show.filler]) { t.props = t.props || []; t.cues = t.cues || []; if (t.enabled == null) t.enabled = true; }
     S.filePath = filePath; S.dirty = !!dirty; $('dirty').hidden = !S.dirty;
     S.selectedId = S.show.tracks[0] ? S.show.tracks[0].id : null;
-    const L = S.live; Object.assign(L, { state: 'idle', currentId: null, standbyId: null, nextId: null, lastCue: null }); L.played = new Set();
+    const L = S.live; Object.assign(L, { state: 'idle', currentId: null, standbyId: null, nextId: null, lastId: null, lastCue: null }); L.played = new Set();
     active = null; decks.forEach(d => d.unload()); hotBuffers.clear(); fillerStop();
     $('showName').value = S.show.name;
     $('fLevel').value = S.show.fillerOpts.levelDb; $('fLevelTxt').textContent = `${S.show.fillerOpts.levelDb} dB`;
@@ -1445,7 +1488,7 @@
   window.addEventListener('beforeunload', () => { snapshot(); autosave(); });
 
   // for automated tests
-  window.SP = { S, decks, applySettings, openVideoDialog, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
+  window.SP = { S, decks, restart, resetShow, applySettings, openVideoDialog, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
     fillerPlay, fillerFadeOut, fillerState, buildStatus, buildProgram, showRemaining, gainFor, nextAfter, setHotFile, hotBuffers, E, queue: () => queue.length + (analysing ? 1 : 0) };
 
   boot().catch(err => { oops(err); requestAnimationFrame(frame); setInterval(safe(tick), 25); });
