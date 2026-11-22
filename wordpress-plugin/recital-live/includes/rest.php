@@ -204,6 +204,7 @@ function recital_live_rest_post_program( $request ) {
 	}
 	$post_id = (int) $request->get_param( '_rl_post_id' );
 	recital_live_store( $post_id, '_rl_program', $data );
+	recital_live_write_public( $post_id );
 	return recital_live_response(
 		array(
 			'ok'         => true,
@@ -227,6 +228,7 @@ function recital_live_rest_post_status( $request ) {
 	$now     = recital_live_now_ms();
 	recital_live_store( $post_id, '_rl_status', $data );
 	update_post_meta( $post_id, '_rl_received_at', (string) $now );
+	recital_live_write_public( $post_id );
 	return recital_live_response(
 		array(
 			'ok'         => true,
@@ -286,6 +288,17 @@ function recital_live_rest_get( $request ) {
 	if ( null === $given || '' === $given ) {
 		$given = (string) $request->get_param( 'code' );
 	}
+	return recital_live_response( recital_live_payload( $post, $given ) + array( 'server_now' => recital_live_now_ms() ) );
+}
+
+/**
+ * What a viewer gets for a show: everything for crew, without cues, props and notes for everyone else.
+ *
+ * @param WP_Post $post  The show.
+ * @param string  $given Crew code the viewer gave ('' for none).
+ * @return array
+ */
+function recital_live_payload( $post, $given ) {
 	$has_code = '' !== trim( (string) get_post_meta( $post->ID, '_rl_crew_code', true ) );
 	$crew     = recital_live_is_crew( $post->ID, $given );
 	$program  = recital_live_get_json( $post->ID, '_rl_program' );
@@ -294,18 +307,83 @@ function recital_live_rest_get( $request ) {
 	if ( ! $crew ) {
 		recital_live_strip_crew( $program, $status );
 	}
-	return recital_live_response(
-		array(
-			'show'        => array(
-				'slug'     => $post->post_name,
-				'title'    => $post->post_title,
-				'has_code' => $has_code,
-			),
-			'crew'        => $crew,
-			'program'     => $program,
-			'status'      => $status,
-			'received_at' => $received > 0 ? $received : null,
-			'server_now'  => recital_live_now_ms(),
-		)
+	return array(
+		'show'        => array(
+			'slug'     => $post->post_name,
+			'title'    => $post->post_title,
+			'has_code' => $has_code,
+		),
+		'crew'        => $crew,
+		'program'     => $program,
+		'status'      => $status,
+		'received_at' => $received > 0 ? $received : null,
 	);
 }
+
+/**
+ * Where the public copy of a show lives: a small file the web server hands out by itself, so hundreds of
+ * phones don't each start WordPress every couple of seconds.
+ *
+ * @param string $slug Show slug.
+ * @return array|null { path, url } or null when uploads aren't available.
+ */
+function recital_live_public_file( $slug ) {
+	$up = wp_upload_dir( null, false );
+	if ( ! is_array( $up ) || ! empty( $up['error'] ) || empty( $up['basedir'] ) ) {
+		return null;
+	}
+	$name = sanitize_file_name( $slug ) . '.json';
+	return array(
+		'dir'  => $up['basedir'] . '/recital-live',
+		'path' => $up['basedir'] . '/recital-live/' . $name,
+		'url'  => $up['baseurl'] . '/recital-live/' . $name,
+	);
+}
+
+/**
+ * Writes (or removes) the public copy. It holds exactly what a visitor without the crew code is allowed to see.
+ * Failure is harmless: phones fall back to asking WordPress.
+ *
+ * @param int $post_id Show ID.
+ */
+function recital_live_write_public( $post_id ) {
+	$post = get_post( $post_id );
+	if ( ! $post || 'recital_show' !== $post->post_type ) {
+		return;
+	}
+	$file = recital_live_public_file( $post->post_name );
+	if ( ! $file ) {
+		return;
+	}
+	if ( 'publish' !== $post->post_status ) {
+		if ( file_exists( $file['path'] ) ) {
+			@unlink( $file['path'] ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		}
+		return;
+	}
+	if ( ! is_dir( $file['dir'] ) && ! wp_mkdir_p( $file['dir'] ) ) {
+		return;
+	}
+	$json = wp_json_encode( recital_live_payload( $post, '' ) );
+	$tmp  = $file['path'] . '.' . wp_generate_password( 8, false ) . '.tmp';
+	// Written to a temporary file and renamed, so a phone never reads half a file.
+	if ( false !== @file_put_contents( $tmp, $json ) ) { // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+		if ( ! @rename( $tmp, $file['path'] ) ) { // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.WP.AlternativeFunctions.rename_rename
+			@unlink( $tmp ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+		}
+	}
+}
+// Keep the public copy right when the show is edited (crew code, title, published or not), and remove it with the show.
+add_action( 'save_post_recital_show', 'recital_live_write_public', 99 );
+add_action(
+	'before_delete_post',
+	function ( $post_id ) {
+		$post = get_post( $post_id );
+		if ( $post && 'recital_show' === $post->post_type ) {
+			$file = recital_live_public_file( $post->post_name );
+			if ( $file && file_exists( $file['path'] ) ) {
+				@unlink( $file['path'] ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+			}
+		}
+	}
+);

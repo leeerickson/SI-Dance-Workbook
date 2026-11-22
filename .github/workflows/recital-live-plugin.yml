@@ -32,6 +32,11 @@ jobs:
         run: |
           mkdir -p shots
           SHOTS=shots node wordpress-plugin/test/recital-live-test.js
+      - name: Test with the real desktop app sending to the plugin (phone timers, cues, props, public file)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg xvfb
+          xvfb-run -a -s "-screen 0 1920x1200x24" node wordpress-plugin/test/recital-live-desk-test.js
+        timeout-minutes: 6
       - name: Start a real WordPress site with the plugin installed (Docker)
         working-directory: wordpress-plugin/test/recital-live-wp-env
         run: npx --yes @wordpress/env@10.29.0 start

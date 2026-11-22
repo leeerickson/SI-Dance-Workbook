@@ -489,9 +489,10 @@
         h('span', { class: 'n' }, t.enabled ? n : '–'),
         h('span', { class: 't1' }, label(t), t.type === 'video' ? h('span', { class: 'badge v', style: 'margin-left:6px' }, 'VIDEO') : null, t.missing ? h('span', { class: 'badge', style: 'margin-left:6px;color:var(--warn)' }, 'MISSING') : null),
         h('span', { class: 't2' }, t.dance ? t.title : (t.cls || t.name)),
-        h('span', { class: 'meta' }, h('span', null, fmt(effLen(t))), h('span', { class: 'tr' }, TRS[t.transition] || ''), h('span', { title: 'Volume change to even it out' }, g)));
+        h('span', { class: 'meta' }, h('span', { class: 'len' }, h('b', { class: 'eta', 'data-eta': t.id, title: 'Estimated clock time this song starts, if the show runs straight through from now' }), fmt(effLen(t))), h('span', { class: 'tr' }, TRS[t.transition] || ''), h('span', { title: 'Volume change to even it out' }, g)));
     });
     list.replaceChildren(...rows);
+    renderEtas();
     $('showCount').textContent = enabled().length;
     const tot = enabled().reduce((a, t) => a + effLen(t), 0);
     $('showTotal').textContent = enabled().length ? `${enabled().length} songs · ${fmt(tot)}` : '';
@@ -503,6 +504,34 @@
     $('fillCount').textContent = S.show.filler.length;
     $('fillLoop').checked = !!S.show.fillerOpts.loop; $('fillShuffle').checked = !!S.show.fillerOpts.shuffle;
   }
+
+  // Estimated clock time each upcoming song starts, if the show carries on from now with no waiting:
+  // the rest of the current song, then each song's length in order (less any crossfade overlap).
+  function etaTimes() {
+    const L = S.live, out = new Map();
+    const playing = active && active.track && (L.state === 'playing' || L.state === 'paused');
+    let cur = playing ? active.track : (byId(L.standbyId) || (L.state === 'idle' ? firstTrack() : null));
+    if (!cur) return out;
+    let cursor = Date.now() + (playing ? Math.max(0, effEnd(cur) - active.time) : effLen(cur) - fromOffset(cur)) * 1000;
+    if (!playing) out.set(cur.id, Date.now());
+    const seen = new Set([cur.id]);
+    let n = nextAfter(cur.id);
+    while (n && !seen.has(n.id)) {
+      seen.add(n.id);
+      const start = cursor - (cur.transition === 'crossfade' ? Math.min(+cur.xfade || 0, effLen(n) / 2) * 1000 : 0);
+      out.set(n.id, start);
+      cursor = start + effLen(n) * 1000;
+      cur = n; n = nextAfter(n.id);
+      if (L.nextId && n && n.id === L.nextId) n = null; // "play this next" only applies once
+    }
+    return out;
+  }
+  const clockTxt = ms => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  function renderEtas() {
+    const times = etaTimes();
+    document.querySelectorAll('#plist [data-eta]').forEach(el => { const at = times.get(el.dataset.eta); const v = at ? clockTxt(at) : ''; if (el.textContent !== v) el.textContent = v; });
+  }
+  setInterval(safe(renderEtas), 5000);
 
   /* ---------- rendering: inspector ---------- */
   const sel = () => byId(S.selectedId);
@@ -2190,7 +2219,7 @@
   window.addEventListener('beforeunload', () => { snapshot(); autosave(); });
 
   // for automated tests
-  window.SP = { S, decks, health, sys, runHealth, sysLag: () => sys.lag, applyTheme, streamTarget, openSettings, drawCard, videoOut: () => outWin, outFeed, streamStart, streamStop, streamer, trimSilence, collectFiles, syncMaster, updateText, closeCuePop, restart, resetShow, applySettings, openVideoDialog, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
+  window.SP = { S, decks, etaTimes, health, sys, runHealth, sysLag: () => sys.lag, applyTheme, streamTarget, openSettings, drawCard, videoOut: () => outWin, outFeed, streamStart, streamStop, streamer, trimSilence, collectFiles, syncMaster, updateText, closeCuePop, restart, resetShow, applySettings, openVideoDialog, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
     fillerPlay, fillerFadeOut, fillerState, buildStatus, buildProgram, showRemaining, gainFor, nextAfter, setHotFile, hotBuffers, E, queue: () => queue.length + (analysing ? 1 : 0) };
 
   boot().catch(err => { oops(err); requestAnimationFrame(frame); setInterval(updateText, 100); setInterval(safe(tick), 25); });

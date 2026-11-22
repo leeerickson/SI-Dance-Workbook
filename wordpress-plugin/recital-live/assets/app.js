@@ -169,7 +169,29 @@
 		render();
 	}
 
+	/*
+	 * Fast path for everyone without a crew code: a small file the web server hands out without starting
+	 * WordPress. The full route is still used on the first load and once a minute (it also sets the clock
+	 * correction), and at once if the file can't be read.
+	 */
+	var clockOffset = null, lastFull = 0, fastBroken = false, FULL_EVERY = 60000;
+	function fetchFast() {
+		return fetch(cfg.fast + (cfg.fast.indexOf('?') < 0 ? '?' : '&') + 't=' + Date.now(), { cache: 'no-store', credentials: 'omit' }).then(function (res) {
+			if (!res.ok) throw new Error('HTTP ' + res.status);
+			return res.json();
+		}).then(function (json) {
+			if (!isObj(json) || !isObj(json.show)) throw new Error('Bad file');
+			json.server_now = Date.now() + clockOffset;
+			return { json: json, cached: false, cachedAt: 0 };
+		});
+	}
 	function fetchShow(code) {
+		if (!code && cfg.fast && !fastBroken && clockOffset !== null && Date.now() - lastFull < FULL_EVERY) {
+			return fetchFast().catch(function () { fastBroken = true; return fetchFull(code); });
+		}
+		return fetchFull(code);
+	}
+	function fetchFull(code) {
 		var headers = { Accept: 'application/json' };
 		if (code) headers['X-Recital-Code'] = code;
 		return fetch(apiUrl('shows/' + encodeURIComponent(cfg.slug)), { headers: headers, cache: 'no-store' }).then(function (res) {
@@ -178,6 +200,7 @@
 			var cachedAt = cached ? num(res.headers.get('X-Recital-Fetched')) : 0;
 			return res.json().then(function (json) {
 				if (!isObj(json)) throw new Error('Bad reply');
+				if (!cached && json.server_now) { clockOffset = num(json.server_now) - Date.now(); lastFull = Date.now(); fastBroken = false; }
 				return { json: json, cached: cached, cachedAt: cachedAt };
 			});
 		});

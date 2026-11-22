@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Recital Live
  * Description:       Follow a recital live on your phone. The Recital Show Player desktop app sends what's playing to your site, and parents, teachers, techs and prop crew open a small web page to see the current dance, what's next, timers, cues and props.
- * Version:           0.1.0
+ * Version:           0.2.0
  * Requires at least: 5.8
  * Requires PHP:      7.4
  * Author:            Choreography Workbook
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'RECITAL_LIVE_VERSION', '0.1.0' );
+define( 'RECITAL_LIVE_VERSION', '0.2.0' );
 define( 'RECITAL_LIVE_FILE', __FILE__ );
 define( 'RECITAL_LIVE_DIR', __DIR__ );
 define( 'RECITAL_LIVE_MAX_BYTES', 512 * 1024 );

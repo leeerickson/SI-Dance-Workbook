@@ -153,6 +153,7 @@ function recital_live_send_page( $slug ) {
 		'title'   => $post->post_title,
 		'hasCode' => '' !== trim( (string) get_post_meta( $post->ID, '_rl_crew_code', true ) ),
 		'api'     => rest_url( 'recital-live/v1/' ),
+		'fast'    => ( function () use ( $post ) { $f = recital_live_public_file( $post->post_name ); return $f ? $f['url'] : ''; } )(),
 		'sw'      => recital_live_url( 'sw' ),
 		'scope'   => recital_live_sw_scope(),
 		'page'    => recital_live_url( 'page', $post->post_name ),

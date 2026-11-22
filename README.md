@@ -141,6 +141,7 @@ A separate desktop app (Windows and Mac) that runs the music and video for a rec
 - **Recommended settings.** Every sound setting has a ▲ mark at the recommended value and says when it's set there. **Use recommended sound** resets them all except master, balance and trims, which suit your room. The **master volume** is also on the main screen (double-click it for 0 dB).
 - **Skip silence.** New songs start where the music starts and end where it ends, skipping silence at either end. **Skip silence** and **Whole song** in the song details do it by hand.
 - **Spatial enhancer.** Widens the stereo picture (Settings → Spatial enhancer). Width runs from 0% (mono, for a PA with one speaker or speakers far apart) through 100% (unchanged) to 200%. **Keep bass centred** stops the low end from being widened, so it keeps its punch. The speaker tests aren't affected by it.
+- **Estimated start times.** Next to each upcoming song's length, the playlist shows the clock time it should start if the show carries on from now without waiting. It updates as the show runs and when you reorder.
 - **Timers and waveform.** Played, left in the song (amber under 30 s, red under 10 s), left in the show, and the clock time the show should end. The waveform shows the playhead, cue markers, trimmed parts and the crossfade zone.
 - **Cues.** Add lighting, prop, spot, sound, stage or note cues at any time. Press C during the song (a **New cue** box opens with the time already set: type what to call, Tab changes the type, Enter saves, Esc cancels), double-click the waveform, or type a time. **Cue now** flashes when a cue arrives, and **Next cue** counts down to the next one, turning amber shortly before it.
 - **Up next** shows the next dance and how it will start. **Props** shows this number's and the next number's props. Props can be hidden per song.
@@ -179,6 +180,8 @@ The **Recital Show Player build** workflow tests the app on Windows and Mac, bui
 
 A plugin that gives each show its own page for phones at `https://your-site/recital/<show>/`. Teachers, parents, techs and prop people use it to follow the show: what's on now, with count-up and countdown timers, what's next, the show time left, messages and the intermission countdown, and the full running order. With the show's **crew code**, it also shows cues (with filters for Lighting, Props, Spots, Sound, Stage and Notes) and props. The page can be added to the home screen as an app and keeps showing the last update if the signal drops. An **Other shows** menu switches between shows. The shortcode `[recital_live show="<show>"]` puts it on any page.
 
+Built for a full audience: each update from the desk is also saved as a small public file (never containing cues, props or keys when a crew code is set) that phones read straight from the web server, so hundreds of viewers don't each start WordPress every two seconds. Phones check in with WordPress once a minute; crew with the code use the full route.
+
 In WordPress, go to **Recital Live → Shows → Add New**. Set the link name and an optional crew code, publish, and copy the **connection code** into the desktop app's Settings.
 
 ```bash
@@ -187,6 +190,12 @@ node wordpress-plugin/build-recital-live.js
 
 ```bash
 node wordpress-plugin/test/recital-live-test.js
+```
+
+To test the real desktop app sending to the plugin, with a phone-sized browser reading it back (needs php, ffmpeg and, on Linux, `xvfb-run` in front):
+
+```bash
+node wordpress-plugin/test/recital-live-desk-test.js
 ```
 
 The **Recital Live plugin** workflow builds the zip, tests it, tests it again on a real WordPress site in Docker, and publishes a release.

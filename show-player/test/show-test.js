@@ -191,6 +191,14 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(await sp(() => SP.S.live.played.size === 0 && SP.S.live.standbyId === SP.S.show.tracks[0].id), 'Reset show clears every played mark and stands by on the first song');
   await sp(() => { SP.S.show.tracks[0].endAt = 0; });
 
+  // Estimated start times in the playlist
+  const eta = await sp(() => { const tr = SP.S.show.tracks, m = SP.etaTimes(), sb = SP.S.live.standbyId, i = tr.findIndex(t => t.id === sb), a = tr[i], b = tr[i + 1];
+    const len = t => ((t.endAt > 0 && t.endAt < t.duration ? t.endAt : t.duration) - (t.startAt || 0));
+    return { first: Math.abs(m.get(a.id) - Date.now()) < 1500, gap: (m.get(b.id) - m.get(a.id)) / 1000, len: len(a) - (a.transition === 'crossfade' ? Math.min(a.xfade, len(b) / 2) : 0),
+      shown: [...document.querySelectorAll('#plist .row')].map(r => r.querySelector('.eta').textContent) }; });
+  ok(eta.first && Math.abs(eta.gap - eta.len) < 1, `the playlist works out when each song will start (next one ${eta.gap.toFixed(1)} s after this one, which is ${eta.len.toFixed(1)} s long)`);
+  ok(eta.shown.filter(v => /\d{1,2}:\d{2}/.test(v)).length >= 2, `clock times show by the songs still to come (${eta.shown.filter(Boolean).slice(0, 3).join(', ')})`);
+
   // Drag the waveform while stopped to choose where GO starts; the master slider doesn't swallow Space
   const box = await win.$eval('#wave', el => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; });
   await win.mouse.move(box.x + box.w * 0.2, box.y + box.h / 2); await win.mouse.down();

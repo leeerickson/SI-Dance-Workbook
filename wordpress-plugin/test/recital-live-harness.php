@@ -17,6 +17,20 @@ $rl_uri  = (string) $_SERVER['REQUEST_URI'];
 $rl_path = (string) parse_url( $rl_uri, PHP_URL_PATH );
 $rl_host = 'http://' . $_SERVER['HTTP_HOST'];
 
+// The uploads folder (the public copy of each show) is served as plain files, as a web server would.
+define( 'RL_UPLOADS', dirname( getenv( 'RL_DB' ) ?: sys_get_temp_dir() . '/recital-live-db.json' ) . '/uploads' );
+if ( 0 === strpos( $rl_path, '/wp-content/uploads/' ) ) {
+	$file = realpath( RL_UPLOADS . '/' . substr( $rl_path, strlen( '/wp-content/uploads/' ) ) );
+	if ( ! $file || 0 !== strpos( $file, realpath( RL_UPLOADS ) . '/' ) || ! is_file( $file ) ) {
+		http_response_code( 404 );
+		return true;
+	}
+	header( 'Content-Type: application/json' );
+	header( 'X-Served: static' );
+	readfile( $file );
+	return true;
+}
+
 // Plugin files (styles, script, icons) are served as they are.
 if ( 0 === strpos( $rl_path, '/wp-content/plugins/recital-live/' ) ) {
 	$file = realpath( RL_PLUGIN_DIR . '/' . substr( $rl_path, strlen( '/wp-content/plugins/recital-live/' ) ) );
@@ -163,6 +177,9 @@ function wp_parse_url( $u, $c = -1 ) { return parse_url( $u, $c ); }
 function untrailingslashit( $s ) { return rtrim( $s, '/\\' ); }
 function wp_slash( $v ) { return is_string( $v ) ? addslashes( $v ) : $v; }
 function wp_unslash( $v ) { return is_string( $v ) ? stripslashes( $v ) : $v; }
+function wp_upload_dir( $t = null, $c = true ) { global $rl_host; return array( 'basedir' => RL_UPLOADS, 'baseurl' => $rl_host . '/wp-content/uploads', 'error' => false ); }
+function wp_mkdir_p( $d ) { return is_dir( $d ) || mkdir( $d, 0777, true ); }
+function sanitize_file_name( $n ) { return preg_replace( '/[^A-Za-z0-9._-]/', '', (string) $n ); }
 function wp_json_encode( $d, $o = 0, $depth = 512 ) { return json_encode( $d, $o, $depth ); }
 function wp_generate_password( $len = 12, $special = true ) {
 	$chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
