@@ -186,10 +186,15 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(await sp(() => SP.S.live.played.size === 0 && SP.S.live.standbyId === SP.S.show.tracks[0].id), 'Reset show clears every played mark and stands by on the first song');
   await sp(() => { SP.S.show.tracks[0].endAt = 0; });
 
-  // Pressing C opens the New cue box with the cursor in it
+  // Pressing C opens the New cue box with the cursor in it (and the next-cue countdown counts down)
+  await sp(() => { SP.S.show.tracks[0].cues.push({ id: 'cd1', t: 7.5, type: 'stage', text: 'Curtain' }); });
   await win.keyboard.press('Space');
   await waitFor(() => SP.S.live.state === 'playing');
-  await sleep(1200);
+  await sleep(300);
+  const secs = txt => { const m = /in (\d+):(\d+(?:\.\d)?)/.exec(txt); return m ? +m[1] * 60 + +m[2] : NaN; };
+  const cd1 = secs(await win.textContent('#cueNextIn')); await sleep(1000); const cd2 = secs(await win.textContent('#cueNextIn'));
+  ok(cd2 < cd1 - 0.6 && cd2 > cd1 - 1.5, `the next-cue countdown counts down (${cd1} → ${cd2} s)`);
+  await sleep(100);
   await win.keyboard.press('c');
   await sleep(150);
   ok(await win.evaluate(() => document.getElementById('dlgCue').open && document.activeElement === document.getElementById('cpText')), 'C opens the New cue box with the cursor in the text box');

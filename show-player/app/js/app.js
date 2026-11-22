@@ -598,38 +598,54 @@
   }
 
   /* ---------- frame loop: timers, waveform, cue countdown, meters ---------- */
+  // On-screen numbers (timers, cue countdowns, clock) run on their own 10-a-second timer, not on screen
+  // redraws: Windows stops redraws when it thinks the window is covered, and the numbers must keep moving.
+  // Each part is separate, so a problem in one can't freeze the others.
+  let intermissionToasted = 0;
+  function updateText() {
+    const L = S.live;
+    const playing = active && active.track && (L.state === 'playing' || L.state === 'paused');
+    const t = playing ? active.track : null;
+    const part = (name, fn) => { try { fn(); } catch (err) { if (!part.logged) { part.logged = true; log('display error', name, String(err)); } } };
+    part('timers', () => {
+      const pos = t ? active.time - effStart(t) : 0, left = t ? effEnd(t) - active.time : (byId(L.standbyId) ? effLen(byId(L.standbyId)) : 0);
+      $('tElapsed').textContent = fmt(pos);
+      $('tLeft').textContent = fmt(left);
+      const big = $('tLeft').parentElement; big.classList.toggle('amber', !!t && left < 30 && left >= 10); big.classList.toggle('red', !!t && left < 10);
+      const rem = showRemaining(); $('tShow').textContent = fmt(rem);
+      $('tEnds').textContent = rem > 0 ? new Date(Date.now() + rem * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '–';
+    });
+    part('cues', () => {
+      const ci = cueInfo();
+      const lc = L.lastCue && (!t || L.lastCue.trackId === t.id) ? L.lastCue.cue : null;
+      setCueText($('cueNow'), lc);
+      setCueText($('cueNext'), ci.nextCue, ci.nextTrack && t && ci.nextTrack !== t ? `${label(ci.nextTrack)}: ` : (!t && ci.nextTrack ? `${label(ci.nextTrack)}: ` : ''));
+      let when = '';
+      if (ci.nextIn != null) when = `in ${fmt(ci.nextIn, ci.nextIn < 10)}`;
+      else if (ci.nextCue && t) when = `after GO · this song ends in ${fmt(effEnd(t) - active.time)}`; // next song waits for GO
+      else if (ci.nextCue) when = `at ${fmt(ci.nextCue.t - effStart(ci.nextTrack || t || { startAt: 0 }))} after GO`;
+      $('cueNextIn').textContent = when;
+      $('cueNextBox').classList.toggle('warnsoon', ci.nextIn != null && ci.nextIn <= S.settings.cueWarn);
+      $('cueNextBox').style.borderLeftColor = ci.nextCue ? `var(--c-${ci.nextCue.type})` : '';
+      $('cueNowBox').style.borderLeftColor = lc ? `var(--c-${lc.type})` : '';
+    });
+    part('clock', () => { $('clock').textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); });
+    part('intermission', () => {
+      if (!S.phones.intermissionEnds) return;
+      const s = (S.phones.intermissionEnds - Date.now()) / 1000;
+      $('intLeft').textContent = s > 0 ? fmt(s) : '0:00';
+      if (s <= 0 && intermissionToasted !== S.phones.intermissionEnds) { intermissionToasted = S.phones.intermissionEnds; toast('Intermission timer is up.'); }
+    });
+    part('filler', renderFillerStrip);
+    part('hot', hotProgress);
+  }
+  // Screen redraws: just the waveform and meters (they only matter while the window is visible anyway).
   let frameN = 0;
   function frame() {
     requestAnimationFrame(frame);
-    try {
-      frameN++;
-      const L = S.live;
-      const playing = active && active.track && (L.state === 'playing' || L.state === 'paused');
-      const t = playing ? active.track : null;
-      if (frameN % 3 === 0) {
-        const pos = t ? active.time - effStart(t) : 0, left = t ? effEnd(t) - active.time : (byId(L.standbyId) ? effLen(byId(L.standbyId)) : 0);
-        $('tElapsed').textContent = fmt(pos);
-        $('tLeft').textContent = fmt(left);
-        const big = $('tLeft').parentElement; big.classList.toggle('amber', !!t && left < 30 && left >= 10); big.classList.toggle('red', !!t && left < 10);
-        const rem = showRemaining(); $('tShow').textContent = fmt(rem);
-        $('tEnds').textContent = rem > 0 ? new Date(Date.now() + rem * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '–';
-        // cues
-        const ci = cueInfo();
-        const lc = L.lastCue && (!t || L.lastCue.trackId === t.id) ? L.lastCue.cue : null;
-        setCueText($('cueNow'), lc);
-        setCueText($('cueNext'), ci.nextCue, ci.nextTrack && t && ci.nextTrack !== t ? `${label(ci.nextTrack)}: ` : (!t && ci.nextTrack ? `${label(ci.nextTrack)}: ` : ''));
-        $('cueNextIn').textContent = ci.nextIn != null ? `in ${fmt(ci.nextIn, ci.nextIn < 10)}` : ci.nextCue ? (t ? 'after GO' : `at ${fmt(ci.nextCue.t)} after GO`) : '';
-        $('cueNextBox').classList.toggle('warnsoon', ci.nextIn != null && ci.nextIn <= S.settings.cueWarn);
-        $('cueNextBox').style.borderLeftColor = ci.nextCue ? `var(--c-${ci.nextCue.type})` : '';
-        $('cueNowBox').style.borderLeftColor = lc ? `var(--c-${lc.type})` : '';
-        $('clock').textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-        if (S.phones.intermissionEnds) { const s = (S.phones.intermissionEnds - Date.now()) / 1000; $('intLeft').textContent = s > 0 ? fmt(s) : '0:00'; if (s <= 0 && s > -1.5) toast('Intermission timer is up.'); }
-        renderFillerStrip();
-        hotProgress();
-      }
-      drawWave();
-      if (frameN % 2 === 0) drawMeters();
-    } catch (err) { if (frameN % 300 === 0) log('frame error', String(err)); }
+    frameN++;
+    try { drawWave(); } catch (err) { if (frameN % 300 === 0) log('waveform error', String(err)); }
+    try { if (frameN % 2 === 0) drawMeters(); } catch (err) { if (frameN % 300 === 0) log('meter error', String(err)); }
   }
   function setCueText(el, c, prefix = '') {
     const key = c ? prefix + c.id + c.text + c.type : '';
@@ -1528,14 +1544,15 @@
     await recover();
     renderTransport();
     requestAnimationFrame(frame);
+    setInterval(updateText, 100);
     setInterval(safe(tick), 25);
     log('ready', S.show.name, S.show.tracks.length + ' songs');
   }
   window.addEventListener('beforeunload', () => { snapshot(); autosave(); });
 
   // for automated tests
-  window.SP = { S, decks, closeCuePop, restart, resetShow, applySettings, openVideoDialog, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
+  window.SP = { S, decks, updateText, closeCuePop, restart, resetShow, applySettings, openVideoDialog, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
     fillerPlay, fillerFadeOut, fillerState, buildStatus, buildProgram, showRemaining, gainFor, nextAfter, setHotFile, hotBuffers, E, queue: () => queue.length + (analysing ? 1 : 0) };
 
-  boot().catch(err => { oops(err); requestAnimationFrame(frame); setInterval(safe(tick), 25); });
+  boot().catch(err => { oops(err); requestAnimationFrame(frame); setInterval(updateText, 100); setInterval(safe(tick), 25); });
 })();
