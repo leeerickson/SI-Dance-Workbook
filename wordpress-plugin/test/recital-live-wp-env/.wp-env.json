@@ -1,0 +1,5 @@
+{
+  "plugins": ["../../recital-live"],
+  "port": 8888,
+  "testsPort": 8889
+}

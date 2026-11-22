@@ -1,0 +1,54 @@
+{
+  "name": "recital-show-player",
+  "productName": "Recital Show Player",
+  "version": "0.1.0",
+  "description": "Run a dance recital's music and video: playlist with GO, crossfades and fades, cues, props, hot sounds, filler music, preflight checks and live status for phones.",
+  "main": "main.js",
+  "author": "Choreography Workbook",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "test": "node test/show-test.js",
+    "pack:win": "electron-builder --win --x64 --dir --publish never",
+    "dist": "npm run pack:win && node build/stamp-exe.js && electron-builder --win --x64 --prepackaged dist/win-unpacked --publish never",
+    "dist:portable": "npm run pack:win && node build/stamp-exe.js && electron-builder --win portable zip --x64 --prepackaged dist/win-unpacked --publish never",
+    "dist:mac": "electron-builder --mac --publish never"
+  },
+  "devDependencies": {
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8",
+    "resedit": "^1.7.2",
+    "playwright": "1.63.0"
+  },
+  "build": {
+    "appId": "app.choreographyworkbook.showplayer",
+    "productName": "Recital Show Player",
+    "directories": { "output": "dist", "buildResources": "build" },
+    "files": ["main.js", "preload.js", "app/**/*", "package.json"],
+    "fileAssociations": [
+      { "ext": "recital", "name": "Recital show", "description": "Recital playlist with cues and props", "role": "Editor" }
+    ],
+    "win": {
+      "target": [ { "target": "nsis", "arch": ["x64"] }, { "target": "portable", "arch": ["x64"] } ],
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false, "perMachine": false, "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true, "shortcutName": "Recital Show Player",
+      "artifactName": "Recital-Show-Player-Setup-${version}.${ext}"
+    },
+    "portable": { "artifactName": "Recital-Show-Player-Portable-${version}.${ext}" },
+    "artifactName": "Recital-Show-Player-${version}-win-x64.${ext}",
+    "mac": {
+      "target": [ { "target": "dmg", "arch": ["universal"] }, { "target": "zip", "arch": ["universal"] } ],
+      "icon": "build/icon.png",
+      "category": "public.app-category.music",
+      "identity": "-", "hardenedRuntime": false, "gatekeeperAssess": false,
+      "extendInfo": { "NSMicrophoneUsageDescription": "The microphone is used only to level the PA with the calibration noise." },
+      "artifactName": "Recital-Show-Player-${version}-mac.${ext}"
+    },
+    "dmg": { "artifactName": "Recital-Show-Player-${version}-mac.${ext}" }
+  }
+}

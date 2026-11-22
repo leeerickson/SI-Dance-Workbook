@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: data: show:; font-src 'self'; connect-src 'self' show: blob: data:; worker-src 'self'">
+<title>Recital Show Player</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div><div><div class="brand-name">Recital Show Player</div></div></div>
+  <input id="showName" class="showname" type="text" aria-label="Show name" spellcheck="false">
+  <span id="dirty" class="dirty" hidden title="Changes not saved to the show file">Not saved</span>
+  <div class="inline">
+    <button class="btn" id="bNew" title="New show (Ctrl+N)">New</button>
+    <button class="btn" id="bOpen" title="Open show (Ctrl+O)">Open</button>
+    <button class="btn" id="bSave" title="Save show (Ctrl+S)">Save</button>
+  </div>
+  <div class="spacer"></div>
+  <button class="btn" id="bPreflight" title="Check files, sound card and system (Ctrl+K)"><i class="dot" id="pfDot"></i>Preflight</button>
+  <button class="btn" id="bTest" title="Test speakers and level the PA (Ctrl+T)">Test &amp; calibrate</button>
+  <button class="btn" id="bVideo" title="Open the video window on a projector or second screen">Video output</button>
+  <button class="btn" id="bSettings" title="Settings (Ctrl+,)">Settings</button>
+  <button class="phones" id="bPhones" title="Live status for phones (WordPress)"><i class="dot" id="wpDot"></i><span id="wpText">Phones off</span></button>
+  <div class="sys" id="sysBox" title="Computer load">
+    <canvas id="sysGraph" width="132" height="30"></canvas>
+    <div class="sys-txt"><span id="sysCpu">CPU –</span><span id="sysMem">RAM –</span></div>
+  </div>
+  <div class="clock mono" id="clock">--:--</div>
+</header>
+
+<div id="banners"></div>
+
+<main class="layout">
+  <!-- Left: playlists -->
+  <section class="col left">
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" aria-selected="true" data-tab="show" id="tabShow">Show <span class="count" id="showCount">0</span></button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="filler" id="tabFiller">Pre-show &amp; intermission <span class="count" id="fillCount">0</span></button>
+    </div>
+    <div class="tabpanel" id="panelShow">
+      <div class="list-head">
+        <button class="btn primary small" id="bAdd">+ Add music or video</button>
+        <span class="muted mono" id="showTotal"></span>
+      </div>
+      <ol class="plist" id="plist" aria-label="Show playlist"></ol>
+      <div class="dropzone" id="dropShow">Drag music or video files here. Drag rows to change the order, even during the show.</div>
+    </div>
+    <div class="tabpanel" id="panelFiller" hidden>
+      <div class="list-head">
+        <button class="btn primary small" id="bAddFill">+ Add music</button>
+        <label class="chk"><input type="checkbox" id="fillLoop"> Loop</label>
+        <label class="chk"><input type="checkbox" id="fillShuffle"> Shuffle</label>
+      </div>
+      <ol class="plist filler" id="flist" aria-label="Pre-show and intermission music"></ol>
+      <div class="dropzone" id="dropFill">Drag music here for walk-in, intermission and walk-out.</div>
+    </div>
+  </section>
+
+  <!-- Centre: the show -->
+  <section class="col center">
+    <div class="now panel" id="nowPanel">
+      <div class="now-main">
+        <div class="now-top"><span class="state" id="stateChip">Not started</span><span class="muted mono" id="nowNum"></span><span class="muted" id="nowTrans"></span></div>
+        <div class="now-dance" id="nowDance">Add songs to start</div>
+        <div class="now-title" id="nowTitle"></div>
+        <div class="timers">
+          <div class="tm"><span class="label">Played</span><b class="mono" id="tElapsed">0:00</b></div>
+          <div class="tm big"><span class="label">Left in song</span><b class="mono" id="tLeft">0:00</b></div>
+          <div class="tm"><span class="label">Left in show</span><b class="mono" id="tShow">0:00</b></div>
+          <div class="tm"><span class="label">Ends about</span><b class="mono" id="tEnds">–</b></div>
+        </div>
+      </div>
+      <div class="vprev" id="vprev" hidden><div class="vlabel">Video</div><div id="deckHost"></div></div>
+    </div>
+    <canvas class="wave" id="wave" height="120" title="Shift-click to jump. Double-click to add a cue there."></canvas>
+
+    <div class="transport">
+      <button class="go" id="bGo" title="GO (Space)"><b>GO</b><span id="goSub">Space</span></button>
+      <div class="tbtns">
+        <button class="tb" id="bFade" title="Fade into the next song now (F)"><b>Fade to next</b><span>F</span></button>
+        <button class="tb" id="bFadeOut" title="Fade out and wait (Esc)"><b>Fade out</b><span>Esc</span></button>
+        <button class="tb" id="bPause" title="Pause or resume (P)"><b id="pauseTxt">Pause</b><span>P</span></button>
+        <button class="tb danger" id="bStop" title="Stop now and go back to the start of this song (Shift+Esc)"><b>Stop</b><span>Shift+Esc</span></button>
+      </div>
+      <div class="transmode">
+        <span class="label">After this song</span>
+        <div class="seg" id="segTrans" role="radiogroup" aria-label="After this song">
+          <button data-v="stop" role="radio">Wait for GO</button><button data-v="straight" role="radio">Straight on</button><button data-v="crossfade" role="radio">Crossfade</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="cuebar">
+      <div class="cuebox" id="cueNowBox"><span class="label">Cue now</span><div class="cuetext" id="cueNow">–</div></div>
+      <div class="cuebox next" id="cueNextBox"><span class="label">Next cue <b class="mono" id="cueNextIn"></b></span><div class="cuetext" id="cueNext">–</div></div>
+    </div>
+
+    <div class="nextrow">
+      <div class="panel upnext">
+        <span class="label">Up next</span>
+        <div class="un-dance" id="nextDance">–</div>
+        <div class="muted" id="nextInfo"></div>
+      </div>
+      <div class="panel props" id="propsBox">
+        <span class="label">Props</span>
+        <div class="props-cols"><div><b>This number</b><ul id="propsNow"></ul></div><div><b>Next number</b><ul id="propsNext"></ul></div></div>
+      </div>
+    </div>
+
+    <div class="hotrow">
+      <span class="label">Hot sounds <span class="muted">1–8 · music ducks while they play</span></span>
+      <div class="hots" id="hots"></div>
+    </div>
+
+    <div class="bottomrow">
+      <div class="panel meters">
+        <span class="label">Output</span>
+        <div class="meter"><span>L</span><div class="bar"><i id="mL"></i><s id="hL"></s></div></div>
+        <div class="meter"><span>R</span><div class="bar"><i id="mR"></i><s id="hR"></s></div></div>
+        <div class="muted mono" id="meterTxt">–</div>
+      </div>
+      <div class="panel fillstrip">
+        <span class="label">Pre-show / intermission</span>
+        <div class="fs-now" id="fillNow">Stopped</div>
+        <div class="inline">
+          <button class="btn small" id="fPlay">Play</button>
+          <button class="btn small" id="fNext">Next</button>
+          <button class="btn small" id="fStop">Fade out</button>
+          <input type="range" id="fLevel" min="-30" max="6" step="1" aria-label="Filler volume" title="Filler volume">
+          <span class="mono muted" id="fLevelTxt"></span>
+        </div>
+      </div>
+      <div class="panel phonebox">
+        <span class="label">Message to phones</span>
+        <input type="text" id="phoneMsg" placeholder="e.g. Intermission — 15 minutes" maxlength="140">
+        <div class="inline"><input type="number" id="intMin" min="1" max="60" value="15" aria-label="Intermission minutes"> min <button class="btn small" id="intGo">Start intermission timer</button><span class="mono" id="intLeft"></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Right: selected song -->
+  <section class="col right" id="insp">
+    <div class="insp-empty" id="inspEmpty"><h2>Song details</h2><p class="muted">Click a song in the playlist to set its dance name, what happens after it, its cues and its props.</p></div>
+    <div id="inspBody" hidden>
+      <div class="insp-head"><h2 id="iHead">Song</h2><button class="btn small" id="iCueNext" title="Make this the next song">Play this next</button></div>
+      <div class="file-line muted" id="iFile"></div>
+      <div class="fields">
+        <label>Dance name<input type="text" id="iDance" placeholder="e.g. Senior Jazz"></label>
+        <label>Song title<input type="text" id="iTitle"></label>
+        <label>Class / teacher<input type="text" id="iClass"></label>
+        <label class="wide">Notes<textarea id="iNotes" rows="2"></textarea></label>
+        <label>After this song
+          <select id="iTrans"><option value="stop">Wait for GO</option><option value="straight">Straight on (no gap)</option><option value="crossfade">Crossfade</option></select></label>
+        <label>Crossfade seconds<input type="number" id="iXfade" min="0.5" max="30" step="0.5"></label>
+        <label>Start at<input type="text" id="iStart" class="mono" placeholder="0:00"></label>
+        <label>End at<input type="text" id="iEnd" class="mono" placeholder="end"></label>
+        <label>Volume trim (dB)<input type="number" id="iTrim" min="-20" max="12" step="0.5"></label>
+        <div class="lufs mono muted" id="iLufs"></div>
+      </div>
+      <div class="sub-head"><h3>Cues</h3><div class="inline"><select id="cueType" aria-label="Cue type"><option value="light">Lighting</option><option value="prop">Props</option><option value="spot">Spots</option><option value="sound">Sound</option><option value="stage">Stage</option><option value="note">Note</option></select><button class="btn small" id="bAddCue" title="Add a cue at the playhead (C)">+ Cue at playhead</button></div></div>
+      <ul class="cues" id="iCues"></ul>
+      <div class="sub-head"><h3>Props</h3><label class="chk"><input type="checkbox" id="iShowProps"> Show on screen and phones</label></div>
+      <ul class="propl" id="iProps"></ul>
+      <div class="inline"><input type="text" id="propNew" placeholder="Add a prop, e.g. 2 chairs stage left"><button class="btn small" id="bAddProp">Add</button></div>
+      <div class="insp-foot"><label class="chk"><input type="checkbox" id="iEnabled"> Include in the show</label><button class="btn small danger" id="iRemove">Remove from playlist</button></div>
+    </div>
+  </section>
+</main>
+
+<!-- Settings -->
+<dialog id="dlgSettings" class="dlg">
+  <form method="dialog" class="dlg-in">
+    <div class="dlg-head"><h2>Settings</h2><button class="btn small" value="close">Done</button></div>
+    <div class="dlg-grid">
+      <fieldset><legend>Sound output</legend>
+        <label>Play through<select id="sOut"></select></label>
+        <p class="muted" id="sOutMsg"></p>
+      </fieldset>
+      <fieldset><legend>Even volume</legend>
+        <label class="chk"><input type="checkbox" id="sNorm"> Even out song volumes (normalize)</label>
+        <label>Target loudness <span class="mono" id="sTargetTxt"></span><input type="range" id="sTarget" min="-24" max="-10" step="1"></label>
+        <label>Most a quiet song can be turned up <span class="mono" id="sBoostTxt"></span><input type="range" id="sBoost" min="0" max="18" step="1"></label>
+        <label class="chk"><input type="checkbox" id="sLimiter"> Safety limiter (stops it ever getting too loud)</label>
+        <label>Limiter ceiling <span class="mono" id="sCeilTxt"></span><input type="range" id="sCeil" min="-9" max="0" step="0.5"></label>
+      </fieldset>
+      <fieldset><legend>Master and balance</legend>
+        <label>Master level <span class="mono" id="sMasterTxt"></span><input type="range" id="sMaster" min="-30" max="12" step="0.5"></label>
+        <label>Balance <span class="mono" id="sBalTxt"></span><input type="range" id="sBal" min="-1" max="1" step="0.05"></label>
+        <label>Left trim (dB)<input type="number" id="sTrimL" min="-12" max="12" step="0.5"></label>
+        <label>Right trim (dB)<input type="number" id="sTrimR" min="-12" max="12" step="0.5"></label>
+      </fieldset>
+      <fieldset class="span2"><legend>EQ</legend>
+        <label class="chk"><input type="checkbox" id="sEqOn"> EQ on</label>
+        <label class="chk"><input type="checkbox" id="sHpf"> Cut rumble below 60 Hz</label>
+        <div class="eq" id="sEq"></div>
+      </fieldset>
+      <fieldset><legend>Multiband compressor</legend>
+        <label class="chk"><input type="checkbox" id="sMb"> On (evens out bass, middle and treble separately)</label>
+        <label>Amount <span class="mono" id="sMbTxt"></span><input type="range" id="sMbAmt" min="0" max="3" step="0.5"></label>
+      </fieldset>
+      <fieldset><legend>Playback</legend>
+        <label>New songs: after the song<select id="sDefTrans"><option value="stop">Wait for GO</option><option value="straight">Straight on</option><option value="crossfade">Crossfade</option></select></label>
+        <label>Default crossfade (s)<input type="number" id="sXfade" min="0.5" max="30" step="0.5"></label>
+        <label>"Fade to next" takes (s)<input type="number" id="sFade" min="0.5" max="20" step="0.5"></label>
+        <label>"Fade out" takes (s)<input type="number" id="sFadeOut" min="0.5" max="20" step="0.5"></label>
+        <label>Warn before a cue (s)<input type="number" id="sCueWarn" min="0" max="60" step="1"></label>
+        <label class="chk"><input type="checkbox" id="sFillAuto"> GO fades out pre-show music</label>
+        <label class="chk"><input type="checkbox" id="sResume"> If the app has to restart mid-song, carry on playing</label>
+      </fieldset>
+      <fieldset><legend>Hot sounds</legend>
+        <label>Music ducks by <span class="mono" id="sDuckTxt"></span><input type="range" id="sDuck" min="-30" max="0" step="1"></label>
+        <label>Hot sound level <span class="mono" id="sHotTxt"></span><input type="range" id="sHot" min="-20" max="6" step="1"></label>
+      </fieldset>
+      <fieldset class="span2"><legend>Phones (Recital Live for WordPress)</legend>
+        <p class="muted">In WordPress, open <b>Recital Live → Shows</b>, edit the show and copy its connection code. Paste it here.</p>
+        <label>Connection code<input type="text" id="sWpCode" class="mono" spellcheck="false" placeholder="Paste the connection code"></label>
+        <div class="inline"><label class="chk"><input type="checkbox" id="sWpOn"> Send live status to phones</label><button class="btn small" type="button" id="sWpTest">Test connection</button><span id="sWpMsg" class="muted"></span></div>
+        <p class="muted" id="sWpLink"></p>
+      </fieldset>
+    </div>
+  </form>
+</dialog>
+
+<!-- Test & calibrate -->
+<dialog id="dlgTest" class="dlg">
+  <form method="dialog" class="dlg-in">
+    <div class="dlg-head"><h2>Test &amp; calibrate</h2><button class="btn small" value="close">Done</button></div>
+    <div class="dlg-grid">
+      <fieldset><legend>Speaker test</legend>
+        <label>Play through<select id="tOut"></select></label>
+        <label>Test level <span class="mono" id="tLevelTxt"></span><input type="range" id="tLevel" min="-40" max="-6" step="1" value="-20"></label>
+        <label>Sound<select id="tKind"><option value="pink">Pink noise</option><option value="tone">1 kHz tone</option><option value="low">60 Hz tone (subs)</option><option value="sweep">Sweep 20 Hz – 20 kHz</option></select></label>
+        <div class="testbtns">
+          <button class="btn" type="button" data-test="L">Left only</button>
+          <button class="btn" type="button" data-test="R">Right only</button>
+          <button class="btn" type="button" data-test="both">Both</button>
+          <button class="btn" type="button" data-test="phase" title="Right is flipped. If this sounds thinner than Both, the speakers are wired the same way.">Polarity check</button>
+          <button class="btn danger" type="button" id="tStop">Stop</button>
+        </div>
+        <p class="muted" id="tMsg">Walk the room: Left should come only from the left speakers, Right only from the right. "Polarity check" should sound thinner and more spread than "Both".</p>
+      </fieldset>
+      <fieldset><legend>Song loudness check</legend>
+        <p class="muted">Plays 20 seconds from the loudest part of the selected song at show level, through the limiter.</p>
+        <div class="inline"><button class="btn" type="button" id="tSong">Play selected song</button><span class="muted" id="tSongMsg"></span></div>
+      </fieldset>
+      <fieldset class="span2"><legend>Level the PA with a microphone</legend>
+        <p class="muted">Put a measurement microphone (or a laptop mic) where the audience sits. The app plays pink noise at show level and listens. If you have a sound level meter, type its reading once to calibrate the mic.</p>
+        <div class="inline">
+          <label>Microphone<select id="cMic"></select></label>
+          <label>Target <input type="number" id="cTarget" min="60" max="105" step="1" value="85"> dB</label>
+          <button class="btn primary" type="button" id="cStart">Start</button>
+          <button class="btn" type="button" id="cAuto" title="Adjusts Master level until the room reaches the target">Auto-level</button>
+          <button class="btn danger" type="button" id="cStop">Stop</button>
+        </div>
+        <div class="calib">
+          <div class="cal-read"><span class="label">Room level</span><b class="mono" id="cRead">–</b><span class="muted" id="cRaw"></span></div>
+          <div class="bar big"><i id="cBar"></i><s id="cTargetMark"></s></div>
+          <div class="inline"><label>My sound meter reads <input type="number" id="cMeter" min="40" max="130" step="0.5"> dB</label><button class="btn small" type="button" id="cCal">Calibrate mic</button></div>
+          <p id="cMsg" class="muted"></p>
+        </div>
+      </fieldset>
+    </div>
+  </form>
+</dialog>
+
+<!-- Preflight -->
+<dialog id="dlgPreflight" class="dlg">
+  <form method="dialog" class="dlg-in">
+    <div class="dlg-head"><h2>Preflight check</h2><div class="inline"><button class="btn small" type="button" id="pfRun">Run again</button><button class="btn small" type="button" id="pfFind">Find missing files…</button><button class="btn small" value="close">Done</button></div></div>
+    <p class="muted" id="pfSummary"></p>
+    <ul class="pflist" id="pfList"></ul>
+  </form>
+</dialog>
+
+<!-- Hot sound editor -->
+<dialog id="dlgHot" class="dlg small">
+  <form method="dialog" class="dlg-in">
+    <div class="dlg-head"><h2>Hot sound <span id="hNum"></span></h2></div>
+    <div class="fields">
+      <label class="wide">Label<input type="text" id="hLabel" maxlength="24"></label>
+      <label>Colour<select id="hColor"><option value="1">Yellow</option><option value="2">Pink</option><option value="3">Teal</option><option value="4">Green</option><option value="5">Orange</option><option value="6">Purple</option></select></label>
+      <label>Level (dB)<input type="number" id="hLevel" min="-20" max="12" step="0.5"></label>
+      <label class="chk wide"><input type="checkbox" id="hDuck"> Duck the music while it plays</label>
+      <div class="file-line muted wide" id="hFile"></div>
+    </div>
+    <div class="dlg-foot"><button class="btn small" type="button" id="hChange">Change file…</button><button class="btn small danger" type="button" id="hRemove">Remove</button><span class="spacer"></span><button class="btn small" value="cancel">Cancel</button><button class="btn small primary" value="ok" id="hOk">Save</button></div>
+  </form>
+</dialog>
+
+<!-- Keys -->
+<dialog id="dlgKeys" class="dlg small">
+  <form method="dialog" class="dlg-in">
+    <div class="dlg-head"><h2>Keyboard shortcuts</h2><button class="btn small" value="close">Done</button></div>
+    <table class="keys">
+      <tr><td><kbd>Space</kbd></td><td>GO: play the song that's standing by (or resume)</td></tr>
+      <tr><td><kbd>F</kbd></td><td>Fade into the next song now</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>Fade out, then stand by on the next song</td></tr>
+      <tr><td><kbd>Shift</kbd>+<kbd>Esc</kbd></td><td>Stop now and stand by on the same song</td></tr>
+      <tr><td><kbd>P</kbd></td><td>Pause or resume</td></tr>
+      <tr><td><kbd>C</kbd></td><td>Add a cue at the playhead</td></tr>
+      <tr><td><kbd>1</kbd>–<kbd>8</kbd></td><td>Hot sounds (press again to stop)</td></tr>
+      <tr><td><kbd>B</kbd></td><td>Pre-show music: play or fade out</td></tr>
+      <tr><td><kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd></td><td>Move the selected song up or down</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>K</kbd></td><td>Preflight check</td></tr>
+    </table>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" hidden role="status"></div>
+<script src="js/engine.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

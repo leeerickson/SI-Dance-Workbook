@@ -1,0 +1,32 @@
+// The only bridge between the page and the computer. The page gets these functions and nothing else.
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
+
+contextBridge.exposeInMainWorld('desk', {
+  chooseMedia: title => ipcRenderer.invoke('media:choose', { title }),
+  statMedia: paths => ipcRenderer.invoke('media:stat', paths),
+  findMedia: names => ipcRenderer.invoke('media:find', names),
+  pathForFile: file => { try { return webUtils.getPathForFile(file); } catch (_) { return ''; } },
+  openShow: filePath => ipcRenderer.invoke('show:open', filePath),
+  saveShow: (filePath, show, saveAs) => ipcRenderer.invoke('show:save', { filePath, show, saveAs }),
+  pendingShow: () => ipcRenderer.invoke('show:pending'),
+  writeAutosave: data => ipcRenderer.invoke('autosave:write', data),
+  readAutosave: () => ipcRenderer.invoke('autosave:read'),
+  readSettings: () => ipcRenderer.invoke('settings:read'),
+  writeSettings: s => ipcRenderer.invoke('settings:write', s),
+  snapshot: snap => ipcRenderer.send('live:snapshot', snap),
+  recovery: () => ipcRenderer.invoke('live:recovery'),
+  log: (...parts) => ipcRenderer.send('log', parts),
+  openLogFolder: () => ipcRenderer.invoke('log:folder'),
+  blockSleep: on => ipcRenderer.invoke('power:block', on),
+  displays: () => ipcRenderer.invoke('displays:list'),
+  chooseDisplay: id => ipcRenderer.invoke('displays:choose', id),
+  systemInfo: () => ipcRenderer.invoke('system:info'),
+  wpConfigure: cfg => ipcRenderer.invoke('wp:configure', cfg),
+  wpTest: cfg => ipcRenderer.invoke('wp:test', cfg),
+  wpProgram: p => ipcRenderer.send('wp:program', p),
+  wpStatus: s => ipcRenderer.send('wp:status', s),
+  onWpState: fn => ipcRenderer.on('wp:state', (_e, s) => fn(s)),
+  onStats: fn => ipcRenderer.on('stats', (_e, s) => fn(s)),
+  onMenu: fn => ipcRenderer.on('menu', (_e, name) => fn(name)),
+  onIncomingShow: fn => ipcRenderer.on('show:incoming', (_e, p) => fn(p))
+});

@@ -1,0 +1,86 @@
+name: Recital Show Player build
+on:
+  workflow_dispatch:
+  push:
+    tags: ['show-v*']
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: show-player
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: show-player/package-lock.json
+      - run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+      - run: choco install ffmpeg -y --no-progress
+        working-directory: .
+      - name: Test the app (plays a generated show, crashes the page and checks it carries on)
+        run: npm test
+        timeout-minutes: 10
+      - run: npm run dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: recital-show-player-windows
+          path: show-player/dist/*.exe
+  mac:
+    runs-on: macos-latest
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+      CSC_IDENTITY_AUTO_DISCOVERY: false
+    defaults:
+      run:
+        working-directory: show-player
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: show-player/package-lock.json
+      - run: npm ci
+      - run: brew install ffmpeg
+      - name: Test the app on macOS
+        run: npm test
+        timeout-minutes: 10
+      - run: npm run dist:mac
+      - uses: actions/upload-artifact@v4
+        with:
+          name: recital-show-player-mac
+          path: show-player/dist/*.dmg
+  release:
+    needs: [windows, mac]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+      - id: ver
+        run: echo "v=$(node -p "require('./show-player/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/show-v') && github.ref_name || format('show-v{0}-build{1}', steps.ver.outputs.v, github.run_number) }}
+          target_commitish: ${{ github.sha }}
+          name: Recital Show Player ${{ steps.ver.outputs.v }} (build ${{ github.run_number }})
+          prerelease: true
+          make_latest: false
+          files: |
+            out/recital-show-player-windows/*.exe
+            out/recital-show-player-mac/*.dmg
+          body: |
+            **Recital Show Player** runs the music and video for a recital: playlist with GO, straight-on and crossfade transitions, cues, props, hot sounds, pre-show music, preflight checks, speaker tests and PA calibration, and live status for phones through the Recital Live WordPress plugin.
+
+            **Windows:** download **Recital-Show-Player-Setup-…exe** (installs it) or **…Portable-…exe** (runs without installing). Windows will say "Windows protected your PC" because the app isn't code-signed yet: click **More info**, then **Run anyway**.
+
+            **Mac:** download the **.dmg**, open it and drag the app into Applications. The first time, open **System Settings → Privacy & Security** and click **Open Anyway**.
+
+            Before every show, run **Show → Preflight check** (Ctrl+K).

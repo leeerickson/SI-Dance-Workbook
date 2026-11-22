@@ -127,3 +127,58 @@ node wordpress-plugin/test/plugin-test.js
 ```
 
 The **WordPress plugin** workflow builds the zip, starts a real WordPress site in Docker, uploads the test file, creates pages with the shortcode and the block, tests them in a browser, and publishes a release.
+
+## Recital Show Player (`show-player/`)
+
+A separate desktop app (Windows and Mac) that runs the music and video for a recital.
+
+- **Playlist.** Add music and video files with the button or by dragging them in. Drag rows to change the order at any time, even during the show. Saved as a `.recital` file. Files are stored with full paths and paths relative to the show file, so a show folder can move to another computer. The show is also autosaved, with rolling backups.
+- **GO and transitions.** Each song chooses what happens when it ends: **Wait for GO** (stops and waits for GO or Space), **Straight on** (the next song starts with no gap), or **Crossfade** (blends into the next song over the seconds you set). **Fade to next** (F) crossfades into the next song straight away. **Fade out** (Esc) fades out and waits. **Stop** (Shift+Esc) stops at once and stands by on the same song. A double press of GO can't skip a song, and GO does nothing while a song is playing.
+- **Even volume.** Every file's loudness is measured (EBU R128 / LUFS) and played at the same target level (−16 LUFS by default). A safety limiter stops anything from getting too loud. There's also a 5-band EQ, a rumble filter, a 3-band compressor, master level, balance and left/right trims.
+- **Timers and waveform.** Played, left in the song (amber under 30 s, red under 10 s), left in the show, and the clock time the show should end. The waveform shows the playhead, cue markers, trimmed parts and the crossfade zone.
+- **Cues.** Add lighting, prop, spot, sound, stage or note cues at any time. Press C during the song, double-click the waveform, or type a time. **Cue now** flashes when a cue arrives, and **Next cue** counts down to the next one, turning amber shortly before it.
+- **Up next** shows the next dance and how it will start. **Props** shows this number's and the next number's props. Props can be hidden per song.
+- **Pre-show and intermission music.** A second playlist with loop and shuffle and its own volume. B plays or fades it, and GO fades it out when the show starts.
+- **Hot sounds.** Eight buttons (keys 1–8) for sound effects and voice-overs. They play over the music, and the music ducks while they play.
+- **Preflight check** (Ctrl+K). Checks the sound output, that every file is there and plays, files that changed since they were measured, cues outside the song, video screens, battery, sleep prevention, disk space, memory and computer load, the phone connection, and unsaved changes. "Find missing files…" searches a folder for them.
+- **Test and calibrate** (Ctrl+T). Pink noise, tones and a sweep on the left, right or both speakers, a polarity check, and a loudness check that plays the loudest 20 seconds of a song. To level the PA, a microphone listens to pink noise played at show loudness. Type a sound-meter reading once to calibrate it in dB, then use **Auto-level** to set the master level to your target (85 dB by default).
+- **Sound output** is chosen in Settings. If that device disconnects mid-show, sound moves to the system default and moves back when the device returns.
+- **Video** plays in a preview and, through **Video output**, full screen on a projector or second screen.
+- **Phones.** Paste the connection code from the Recital Live WordPress plugin, and the app sends the running order, timers, cues and props. It never waits for the website: if the site is slow or offline, the show carries on and the app retries.
+- **Built not to stop.** If the page crashes or hangs, it reloads and carries on playing from where it was. If the whole app closes mid-show, the next start stands by on that song. A stuck file is restarted. Audio keeps running when the window is minimised or covered. The computer is kept awake, quitting while music plays asks first, and everything is logged (File → Show log folder). A small graph in the top bar shows CPU, the app's own load, memory and any delays.
+
+Run it, test it, and build it from the `show-player/` folder (the test needs ffmpeg, and on Linux, `xvfb-run` in front):
+
+```bash
+npm install
+```
+
+```bash
+npm start
+```
+
+```bash
+npm test
+```
+
+```bash
+npm run dist
+```
+
+The **Recital Show Player build** workflow tests the app on Windows and Mac, builds the installer and the `.dmg`, and publishes a release. The protocol between the app and WordPress is described in `show-player/PROTOCOL.md`.
+
+## Recital Live WordPress plugin (`wordpress-plugin/recital-live/`)
+
+A plugin that gives each show its own page for phones at `https://your-site/recital/<show>/`. Teachers, parents, techs and prop people use it to follow the show: what's on now, with count-up and countdown timers, what's next, the show time left, messages and the intermission countdown, and the full running order. With the show's **crew code**, it also shows cues (with filters for Lighting, Props, Spots, Sound, Stage and Notes) and props. The page can be added to the home screen as an app and keeps showing the last update if the signal drops. An **Other shows** menu switches between shows. The shortcode `[recital_live show="<show>"]` puts it on any page.
+
+In WordPress, go to **Recital Live → Shows → Add New**. Set the link name and an optional crew code, publish, and copy the **connection code** into the desktop app's Settings.
+
+```bash
+node wordpress-plugin/build-recital-live.js
+```
+
+```bash
+node wordpress-plugin/test/recital-live-test.js
+```
+
+The **Recital Live plugin** workflow builds the zip, tests it, tests it again on a real WordPress site in Docker, and publishes a release.

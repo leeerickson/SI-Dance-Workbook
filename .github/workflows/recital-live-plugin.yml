@@ -1,0 +1,105 @@
+name: Recital Live plugin
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'wordpress-plugin/recital-live/**'
+      - 'wordpress-plugin/test/recital-live-*'
+      - 'wordpress-plugin/build-recital-live.js'
+      - '.github/workflows/recital-live-plugin.yml'
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+      - run: npx playwright install --with-deps chromium
+      - name: Check the PHP files
+        run: |
+          php -v
+          for f in $(find wordpress-plugin/recital-live wordpress-plugin/test -name '*.php' -path '*recital-live*'); do php -l "$f"; done
+      - name: Build the plugin zip
+        run: node wordpress-plugin/build-recital-live.js
+      - name: Test with the PHP stand-in for WordPress
+        run: |
+          mkdir -p shots
+          SHOTS=shots node wordpress-plugin/test/recital-live-test.js
+      - name: Start a real WordPress site with the plugin installed (Docker)
+        working-directory: wordpress-plugin/test/recital-live-wp-env
+        run: npx --yes @wordpress/env@10.29.0 start
+      - name: Make test shows
+        working-directory: wordpress-plugin/test/recital-live-wp-env
+        run: |
+          wp() { npx --yes @wordpress/env@10.29.0 run cli wp "$@" 2>/dev/null | tr -d '\r'; }
+          wpid() { wp "$@" | grep -E '^[0-9]+$' | tail -1; }
+          wp rewrite structure '/%postname%/' --hard
+          KEY=$(openssl rand -hex 16); DRAFT_KEY=$(openssl rand -hex 16)
+          S1=$(wpid post create --post_type=recital_show --post_status=publish --post_title="Spring Recital 2027" --post_name=spring-2027 --porcelain)
+          S2=$(wpid post create --post_type=recital_show --post_status=publish --post_title="Winter Showcase 2026" --post_name=winter-2026 --porcelain)
+          S3=$(wpid post create --post_type=recital_show --post_status=publish --post_title="Secret Rehearsal" --post_name=secret-show --porcelain)
+          S4=$(wpid post create --post_type=recital_show --post_status=draft --post_title="Draft Show" --post_name=draft-show --porcelain)
+          echo "Shows: $S1 $S2 $S3 $S4"; test -n "$S1" && test -n "$S4"
+          wp post meta update "$S1" _rl_key "$KEY"
+          wp post meta update "$S1" _rl_crew_code STAGE
+          wp post meta update "$S3" _rl_listed 0
+          wp post meta update "$S4" _rl_key "$DRAFT_KEY"
+          P=$(wpid post create --post_type=page --post_status=publish --post_title="Live" --post_content='[recital_live show="spring-2027"]' --porcelain)
+          echo "RL_KEY=$KEY" >> "$GITHUB_ENV"
+          echo "RL_DRAFT_KEY=$DRAFT_KEY" >> "$GITHUB_ENV"
+          echo "PAGE_SHORTCODE=http://localhost:8888/?page_id=$P" >> "$GITHUB_ENV"
+      - name: Quick checks with curl
+        run: |
+          set -e
+          curl -fsS http://localhost:8888/wp-json/recital-live/v1/ping | tee /dev/stderr | grep -q '"plugin":"recital-live"'
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'X-Recital-Key: wrong' -d '{}' http://localhost:8888/wp-json/recital-live/v1/shows/spring-2027/status)" = 403
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "X-Recital-Key: $RL_KEY" -H 'Content-Type: application/json' -d '{"state":"idle"}' http://localhost:8888/wp-json/recital-live/v1/shows/spring-2027/status)" = 200
+          curl -fsS http://localhost:8888/recital/spring-2027/ | grep -q '<title>Spring Recital 2027</title>'
+          curl -fsS http://localhost:8888/recital/spring-2027/manifest.webmanifest | grep -q '"display":"standalone"'
+          curl -fsSI http://localhost:8888/recital/sw.js | grep -qi 'content-type: text/javascript'
+          curl -fsS "$PAGE_SHORTCODE" | grep -q 'class="recital-live-frame"'
+      - name: Test the real site in a browser
+        run: WP_URL=http://localhost:8888 SHOTS=shots node wordpress-plugin/test/recital-live-test.js
+      - id: ver
+        run: echo "v=$(grep -oP 'Version:\s*\K[0-9.]+' wordpress-plugin/recital-live/recital-live.php)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: recital-live-wordpress
+          path: |
+            dist/recital-live-*.zip
+            shots/*.png
+      - uses: softprops/action-gh-release@v2
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          tag_name: recital-live-v${{ steps.ver.outputs.v }}-build${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: Recital Live ${{ steps.ver.outputs.v }} for WordPress (build ${{ github.run_number }})
+          prerelease: true
+          make_latest: false
+          files: |
+            dist/recital-live-*.zip
+            shots/recital-live-phone.png
+          body: |
+            **Recital Live for WordPress**: parents, teachers and crew follow the recital live on their phones, fed by the Recital Show Player desktop app.
+
+            **To install:** download **recital-live-…zip** below. In WordPress go to **Plugins → Add New Plugin → Upload Plugin**, choose the zip, click **Install Now**, then **Activate**.
+
+            **To set up a show:**
+            1. Go to **Recital Live → Add show**, type the show's name (for example "Spring Recital 2027") and click **Publish**.
+            2. Optional: type a **crew code**. Techs, teachers and prop crew enter it on their phones to see cues and props. Everyone else sees the running order and timers.
+            3. Click **Copy** next to the **connection code** and paste it into the Recital Show Player desktop app (Settings → Recital Live).
+            4. Share the **link for phones** shown on the same screen (it looks like `https://yoursite/recital/spring-2027/`). A QR code in the program or lobby works well. People can add it to their Home Screen.
+
+            To show it on a normal page, use the shortcode `[recital_live show="spring-2027"]`.
+
+            If the phone link says "not found", go to **Settings → Permalinks** and click **Save Changes** once.
+
+            Tested in this build with a PHP stand-in and on a real WordPress site (see recital-live-phone.png).
