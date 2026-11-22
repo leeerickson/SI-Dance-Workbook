@@ -4,7 +4,7 @@ Tags: dance, recital, live, show, theatre
 Requires at least: 5.8
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 0.2.0
+Stable tag: 0.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -46,6 +46,9 @@ If the link for phones says "not found", go to **Settings → Permalinks** and c
 Recital Live doesn't use cookies or track visitors. A crew code typed on a phone is remembered on that phone only.
 
 == Changelog ==
+
+= 0.3.0 =
+* Crew chat: crew with the crew code can message the booth from their phones, and the booth can reply from Recital Show Player. Needs a crew code on the show.
 
 = 0.2.0 =
 * Much lighter on the web host with many viewers: each update from the desk is also saved as a small file that phones read directly. Phones check in with WordPress once a minute instead of every two seconds. Crew (with the crew code) are unchanged.

@@ -146,6 +146,11 @@
         <input type="text" id="phoneMsg" placeholder="e.g. Intermission — 15 minutes" maxlength="140">
         <div class="inline"><input type="number" id="intMin" min="1" max="60" value="15" aria-label="Intermission minutes"> min <button class="btn small" id="intGo">Start intermission timer</button><span class="mono" id="intLeft"></span></div>
       </div>
+      <div class="panel chatbox" id="chatBox">
+        <div class="chat-head"><span class="label">Crew chat <b class="chat-badge" id="chatBadge" hidden>0</b></span><button class="xbtn" id="chatClear" title="Clear the chat for everyone">Clear</button></div>
+        <ul class="chatlist" id="chatList" aria-live="polite"><li class="muted" id="chatEmpty">Crew with the crew code can message you from their phones.</li></ul>
+        <div class="inline"><input type="text" id="chatReply" placeholder="Reply to crew" maxlength="280" aria-label="Reply to crew"><button class="btn small" id="chatSend">Send</button></div>
+      </div>
     </div>
     <h2 class="insp-title">Song details</h2>
     <div class="insp-empty" id="inspEmpty"><p class="muted">Click a song in the playlist to set its dance name, what happens after it, its cues and its props.</p></div>

@@ -1518,6 +1518,45 @@
   });
   let wpState = { configured: false };
   desk.onWpState(safe(s => { wpState = s; renderWp(); }));
+
+  /* ---------- crew chat (phones ↔ desk) ----------
+     New messages arrive with the replies to the status updates the desk already sends. Alerts are silent:
+     a badge, a highlight and a short on-screen note. Nothing plays through the sound system. */
+  const chat = { messages: [], unread: 0, on: false, loaded: false };
+  function renderChat() {
+    const list = $('chatList');
+    if (!chat.messages.length) list.replaceChildren(h('li', { class: 'muted' }, !S.settings.wpOn ? 'Turn on phones in Settings to chat with crew.' : chat.on || !chat.loaded ? 'Crew with the crew code can message you from their phones.' : 'Chat needs a crew code on the show. Set one in WordPress under Recital Live.'));
+    else list.replaceChildren(...chat.messages.slice(-40).map(m => h('li', { class: 'msg ' + (m.role === 'desk' ? 'desk' : 'crew') + (m.fresh ? ' fresh' : '') }, h('b', null, `${m.from} · ${new Date(m.t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`), m.text)));
+    list.scrollTop = list.scrollHeight;
+    $('chatBadge').hidden = !chat.unread; $('chatBadge').textContent = chat.unread;
+    $('chatBox').classList.toggle('unread', chat.unread > 0);
+  }
+  desk.onWpChat(safe(c => {
+    chat.on = c.on;
+    const known = new Set(chat.messages.map(m => m.id));
+    const fresh = c.messages.filter(m => !known.has(m.id));
+    const first = !chat.loaded; chat.loaded = true;
+    chat.messages.forEach(m => { m.fresh = false; });
+    for (const m of fresh) { const fromCrew = m.role !== 'desk'; chat.messages.push({ ...m, fresh: fromCrew && !first }); if (fromCrew && !first) chat.unread++; }
+    if (chat.messages.length > 80) chat.messages.splice(0, chat.messages.length - 80);
+    const last = fresh.filter(m => m.role !== 'desk').pop();
+    if (last && !first) { toast(`${last.from}: ${last.text}`, 7000); log('chat in', last.from, last.text); }
+    renderChat();
+  }));
+  async function chatSend() {
+    const el = $('chatReply'), text = el.value.trim(); if (!text) return;
+    el.disabled = true;
+    const r = await desk.wpChatSend({ text });
+    el.disabled = false;
+    if (r.ok) { el.value = ''; log('chat out', text); } else toast(r.error, 6000);
+    el.focus();
+  }
+  on('chatSend', 'click', chatSend);
+  on('chatReply', 'keydown', e => { if (e.key === 'Enter') { e.preventDefault(); chatSend(); } });
+  const chatRead = () => { if (chat.unread) { chat.unread = 0; renderChat(); } };
+  on('chatBox', 'click', chatRead); on('chatReply', 'focus', chatRead);
+  on('chatClear', 'click', async () => { if (!confirm('Clear the chat for everyone?')) return; const r = await desk.wpChatSend({ clear: true }); if (r.ok) { chat.messages = []; chat.unread = 0; renderChat(); } else toast(r.error, 6000); });
+  renderChat();
   function renderWp() {
     const dot = $('wpDot'), txt = $('wpText');
     if (!S.settings.wpOn || !parseWpCode(S.settings.wpCode)) { dot.className = 'dot'; txt.textContent = 'Phones off'; return; }
@@ -2219,7 +2258,7 @@
   window.addEventListener('beforeunload', () => { snapshot(); autosave(); });
 
   // for automated tests
-  window.SP = { S, decks, etaTimes, health, sys, runHealth, sysLag: () => sys.lag, applyTheme, streamTarget, openSettings, drawCard, videoOut: () => outWin, outFeed, streamStart, streamStop, streamer, trimSilence, collectFiles, syncMaster, updateText, closeCuePop, restart, resetShow, applySettings, openVideoDialog, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
+  window.SP = { S, decks, chat, etaTimes, health, sys, runHealth, sysLag: () => sys.lag, applyTheme, streamTarget, openSettings, drawCard, videoOut: () => outWin, outFeed, streamStart, streamStop, streamer, trimSilence, collectFiles, syncMaster, updateText, closeCuePop, restart, resetShow, applySettings, openVideoDialog, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
     fillerPlay, fillerFadeOut, fillerState, buildStatus, buildProgram, showRemaining, gainFor, nextAfter, setHotFile, hotBuffers, E, queue: () => queue.length + (analysing ? 1 : 0) };
 
   boot().catch(err => { oops(err); requestAnimationFrame(frame); setInterval(updateText, 100); setInterval(safe(tick), 25); });

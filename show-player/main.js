@@ -564,7 +564,7 @@ if (process.env.SHOW_PLAYER_SELFTEST_GPU) { // used by the test: parse a sample 
 /* ---------- WordPress status sender ----------
    Keeps only the newest program and status, sends them one at a time with a short timeout,
    and backs off when the site can't be reached. The page never waits for any of this. */
-const wp = { cfg: null, program: null, status: null, busy: false, fails: 0, nextTry: 0, lastOk: 0, lastError: '', latency: 0 };
+const wp = { chatAfter: 0, cfg: null, program: null, status: null, busy: false, fails: 0, nextTry: 0, lastOk: 0, lastError: '', latency: 0 };
 function wpReport() { if (win && !win.isDestroyed()) win.webContents.send('wp:state', { configured: !!(wp.cfg && wp.cfg.url), lastOk: wp.lastOk, fails: wp.fails, error: wp.lastError, latency: wp.latency }); }
 async function wpRequest(method, route, body, timeout = 5000) {
   const base = wp.cfg.url.replace(/\/+$/, '');
@@ -590,8 +590,10 @@ async function wpPump() {
   if (!kind) return;
   const body = wp[kind]; wp[kind] = null; wp.busy = true;
   try {
-    await wpRequest('POST', `/shows/${encodeURIComponent(wp.cfg.show)}/${kind}`, body);
+    // Crew chat rides on the status reply: tell the site the newest message we have, get back anything newer.
+    const reply = await wpRequest('POST', `/shows/${encodeURIComponent(wp.cfg.show)}/${kind}`, kind === 'status' ? { ...body, chat_after: wp.chatAfter } : body);
     wp.fails = 0; wp.lastOk = Date.now(); wp.lastError = '';
+    if (kind === 'status' && reply) wpChatIn(reply.chat, reply.chat_on);
   } catch (err) {
     if (!wp[kind]) wp[kind] = body; // retry the same data unless newer data arrived
     wp.fails++; wp.lastError = friendly(err);
@@ -600,7 +602,21 @@ async function wpPump() {
   } finally { wp.busy = false; wpReport(); }
 }
 setInterval(wpPump, 250);
-ipcMain.handle('wp:configure', (_e, cfg) => { wp.cfg = cfg && cfg.url ? cfg : null; wp.fails = 0; wp.nextTry = 0; wp.lastError = ''; wpReport(); return true; });
+function wpChatIn(list, on) {
+  const fresh = (Array.isArray(list) ? list : []).filter(m => m && typeof m.id === 'number' && m.id > wp.chatAfter);
+  if (fresh.length) wp.chatAfter = Math.max(...fresh.map(m => m.id));
+  if (win && !win.isDestroyed()) win.webContents.send('wp:chat', { on: !!on, messages: fresh });
+}
+ipcMain.handle('wp:chat-send', async (_e, payload) => {
+  if (!wp.cfg || !wp.cfg.url) return { ok: false, error: 'Phones are off. Turn them on in Settings → Phones.' };
+  try {
+    const r = await wpRequest('POST', `/shows/${encodeURIComponent(wp.cfg.show)}/chat`, payload);
+    if (payload.clear) { wp.chatAfter = Date.now(); return { ok: true }; }
+    if (r && r.message) wpChatIn([r.message], true);
+    return { ok: true };
+  } catch (err) { return { ok: false, error: /refused the desktop key/.test(friendly(err)) ? 'Chat needs a crew code on the show (set one in WordPress under Recital Live).' : friendly(err) }; }
+});
+ipcMain.handle('wp:configure', (_e, cfg) => { const same = wp.cfg && cfg && wp.cfg.url === cfg.url && wp.cfg.show === cfg.show; if (!same) wp.chatAfter = 0; wp.cfg = cfg && cfg.url ? cfg : null; wp.fails = 0; wp.nextTry = 0; wp.lastError = ''; wpReport(); return true; });
 ipcMain.on('wp:program', (_e, p) => { wp.program = p; });
 ipcMain.on('wp:status', (_e, s) => { wp.status = s; });
 ipcMain.handle('wp:test', async (_e, cfg) => {

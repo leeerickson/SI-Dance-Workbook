@@ -180,6 +180,8 @@ function wp_unslash( $v ) { return is_string( $v ) ? stripslashes( $v ) : $v; }
 function wp_upload_dir( $t = null, $c = true ) { global $rl_host; return array( 'basedir' => RL_UPLOADS, 'baseurl' => $rl_host . '/wp-content/uploads', 'error' => false ); }
 function wp_mkdir_p( $d ) { return is_dir( $d ) || mkdir( $d, 0777, true ); }
 function sanitize_file_name( $n ) { return preg_replace( '/[^A-Za-z0-9._-]/', '', (string) $n ); }
+function get_transient( $k ) { $db = rl_db_load(); return $db['options'][ '_t_' . $k ] ?? false; }
+function set_transient( $k, $v, $ttl = 0 ) { rl_db_change( function ( $db ) use ( $k, $v ) { $db['options'][ '_t_' . $k ] = $v; return $db; } ); return true; }
 function wp_json_encode( $d, $o = 0, $depth = 512 ) { return json_encode( $d, $o, $depth ); }
 function wp_generate_password( $len = 12, $special = true ) {
 	$chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';

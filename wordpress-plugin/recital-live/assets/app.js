@@ -269,6 +269,7 @@
 		}
 
 		renderCrew();
+		renderChat();
 		renderProgram(cur);
 		renderProps(s, cur, nxt);
 		tick();
@@ -399,6 +400,51 @@
 		fillList($('propsNow'), nowProps, 'None');
 		fillList($('propsNext'), nextProps, nt ? 'None' : '—');
 	}
+
+	/* ---------- crew chat with the booth ---------- */
+	var chatSeen = 0, chatSig = '', nameKey = 'rl-chat-name';
+	function renderChat() {
+		var on = !!(data && data.crew && data.chat_on && crewCode);
+		show($('chat'), on);
+		if (!on) return;
+		var list = arr(data.chat).filter(isObj);
+		var sig = list.map(function (m) { return num(m.id); }).join(',');
+		if (sig === chatSig) return;
+		chatSig = sig;
+		var node = $('chatList'), newest = 0, fresh = false;
+		clear(node);
+		if (!list.length) node.appendChild(el('li', 'muted', 'No messages yet. The booth sees what you send here.'));
+		list.forEach(function (m) {
+			var li = el('li', 'chat-msg ' + (m.role === 'desk' ? 'desk' : 'crew') + (chatSeen && num(m.id) > chatSeen ? ' new' : ''));
+			var when = new Date(num(m.t)).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+			li.appendChild(el('span', 'who', str(m.from) + ' · ' + when));
+			li.appendChild(el('span', 'what', str(m.text)));
+			node.appendChild(li);
+			if (num(m.id) > newest) newest = num(m.id);
+			if (chatSeen && num(m.id) > chatSeen && m.role === 'desk') fresh = true;
+		});
+		node.scrollTop = node.scrollHeight;
+		if (fresh && navigator.vibrate && document.visibilityState === 'visible') { try { navigator.vibrate([80, 60, 80]); } catch (e) { /* ignore */ } }
+		chatSeen = newest || chatSeen || 1;
+	}
+	$('chatName').value = store.get(nameKey) || '';
+	$('chatForm').addEventListener('submit', function (e) {
+		e.preventDefault();
+		var text = $('chatText').value.trim(), name = $('chatName').value.trim(), msg = $('chatMsg');
+		if (!text) { setText(msg, 'Type a message first.'); return; }
+		store.set(nameKey, name);
+		setText(msg, '');
+		$('chatSend').disabled = true;
+		fetch(apiUrl('shows/' + encodeURIComponent(cfg.slug) + '/chat'), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Recital-Code': crewCode }, body: JSON.stringify({ name: name, text: text }) })
+			.then(function (res) { return res.json().then(function (j) { return { ok: res.ok, json: j }; }); })
+			.then(function (r) {
+				if (!r.ok) { setText(msg, (r.json && r.json.message) || 'That didn\'t send. Try again.'); return; }
+				$('chatText').value = '';
+				if (data) { data.chat = r.json.chat; chatSeen = Math.max(chatSeen, num(r.json.message && r.json.message.id)); renderChat(); }
+			})
+			.catch(function () { setText(msg, 'You\'re offline, so that didn\'t send. Try again in a moment.'); })
+			.then(function () { $('chatSend').disabled = false; });
+	});
 
 	function renderCrew() {
 		var hasCode = data && data.show ? !!data.show.has_code : !!cfg.hasCode;

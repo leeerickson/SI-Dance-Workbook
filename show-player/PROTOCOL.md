@@ -83,3 +83,14 @@ The admin page shows a **connection code** to paste into the desktop app. It's b
 - While `playing`, phones count `position` up and `duration - position` down using the clock correction.
 - `message` and `countdown_left` (seconds left when the status was sent; phones subtract the age the same
   way) are optional: the desktop's "Message to phones" box and intermission countdown.
+
+## Crew chat
+
+Only for shows with a crew code. Messages are `{ id, t, from, role, text }` (`role` is `crew` or `desk`; `id` grows with time).
+
+| Method | Path | Auth | Body / result |
+| --- | --- | --- | --- |
+| POST | `/shows/{slug}/chat` | `X-Recital-Code` (crew) or `X-Recital-Key` (desk) | `{ name, text }` → `{ ok, message, chat:[last 30] }`. Text is plain, at most 280 characters. Crew are limited to one message every 1.5 s (429). The desk may send `{ clear:true }`. No crew code on the show → 403 `recital_chat_off`. |
+
+- The desk adds `chat_after` (the newest id it has) to each status POST; the reply carries `chat_on` and `chat` (messages newer than that). `chat_after` is not stored.
+- Crew phones get `chat_on:true` and `chat` (last 30) in `GET /shows/{slug}` when they send the crew code. The public file never contains chat.

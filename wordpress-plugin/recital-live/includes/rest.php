@@ -57,6 +57,15 @@ function recital_live_rest_routes() {
 	);
 	register_rest_route(
 		$ns,
+		'/shows/' . $slug . '/chat',
+		array(
+			'methods'             => 'POST',
+			'callback'            => 'recital_live_rest_post_chat',
+			'permission_callback' => 'recital_live_rest_check_chat',
+		)
+	);
+	register_rest_route(
+		$ns,
 		'/shows/' . $slug . '/status',
 		array(
 			'methods'             => 'POST',
@@ -226,13 +235,19 @@ function recital_live_rest_post_status( $request ) {
 	}
 	$post_id = (int) $request->get_param( '_rl_post_id' );
 	$now     = recital_live_now_ms();
+	// "chat_after" is a note from the desk about the chat, not part of the show's status: don't keep it.
+	$after = isset( $data->chat_after ) ? (float) $data->chat_after : 0;
+	unset( $data->chat_after );
 	recital_live_store( $post_id, '_rl_status', $data );
 	update_post_meta( $post_id, '_rl_received_at', (string) $now );
 	recital_live_write_public( $post_id );
+	// New crew chat messages ride back on the reply the desk is already waiting for.
 	return recital_live_response(
 		array(
 			'ok'         => true,
 			'server_now' => recital_live_now_ms(),
+			'chat_on'    => recital_live_chat_on( $post_id ),
+			'chat'       => recital_live_chat_get( $post_id, $after ),
 		)
 	);
 }
@@ -307,7 +322,7 @@ function recital_live_payload( $post, $given ) {
 	if ( ! $crew ) {
 		recital_live_strip_crew( $program, $status );
 	}
-	return array(
+	$out = array(
 		'show'        => array(
 			'slug'     => $post->post_name,
 			'title'    => $post->post_title,
@@ -317,6 +332,124 @@ function recital_live_payload( $post, $given ) {
 		'program'     => $program,
 		'status'      => $status,
 		'received_at' => $received > 0 ? $received : null,
+	);
+	// Crew chat: only for viewers who gave the crew code (so never in the public file).
+	if ( $has_code && $crew && '' !== trim( (string) $given ) ) {
+		$out['chat_on'] = true;
+		$out['chat']    = recital_live_chat_get( $post->ID, 0 );
+	}
+	return $out;
+}
+
+/*
+ * Crew chat: a short group conversation between crew phones and the desk. It needs a crew code on the show
+ * (so the audience can't write to the booth). The last 60 messages are kept with the show.
+ */
+function recital_live_chat_on( $post_id ) {
+	return '' !== trim( (string) get_post_meta( $post_id, '_rl_crew_code', true ) );
+}
+function recital_live_chat_all( $post_id ) {
+	$list = json_decode( (string) get_post_meta( $post_id, '_rl_chat', true ), true );
+	return is_array( $list ) ? $list : array();
+}
+/**
+ * Messages newer than $after (an id), at most the last 30.
+ *
+ * @param int   $post_id Show ID.
+ * @param float $after   Only messages with a larger id.
+ * @return array
+ */
+function recital_live_chat_get( $post_id, $after ) {
+	$out = array();
+	foreach ( recital_live_chat_all( $post_id ) as $m ) {
+		if ( isset( $m['id'] ) && (float) $m['id'] > $after ) {
+			$out[] = $m;
+		}
+	}
+	return array_slice( $out, -30 );
+}
+function recital_live_chat_add( $post_id, $from, $role, $text ) {
+	$list = recital_live_chat_all( $post_id );
+	$last = $list ? (float) $list[ count( $list ) - 1 ]['id'] : 0;
+	$msg  = array(
+		'id'   => max( $last + 1, recital_live_now_ms() ),
+		't'    => recital_live_now_ms(),
+		'from' => $from,
+		'role' => $role,
+		'text' => $text,
+	);
+	$list[] = $msg;
+	recital_live_store( $post_id, '_rl_chat', array_slice( $list, -60 ) );
+	return $msg;
+}
+/**
+ * Who may write: the desk (desktop key) or crew (crew code). Nobody else.
+ *
+ * @param WP_REST_Request $request Request.
+ * @return true|WP_Error
+ */
+function recital_live_rest_check_chat( $request ) {
+	$post = recital_live_find_show( $request['slug'], true );
+	if ( ! $post ) {
+		return new WP_Error( 'recital_no_show', __( 'There is no show with that name on this site.', 'recital-live' ), array( 'status' => 404 ) );
+	}
+	if ( ! recital_live_chat_on( $post->ID ) ) {
+		return new WP_Error( 'recital_chat_off', __( 'Chat needs a crew code on the show. Set one in WordPress under Recital Live.', 'recital-live' ), array( 'status' => 403 ) );
+	}
+	$key    = (string) $request->get_header( 'x_recital_key' );
+	$stored = (string) get_post_meta( $post->ID, '_rl_key', true );
+	if ( '' !== $key && '' !== $stored && hash_equals( $stored, $key ) ) {
+		$request->set_param( '_rl_chat_role', 'desk' );
+	} elseif ( recital_live_is_crew( $post->ID, (string) $request->get_header( 'x_recital_code' ) ) ) {
+		$request->set_param( '_rl_chat_role', 'crew' );
+	} else {
+		return new WP_Error( 'recital_bad_code', __( 'The crew code is not right.', 'recital-live' ), array( 'status' => 403 ) );
+	}
+	$request->set_param( '_rl_post_id', $post->ID );
+	return true;
+}
+/**
+ * POST /shows/{slug}/chat  { name, text }  (the desk may send { clear: true }).
+ *
+ * @param WP_REST_Request $request Request.
+ * @return WP_REST_Response|WP_Error
+ */
+function recital_live_rest_post_chat( $request ) {
+	$data = recital_live_read_body( $request );
+	if ( is_wp_error( $data ) ) {
+		return $data;
+	}
+	$post_id = (int) $request->get_param( '_rl_post_id' );
+	$role    = (string) $request->get_param( '_rl_chat_role' );
+	if ( 'desk' === $role && ! empty( $data->clear ) ) {
+		recital_live_store( $post_id, '_rl_chat', array() );
+		return recital_live_response( array( 'ok' => true, 'chat' => array() ) );
+	}
+	$text = isset( $data->text ) && is_string( $data->text ) ? trim( sanitize_text_field( $data->text ) ) : '';
+	if ( '' === $text ) {
+		return new WP_Error( 'recital_empty', __( 'Type a message first.', 'recital-live' ), array( 'status' => 400 ) );
+	}
+	$text = function_exists( 'mb_substr' ) ? mb_substr( $text, 0, 280 ) : substr( $text, 0, 280 );
+	if ( 'desk' === $role ) {
+		$from = __( 'Booth', 'recital-live' );
+	} else {
+		$name = isset( $data->name ) && is_string( $data->name ) ? trim( sanitize_text_field( $data->name ) ) : '';
+		$from = '' !== $name ? ( function_exists( 'mb_substr' ) ? mb_substr( $name, 0, 30 ) : substr( $name, 0, 30 ) ) : __( 'Crew', 'recital-live' );
+		// One message every 1.5 s per phone, so a stuck button can't flood the booth.
+		$who = 'rl_chat_' . md5( $post_id . '|' . ( isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '' ) . '|' . $from );
+		$last = (float) get_transient( $who );
+		if ( $last && recital_live_now_ms() - $last < 1500 ) {
+			return new WP_Error( 'recital_slow_down', __( 'That was quick. Wait a moment and send again.', 'recital-live' ), array( 'status' => 429 ) );
+		}
+		set_transient( $who, (string) recital_live_now_ms(), 60 );
+	}
+	$msg = recital_live_chat_add( $post_id, $from, $role, $text );
+	return recital_live_response(
+		array(
+			'ok'      => true,
+			'message' => $msg,
+			'chat'    => recital_live_chat_get( $post_id, 0 ),
+		)
 	);
 }
 

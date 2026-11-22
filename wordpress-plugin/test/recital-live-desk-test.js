@@ -97,12 +97,29 @@ const secs = txt => { const m = /(\d+):(\d+)(?::(\d+))?/.exec(txt || ''); if (!m
   ok((await text('propsNow')).includes('2 chairs SL'), "this number's props show");
   ok(!(await text('propsNext')).includes('Secret prop') && !(await phone.content()).includes('Secret prop'), 'props hidden on the desk are never sent to phones');
 
+  // crew chat: phone → desk → phone
+  await phone.fill('#chatName', 'Sam – Props'); await phone.fill('#chatText', 'Chairs are set <b>SL</b>'); await phone.click('#chatSend');
+  ok(await win.waitForFunction(() => /Sam – Props/.test(document.getElementById('chatList').textContent) && /Chairs are set/.test(document.getElementById('chatList').textContent), null, { timeout: 9000 }).then(() => true, () => false), "a crew message from a phone appears in the desk's Crew chat");
+  ok((await win.textContent('#chatBadge')) === '1' && /Sam – Props: Chairs are set/.test(await win.textContent('#toast')), 'the desk shows a silent alert: a badge and an on-screen note');
+  ok(!(await win.innerHTML('#chatList')).includes('<b>SL'), 'text in messages is shown as text, never as HTML');
+  ok(await win.evaluate(() => SP.S.live.state === 'playing'), 'the music keeps playing');
+  await win.fill('#chatReply', 'Thanks, stand by for the bench'); await win.keyboard.press('Enter');
+  ok(await until(() => /Booth/.test(document.getElementById('chatList').textContent) && /stand by for the bench/.test(document.getElementById('chatList').textContent), null, 9000), "the booth's reply appears on the crew phone");
+  await win.evaluate(() => document.activeElement.blur());
+  const api = base + '/wp-json/recital-live/v1/shows/spring-2027/chat';
+  const post = (headers, body) => fetch(api, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) }).then(r => r.status);
+  ok((await post({}, { name: 'Parent', text: 'hello' })) === 403 && (await post({ 'X-Recital-Code': 'wrong' }, { text: 'hello' })) === 403, 'without the crew code, nobody can write to the booth');
+  const a = await post({ 'X-Recital-Code': 'STAGE' }, { name: 'Flood', text: 'one' }), b = await post({ 'X-Recital-Code': 'STAGE' }, { name: 'Flood', text: 'two' });
+  ok(a === 200 && b === 429, 'a phone sending twice in a second is asked to slow down');
+  ok(!(await parent.isVisible('#chat')), "a parent's phone has no chat");
+
   // the parent's phone reads the small public file, not WordPress, and the file holds nothing for crew only
   await sleep(1500);
   const pe = secs(await parent.textContent('#elapsed')), de = await win.evaluate(() => SP.active.time - 2);
   ok(/Playing/.test(await parent.textContent('#state')) && Math.abs(pe - de) <= 2, `a parent's phone (no crew code) shows the same time as the desk (${pe} s, desk ${de.toFixed(1)} s)`);
   ok(asked.file >= 4 && asked.wordpress <= 2, `it reads the small public file, not WordPress (${asked.file} file reads, ${asked.wordpress} WordPress request${asked.wordpress === 1 ? '' : 's'} so far)`);
   const pub = await (await fetch(base + '/wp-content/uploads/recital-live/spring-2027.json')).text();
+  ok(!pub.includes('Chairs are set') && !pub.includes('chat'), 'the public file has no chat messages');
   ok(pub.includes('Senior Jazz') && !pub.includes('LX 12 go') && !pub.includes('2 chairs SL') && !pub.includes('Spot 1') && !pub.includes(KEY), 'the public file has the running order but no cues, props or keys');
   ok(!(await parent.isVisible('#cues')) && !(await parent.isVisible('#props')), "the parent's phone shows no cues or props");
 

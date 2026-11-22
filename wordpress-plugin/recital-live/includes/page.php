@@ -108,6 +108,19 @@ $rl_json = wp_json_encode( $config, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNIC
 		</div>
 	</section>
 
+	<section id="chat" class="card chat" hidden>
+		<span class="label"><?php esc_html_e( 'Crew chat with the booth', 'recital-live' ); ?></span>
+		<ul id="chatList" class="chat-list" aria-live="polite"></ul>
+		<form id="chatForm" autocomplete="off">
+			<input id="chatName" type="text" maxlength="30" placeholder="<?php esc_attr_e( 'Your name and job, e.g. Sam – Props', 'recital-live' ); ?>" aria-label="<?php esc_attr_e( 'Your name', 'recital-live' ); ?>">
+			<div class="crew-row">
+				<input id="chatText" type="text" maxlength="280" placeholder="<?php esc_attr_e( 'Message the booth', 'recital-live' ); ?>" aria-label="<?php esc_attr_e( 'Message', 'recital-live' ); ?>">
+				<button type="submit" class="btn" id="chatSend"><?php esc_html_e( 'Send', 'recital-live' ); ?></button>
+			</div>
+			<p id="chatMsg" class="crew-msg" role="alert"></p>
+		</form>
+	</section>
+
 	<section class="card program">
 		<span class="label"><?php esc_html_e( 'Running order', 'recital-live' ); ?></span>
 		<p id="programEmpty" class="muted"><?php esc_html_e( 'The running order will appear here once the studio sends it.', 'recital-live' ); ?></p>
