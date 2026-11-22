@@ -312,3 +312,70 @@ fieldset a{color:var(--accent)}
 .pic-preview canvas{width:100%; max-width:480px; aspect-ratio:16/9; border-radius:8px; border:1px solid var(--line); background:#000}
 .fields label.chk input{width:auto}
 .fields label.chk{display:flex; flex-direction:row}
+
+/* Dashboard: the desk (master, meters, pre-show, phones) at the top of the right column */
+.desk{display:grid; gap:8px; margin-bottom:14px; padding-bottom:12px; border-bottom:1px solid var(--line)}
+.desk .panel{padding:9px 11px}
+.desk .phonebox input[type=text]{margin:4px 0 6px}
+.insp-title{margin:2px 0 8px}
+/* Next cue: big countdown; the box glows when a cue is close */
+.cuehead{display:flex; align-items:baseline; justify-content:space-between; gap:10px}
+.cuein{font-size:26px; font-weight:700; line-height:1; color:var(--ink)}
+.cuebox.warnsoon{border-color:var(--amber); box-shadow:0 0 0 1px var(--amber), 0 0 24px color-mix(in srgb, var(--amber) 35%, transparent); animation:cuepulse 1s ease-in-out infinite}
+.cuebox.warnsoon .cuein{color:var(--amber)}
+@keyframes cuepulse{50%{box-shadow:0 0 0 1px var(--amber), 0 0 6px color-mix(in srgb, var(--amber) 15%, transparent)}}
+/* Now panel edge shows the state */
+.now{border-left:6px solid var(--line)}
+.now.st-playing{border-left-color:var(--go)} .now.st-standby{border-left-color:var(--amber)} .now.st-paused{border-left-color:var(--accent)}
+/* Shorter screens (laptops): tighten so everything that matters fits without scrolling */
+@media (max-height: 920px){
+  .center{gap:8px}
+  .now{padding:8px 12px}
+  .now-dance{font-size:clamp(20px, 2.3vw, 30px); margin-top:3px}
+  .timers{margin-top:4px}
+  .tm b{font-size:19px}
+  .tm.big b{font-size:clamp(30px, 3.2vw, 44px)}
+  .wave{height:84px}
+  .go{min-height:66px; width:170px}
+  .go b{font-size:30px}
+  .tb{padding:6px 10px}
+  .cuebox{min-height:60px; padding:7px 11px}
+  .cuetext{font-size:16.5px}
+  .cuein{font-size:22px}
+  .panel{padding:8px 11px}
+  .un-dance{font-size:18px}
+  .hot{min-height:42px; padding:5px 7px}
+  .desk{gap:6px; margin-bottom:10px; padding-bottom:10px}
+}
+@media (max-height: 800px){
+  .wave{height:64px}
+  .vprev{width:200px}
+  .props-cols{font-size:12px}
+  .hotrow > .label .muted{display:none}
+}
+@media (max-width:1500px){ .top .btn{padding:5px 9px} .showname{flex:1 1 180px} }
+/* Tall screens: use the space to make what matters bigger */
+@media (min-height: 1000px){
+  .now-dance{font-size:clamp(30px, 2.8vw, 44px)}
+  .tm.big b{font-size:clamp(44px, 4.2vw, 68px)}
+  .tm b{font-size:26px}
+  .cuebox{min-height:96px; padding:12px 16px}
+  .cuetext{font-size:24px}
+  .cuein{font-size:34px}
+  .wave{height:150px}
+  .go{min-height:104px}
+  .un-dance{font-size:24px}
+  .hot{min-height:64px}
+  .hot .l{font-size:14px}
+}
+
+/* Streaming: choose the service */
+.svc{display:grid; grid-template-columns:repeat(3, 1fr); gap:8px}
+.svc-card{display:grid; gap:2px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--surface-2); cursor:pointer}
+.svc-card input{position:absolute; opacity:0; pointer-events:none}
+.svc-card b{font-size:14px}
+.svc-card span{font-size:12px; color:var(--muted)}
+.svc-card:has(input:checked){border-color:var(--accent); background:color-mix(in srgb, var(--accent) 14%, var(--surface)); box-shadow:inset 0 0 0 1px var(--accent)}
+.svc-card:has(input:focus-visible){outline:2px solid var(--accent); outline-offset:2px}
+.steps{margin:0; padding-left:20px; display:grid; gap:6px; font-size:13px}
+.steps .btn{margin-left:4px}

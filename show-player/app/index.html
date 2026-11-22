@@ -77,6 +77,11 @@
       </div>
       <div class="vprev" id="vprev" hidden><div class="vlabel">Video</div><div id="deckHost"></div></div>
     </div>
+    <div class="cuebar">
+      <div class="cuebox" id="cueNowBox"><span class="label">Cue now</span><div class="cuetext" id="cueNow">–</div></div>
+      <div class="cuebox next" id="cueNextBox"><div class="cuehead"><span class="label">Next cue</span><b class="mono cuein" id="cueNextIn"></b></div><div class="cuetext" id="cueNext">–</div></div>
+    </div>
+
     <canvas class="wave" id="wave" height="120" title="Shift-click to jump. Double-click to add a cue there."></canvas>
 
     <div class="transport">
@@ -96,11 +101,6 @@
       </div>
     </div>
 
-    <div class="cuebar">
-      <div class="cuebox" id="cueNowBox"><span class="label">Cue now</span><div class="cuetext" id="cueNow">–</div></div>
-      <div class="cuebox next" id="cueNextBox"><span class="label">Next cue <b class="mono" id="cueNextIn"></b></span><div class="cuetext" id="cueNext">–</div></div>
-    </div>
-
     <div class="nextrow">
       <div class="panel upnext">
         <span class="label">Up next</span>
@@ -118,7 +118,11 @@
       <div class="hots" id="hots"></div>
     </div>
 
-    <div class="bottomrow">
+  </section>
+
+  <!-- Right: selected song -->
+  <section class="col right" id="insp">
+    <div class="desk" id="desk" aria-label="Desk">
       <div class="panel meters">
         <span class="label">Output</span>
         <div class="meter"><span>L</span><div class="bar"><i id="mL"></i><s id="hL"></s></div></div>
@@ -143,11 +147,8 @@
         <div class="inline"><input type="number" id="intMin" min="1" max="60" value="15" aria-label="Intermission minutes"> min <button class="btn small" id="intGo">Start intermission timer</button><span class="mono" id="intLeft"></span></div>
       </div>
     </div>
-  </section>
-
-  <!-- Right: selected song -->
-  <section class="col right" id="insp">
-    <div class="insp-empty" id="inspEmpty"><h2>Song details</h2><p class="muted">Click a song in the playlist to set its dance name, what happens after it, its cues and its props.</p></div>
+    <h2 class="insp-title">Song details</h2>
+    <div class="insp-empty" id="inspEmpty"><p class="muted">Click a song in the playlist to set its dance name, what happens after it, its cues and its props.</p></div>
     <div id="inspBody" hidden>
       <div class="insp-head"><h2 id="iHead">Song</h2><button class="btn small" id="iCueNext" title="Make this the next song">Play this next</button></div>
       <div class="file-line muted" id="iFile"></div>
@@ -262,12 +263,30 @@
       </section>
       <section class="set-pane dlg-grid" data-pane="stream" role="tabpanel" hidden>
       <fieldset class="span2" id="streamBox"><legend>Streaming <span class="by">by StreamingIdiot</span></legend>
-        <p class="muted">Send the show live, so family who can't be there can watch: the sound everyone hears, with the video when a number has one and a title card with the dance name the rest of the time. Copy the <b>stream address</b> and <b>stream key</b> from your <a href="https://streamingidiot.com" target="_blank" rel="noopener">StreamingIdiot</a> account (any service that gives an RTMP address works too).</p>
-        <div class="fields">
-          <label class="wide">Stream address<input type="text" id="sStUrl" class="mono" spellcheck="false" placeholder="rtmp://…"></label>
-          <label class="wide">Stream key<input type="password" id="sStKey" class="mono" spellcheck="false" autocomplete="off" placeholder="Kept on this computer only"></label>
-          <label>Quality<select id="sStQ"><option value="720">720p (2.5 Mbps upload)</option><option value="480">480p (1.2 Mbps upload, slower internet)</option></select></label>
+        <p class="muted">Send the show live, so family who can't be there can watch: the sound everyone hears, with the video when a number has one and a title card with the dance name the rest of the time.</p>
+        <div class="svc" role="radiogroup" aria-label="Stream to">
+          <label class="svc-card"><input type="radio" name="stsvc" value="streamingidiot"><b>StreamingIdiot</b><span>Paste the address and key from your account</span></label>
+          <label class="svc-card"><input type="radio" name="stsvc" value="youtube"><b>YouTube</b><span>Just paste your stream key</span></label>
+          <label class="svc-card"><input type="radio" name="stsvc" value="custom"><b>Other</b><span>Any RTMP address (Facebook, Vimeo, Twitch…)</span></label>
         </div>
+        <div class="svc-pane" id="svcYoutube" hidden>
+          <ol class="steps">
+            <li>Open YouTube Studio <button class="btn small" type="button" id="sYtOpen">Open YouTube Studio</button> and click <b>Create → Go live</b>. The first time, YouTube can take up to 24 hours to switch on live streaming for a channel, so do this the day before.</li>
+            <li>Choose <b>Stream</b>. Give it a title such as “Spring Recital 2027” and choose who can watch (<b>Unlisted</b> means only people with the link).</li>
+            <li>Copy the <b>Stream key</b> and paste it below.</li>
+            <li>Click <b>Start streaming</b> here. In 10–20 seconds YouTube shows the picture; click <b>Go live</b> in YouTube Studio (or turn on <b>Auto-start</b> there so it starts by itself).</li>
+            <li>Share the YouTube link with families.</li>
+          </ol>
+          <div class="fields"><label class="wide">YouTube stream key<input type="password" id="sStYtKey" class="mono" spellcheck="false" autocomplete="off" placeholder="xxxx-xxxx-xxxx-xxxx-xxxx (kept on this computer only)"></label></div>
+        </div>
+        <div class="svc-pane" id="svcRtmp">
+          <p class="muted" id="svcRtmpHelp">Copy the <b>stream address</b> and <b>stream key</b> from your <a href="https://streamingidiot.com" target="_blank" rel="noopener">StreamingIdiot</a> account.</p>
+          <div class="fields">
+            <label class="wide">Stream address<input type="text" id="sStUrl" class="mono" spellcheck="false" placeholder="rtmp://…"></label>
+            <label class="wide">Stream key<input type="password" id="sStKey" class="mono" spellcheck="false" autocomplete="off" placeholder="Kept on this computer only"></label>
+          </div>
+        </div>
+        <div class="fields"><label>Quality<select id="sStQ"><option value="720">720p (2.5 Mbps upload, recommended)</option><option value="480">480p (1.2 Mbps upload, slower internet)</option></select></label></div>
         <div class="inline"><button class="btn small primary" type="button" id="sStGo">Start streaming</button><span class="muted" id="sStMsg"></span></div>
         <p class="muted">Streaming uses some of the computer's power, at low priority so the show always comes first. Start it a few minutes early and check it on a phone. If the internet drops, it reconnects by itself.</p>
       </fieldset>
@@ -280,6 +299,7 @@
             <label class="wide">Title at the top<input type="text" id="sStTitle" placeholder="Show name (default)"></label>
             <label>Colour<select id="sStAccent"><option value="gold">Stage gold</option><option value="pink">Pink</option><option value="teal">Teal</option><option value="purple">Purple</option><option value="white">White</option></select></label>
             <label class="chk wide"><input type="checkbox" id="sStProgress"> Show a progress line for each song</label>
+            <label class="chk wide"><input type="checkbox" id="sStCredit"> Show “Streaming by StreamingIdiot” on the picture</label>
           </div>
           <div class="pic-preview"><canvas id="sStPreview" width="480" height="270" aria-label="Preview of the stream picture"></canvas><span class="muted">Live preview</span></div>
         </div>

@@ -223,7 +223,22 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await win.click('#sRec'); await sleep(200);
   ok(await sp(() => SP.S.settings.targetLufs === -16 && SP.S.settings.masterDb === 0), '"Use recommended sound" puts it back');
   ok((await win.textContent('#streamBox legend')).includes('by StreamingIdiot'), 'Settings has Streaming by StreamingIdiot');
+  // YouTube: only the stream key is needed
+  await win.click('.set-tab[data-pane=stream]');
+  await win.click('.svc-card:has(input[value=youtube])');
+  ok(await win.isVisible('#sStYtKey') && !(await win.isVisible('#sStUrl')), 'choosing YouTube asks only for the stream key, with steps');
+  await win.fill('#sStYtKey', 'abcd-efgh-ijkl-mnop'); await win.dispatchEvent('#sStYtKey', 'change');
+  const yt = await sp(() => SP.streamTarget());
+  ok(yt.url === 'rtmp://a.rtmp.youtube.com/live2' && yt.key === 'abcd-efgh-ijkl-mnop' && yt.name === 'YouTube', 'YouTube streams go to YouTube\'s address with your key');
+  await win.click('.svc-card:has(input[value=streamingidiot])');
+  ok(await win.isVisible('#sStUrl') && await sp(() => SP.streamTarget().name === 'StreamingIdiot'), 'switching back to StreamingIdiot shows its address and key');
   await win.click('#dlgSettings button[value=close]');
+
+  // On a 1366×768 laptop screen, everything that matters fits without scrolling
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1366, 768)); await sleep(700);
+  const fit = await win.evaluate(() => { const c = document.querySelector('.col.center'), b = c.getBoundingClientRect(); const ids = ['tLeft', 'cueNextBox', 'bGo', 'hots', 'nextDance', 'mMaster', 'fPlay', 'phoneMsg']; return { scrolls: c.scrollHeight > c.clientHeight + 2, offscreen: ids.filter(id => { const r = document.getElementById(id).getBoundingClientRect(); return r.bottom > window.innerHeight + 1 || r.height === 0; }) }; });
+  ok(!fit.scrolls && fit.offscreen.length === 0, `at 1366×768 the timers, cues, GO, hot sounds, master, pre-show and phone message are all on screen (${JSON.stringify(fit)})`);
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1440, 900)); await sleep(500);
 
   // Pressing C opens the New cue box with the cursor in it (and the next-cue countdown counts down)
   await sp(() => { SP.S.show.tracks[0].cues.push({ id: 'cd1', t: 7.5, type: 'stage', text: 'Curtain' }); });

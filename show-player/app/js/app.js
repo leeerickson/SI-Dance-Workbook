@@ -55,7 +55,8 @@
     eqOn: true, eq: [0, 0, 0, 0, 0], hpf: false, mbOn: false, mbAmount: 1, defTrans: 'stop', xfade: 5, fadeSec: 3, fadeOutSec: 3, cueWarn: 10,
     fillerAuto: true, autoResume: true, duckDb: -12, hotDb: 0, wpCode: '', wpOn: false, micOffset: null, calTarget: 85,
     spatialOn: false, width: 1.4, bassCentre: true, videoDisplay: null, trimNew: true,
-    stUrl: '', stKey: '', stQ: '720', stTitle: '', stLogo: '', stAccent: 'gold', stProgress: true
+    stUrl: '', stKey: '', stQ: '720', stTitle: '', stLogo: '', stAccent: 'gold', stProgress: true,
+    stService: 'streamingidiot', stYtKey: '', stCredit: true
   };
   // Recommended values, shown with a ▲ mark in Settings. Master, balance and the trims are marked but
   // "Use recommended" leaves them alone, because they're set for the room.
@@ -579,6 +580,7 @@
     const L = S.live;
     $('stateChip').textContent = L.fadingOut ? 'Fading out' : STATE_TXT[L.state];
     $('stateChip').className = 'state ' + L.state;
+    $('nowPanel').className = 'now panel st-' + (L.fadingOut ? 'playing' : L.state);
     const sb = byId(L.standbyId) || (L.state === 'idle' ? firstTrack() : null);
     const go = $('bGo');
     const ready = (L.state === 'standby' || L.state === 'idle' || L.state === 'paused') && (sb || L.state === 'paused');
@@ -1558,9 +1560,9 @@
     add(maxLag > 200 ? 'warn' : 'ok', maxLag > 200 ? `The app paused for ${Math.round(maxLag)} ms recently` : 'App is responsive');
     // Phones + saved
     group('Phones, streaming and saving');
-    if (S.settings.stUrl) {
+    if (streamTarget().ready) {
       const chk = await desk.streamCheck();
-      add(chk.ok ? 'ok' : 'bad', chk.ok ? (streamer.want ? 'Live stream is on' : 'Live streaming is set up (not started)') : chk.error, chk.ok ? (streamer.want ? (streamer.state.stats || '') : 'Start it a few minutes before the show and check it on a phone.') : '');
+      add(chk.ok ? 'ok' : 'bad', chk.ok ? (streamer.want ? `Live on ${streamTarget().name}` : `Live streaming to ${streamTarget().name} is set up (not started)`) : chk.error, chk.ok ? (streamer.want ? (streamer.state.stats || '') : 'Start it a few minutes before the show and check it on a phone.') : '');
     }
     if (S.settings.wpOn) {
       const c = parseWpCode(S.settings.wpCode);
@@ -1721,6 +1723,17 @@
   /* ---------- live streaming (Streaming by StreamingIdiot) ---------- */
   const streamer = { want: false, rec: null, canvas: null, g: null, drawTimer: 0, retryTimer: 0, retries: 0, gen: 0, state: {}, startedAt: 0 };
   function openStreamSettings() {
+    const showSvc = () => {
+      const svc = S.settings.stService || 'streamingidiot';
+      document.querySelectorAll('input[name=stsvc]').forEach(r => { r.checked = r.value === svc; });
+      $('svcYoutube').hidden = svc !== 'youtube'; $('svcRtmp').hidden = svc === 'youtube';
+      $('svcRtmpHelp').hidden = svc !== 'streamingidiot';
+    };
+    document.querySelectorAll('input[name=stsvc]').forEach(r => { r.onchange = safe(() => { if (streamer.want) { toast('Stop streaming before changing where it goes.'); showSvc(); return; } S.settings.stService = r.value; saveSettings(); showSvc(); renderStream(); }); });
+    showSvc();
+    $('sStYtKey').value = S.settings.stYtKey; $('sStYtKey').onchange = safe(() => { S.settings.stYtKey = $('sStYtKey').value.trim(); saveSettings(); });
+    $('sYtOpen').onclick = safe(() => desk.openExternal('https://studio.youtube.com/'));
+    $('sStCredit').checked = S.settings.stCredit !== false; $('sStCredit').onchange = safe(() => { S.settings.stCredit = $('sStCredit').checked; saveSettings(); });
     $('sStUrl').value = S.settings.stUrl; $('sStKey').value = S.settings.stKey; $('sStQ').value = S.settings.stQ; $('sStTitle').value = S.settings.stTitle;
     $('sStUrl').onchange = safe(() => { S.settings.stUrl = $('sStUrl').value.trim(); saveSettings(); });
     $('sStKey').onchange = safe(() => { S.settings.stKey = $('sStKey').value.trim(); saveSettings(); });
@@ -1731,9 +1744,18 @@
     $('sLogoName').textContent = S.settings.stLogo ? S.settings.stLogo.split(/[\\/]/).pop() : 'No logo';
     renderStream();
   }
+  // Where the stream goes. YouTube only needs the stream key: its address is built in.
+  const YOUTUBE_RTMP = 'rtmp://a.rtmp.youtube.com/live2';
+  function streamTarget() {
+    const svc = S.settings.stService || 'streamingidiot';
+    if (svc === 'youtube') return { svc, name: 'YouTube', url: YOUTUBE_RTMP, key: S.settings.stYtKey, ready: !!S.settings.stYtKey, missing: 'Paste your YouTube stream key first (Settings → Streaming → YouTube).' };
+    return { svc, name: svc === 'streamingidiot' ? 'StreamingIdiot' : 'your stream service', url: S.settings.stUrl, key: S.settings.stKey, ready: !!S.settings.stUrl,
+      missing: svc === 'streamingidiot' ? 'Paste the stream address from your StreamingIdiot account first (Settings → Streaming).' : 'Paste the stream address first (Settings → Streaming).' };
+  }
   async function streamStart() {
     if (streamer.want) return;
-    if (!S.settings.stUrl) { toast('Paste the stream address from your StreamingIdiot account first (Settings → Streaming).'); openSettings('stream'); return; }
+    const target = streamTarget();
+    if (!target.ready) { toast(target.missing, 5000); openSettings('stream'); return; }
     const chk = await desk.streamCheck();
     if (!chk.ok) { $('sStMsg').textContent = chk.error; toast(chk.error); return; }
     streamer.want = true; streamer.retries = 0; streamer.startedAt = Date.now();
@@ -1743,7 +1765,8 @@
   async function streamOpen() {
     if (!streamer.want) return;
     const q = S.settings.stQ === '480' ? [854, 480] : [1280, 720];
-    const r = await desk.streamStart({ url: S.settings.stUrl, key: S.settings.stKey, quality: S.settings.stQ, audioRate: E.ctx.sampleRate });
+    const target = streamTarget();
+    const r = await desk.streamStart({ url: target.url, key: target.key, quality: S.settings.stQ, audioRate: E.ctx.sampleRate });
     if (!r.ok) { streamer.want = false; $('sStMsg').textContent = r.error; toast(`Couldn't start the stream: ${r.error}`, 6000); renderStream(); return; }
     streamer.gen = r.gen;
     if (!streamer.canvas || streamer.canvas.width !== q[0]) { streamer.canvas = document.createElement('canvas'); streamer.canvas.width = q[0]; streamer.canvas.height = q[1]; streamer.g = streamer.canvas.getContext('2d'); }
@@ -1796,11 +1819,11 @@
     if (!streamer.want) { dot.className = 'dot'; txt.textContent = 'Stream'; }
     else if (live) { dot.className = 'dot live'; txt.textContent = `LIVE ${fmt((Date.now() - streamer.startedAt) / 1000)}`; }
     else { dot.className = 'dot warn'; txt.textContent = 'Stream: reconnecting'; }
-    $('bStream').title = live ? `Streaming ${st.stats || ''}` : 'Live stream (Streaming by StreamingIdiot)';
+    $('bStream').title = live ? `Live on ${streamTarget().name} · ${st.stats || ''}` : `Live stream to ${streamTarget().name}`;
     if ($('sStGo')) {
       $('sStGo').textContent = streamer.want ? 'Stop streaming' : 'Start streaming';
       $('sStGo').classList.toggle('danger', streamer.want);
-      $('sStMsg').textContent = live ? `Live for ${fmt((Date.now() - streamer.startedAt) / 1000)} · ${st.stats || 'starting…'}` : streamer.want ? 'Connecting…' : (st.error || '');
+      $('sStMsg').textContent = live ? `Live on ${streamTarget().name} for ${fmt((Date.now() - streamer.startedAt) / 1000)} · ${st.stats || 'starting…'}` : streamer.want ? `Connecting to ${streamTarget().name}…` : (st.error || '');
     }
   }
   setInterval(safe(renderStream), 1000);
@@ -1937,7 +1960,7 @@
       g.fillStyle = acc; g.fillRect(0, H - 6 * k, W * clamp(info.progress, 0, 1), 6 * k);
     }
     g.textAlign = 'center'; g.fillStyle = '#56607A'; g.font = `600 ${Math.round(14 * k)}px Inter, Arial, sans-serif`; g.letterSpacing = `${Math.round(1 * k)}px`;
-    g.fillText('Streaming by StreamingIdiot', W / 2, H - 28 * k);
+    if (S.settings.stCredit !== false) g.fillText('Streaming by StreamingIdiot', W / 2, H - 28 * k);
     g.restore();
   }
   // "Now performing" over the start of a video number.
@@ -2022,7 +2045,7 @@
   window.addEventListener('beforeunload', () => { snapshot(); autosave(); });
 
   // for automated tests
-  window.SP = { S, decks, openSettings, drawCard, videoOut: () => outWin, outFeed, streamStart, streamStop, streamer, trimSilence, collectFiles, syncMaster, updateText, closeCuePop, restart, resetShow, applySettings, openVideoDialog, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
+  window.SP = { S, decks, streamTarget, openSettings, drawCard, videoOut: () => outWin, outFeed, streamStart, streamStop, streamer, trimSilence, collectFiles, syncMaster, updateText, closeCuePop, restart, resetShow, applySettings, openVideoDialog, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
     fillerPlay, fillerFadeOut, fillerState, buildStatus, buildProgram, showRemaining, gainFor, nextAfter, setHotFile, hotBuffers, E, queue: () => queue.length + (analysing ? 1 : 0) };
 
   boot().catch(err => { oops(err); requestAnimationFrame(frame); setInterval(updateText, 100); setInterval(safe(tick), 25); });
