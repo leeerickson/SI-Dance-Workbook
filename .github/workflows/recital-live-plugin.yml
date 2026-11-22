@@ -57,14 +57,18 @@ jobs:
           echo "PAGE_SHORTCODE=http://localhost:8888/?page_id=$P" >> "$GITHUB_ENV"
       - name: Quick checks with curl
         run: |
-          set -e
-          curl -fsS http://localhost:8888/wp-json/recital-live/v1/ping | tee /dev/stderr | grep -q '"plugin":"recital-live"'
-          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'X-Recital-Key: wrong' -d '{}' http://localhost:8888/wp-json/recital-live/v1/shows/spring-2027/status)" = 403
-          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "X-Recital-Key: $RL_KEY" -H 'Content-Type: application/json' -d '{"state":"idle"}' http://localhost:8888/wp-json/recital-live/v1/shows/spring-2027/status)" = 200
-          curl -fsS http://localhost:8888/recital/spring-2027/ | grep -q '<title>Spring Recital 2027</title>'
-          curl -fsS http://localhost:8888/recital/spring-2027/manifest.webmanifest | grep -q '"display":"standalone"'
-          curl -fsSI http://localhost:8888/recital/sw.js | grep -qi 'content-type: text/javascript'
-          curl -fsS "$PAGE_SHORTCODE" | grep -q 'class="recital-live-frame"'
+          fail=0
+          check() { if [ "$2" = "$3" ]; then echo "PASS $1"; else echo "FAIL $1 (expected $2, got $3)"; fail=1; fi; }
+          has() { if printf '%s' "$3" | grep -qi -- "$2"; then echo "PASS $1"; else echo "FAIL $1 (no '$2' in: $(printf '%s' "$3" | head -c 300))"; fail=1; fi; }
+          B=http://localhost:8888
+          has 'ping' '"plugin":"recital-live"' "$(curl -sL $B/wp-json/recital-live/v1/ping)"
+          check 'wrong key is refused' 403 "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'X-Recital-Key: wrong' -H 'Content-Type: application/json' -d '{}' $B/wp-json/recital-live/v1/shows/spring-2027/status)"
+          check 'right key is accepted' 200 "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "X-Recital-Key: $RL_KEY" -H 'Content-Type: application/json' -d '{"state":"idle"}' $B/wp-json/recital-live/v1/shows/spring-2027/status)"
+          has 'phone page' '<title>Spring Recital 2027</title>' "$(curl -sL $B/recital/spring-2027/)"
+          has 'manifest' '"display":"standalone"' "$(curl -sL $B/recital/spring-2027/manifest.webmanifest)"
+          has 'service worker' 'content-type: [a-z/]*javascript' "$(curl -sIL $B/recital/sw.js)"
+          has 'shortcode page' 'recital-live-frame' "$(curl -sL "$PAGE_SHORTCODE")"
+          exit $fail
       - name: Test the real site in a browser
         run: WP_URL=http://localhost:8888 SHOTS=shots node wordpress-plugin/test/recital-live-test.js
       - id: ver
