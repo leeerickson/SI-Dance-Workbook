@@ -232,6 +232,11 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(yt.url === 'rtmp://a.rtmp.youtube.com/live2' && yt.key === 'abcd-efgh-ijkl-mnop' && yt.name === 'YouTube', 'YouTube streams go to YouTube\'s address with your key');
   await win.click('.svc-card:has(input[value=streamingidiot])');
   ok(await win.isVisible('#sStUrl') && await sp(() => SP.streamTarget().name === 'StreamingIdiot'), 'switching back to StreamingIdiot shows its address and key');
+  // Easter egg: LCARS mode
+  await win.click('#sLcars');
+  ok(await win.evaluate(() => document.documentElement.dataset.theme === 'lcars' && getComputedStyle(document.querySelector('#bGo b'), '::after').content.includes('ENGAGE')) && await sp(() => SP.S.settings.lcars === true), 'the LCARS mode button turns on the starship look (GO says ENGAGE) and remembers it');
+  await win.click('#sLcars');
+  ok(await win.evaluate(() => !document.documentElement.dataset.theme), 'pressing it again goes back to the standard look');
   await win.click('#dlgSettings button[value=close]');
 
   // On a 1366×768 laptop screen, everything that matters fits without scrolling

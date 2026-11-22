@@ -56,7 +56,7 @@
     fillerAuto: true, autoResume: true, duckDb: -12, hotDb: 0, wpCode: '', wpOn: false, micOffset: null, calTarget: 85,
     spatialOn: false, width: 1.4, bassCentre: true, videoDisplay: null, trimNew: true,
     stUrl: '', stKey: '', stQ: '720', stTitle: '', stLogo: '', stAccent: 'gold', stProgress: true,
-    stService: 'streamingidiot', stYtKey: '', stCredit: true
+    stService: 'streamingidiot', stYtKey: '', stCredit: true, lcars: false
   };
   // Recommended values, shown with a ▲ mark in Settings. Master, balance and the trims are marked but
   // "Use recommended" leaves them alone, because they're set for the room.
@@ -1671,6 +1671,14 @@
   });
   on('dlgTest', 'close', () => { calStop(); if (songTest) { songTest.stop(0.3); songTest = null; $('tSong').textContent = 'Play selected song'; } });
 
+  /* ---------- LCARS mode (Easter egg) ---------- */
+  function applyTheme() {
+    if (S.settings.lcars) document.documentElement.dataset.theme = 'lcars'; else delete document.documentElement.dataset.theme;
+    $('sLcars').setAttribute('aria-pressed', String(!!S.settings.lcars));
+    $('sLcars').textContent = S.settings.lcars ? 'LCARS mode: on' : 'LCARS mode';
+  }
+  on('sLcars', 'click', () => { S.settings.lcars = !S.settings.lcars; saveSettings(); applyTheme(); toast(S.settings.lcars ? 'LCARS mode engaged.' : 'Back to the standard look.'); });
+
   /* ---------- master volume on the main page ---------- */
   const dbTxt = v => `${v > 0 ? '+' : ''}${v} dB`;
   function syncMaster() {
@@ -2033,7 +2041,7 @@
     try { const a = await desk.readAutosave(); if (a && a.show) { loadShow(a.show, a.filePath, a.dirty); opened = true; } } catch (err) { log('autosave unreadable', String(err)); }
     if (!opened) loadShow(newShow(), null, false);
     const pending = await desk.pendingShow(); if (pending) await openShow(pending);
-    applySettings(); configureWp();
+    applySettings(); configureWp(); applyTheme();
     desk.blockSleep(true).catch(() => {});
     await recover();
     renderTransport();
@@ -2045,7 +2053,7 @@
   window.addEventListener('beforeunload', () => { snapshot(); autosave(); });
 
   // for automated tests
-  window.SP = { S, decks, streamTarget, openSettings, drawCard, videoOut: () => outWin, outFeed, streamStart, streamStop, streamer, trimSilence, collectFiles, syncMaster, updateText, closeCuePop, restart, resetShow, applySettings, openVideoDialog, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
+  window.SP = { S, decks, applyTheme, streamTarget, openSettings, drawCard, videoOut: () => outWin, outFeed, streamStart, streamStop, streamer, trimSilence, collectFiles, syncMaster, updateText, closeCuePop, restart, resetShow, applySettings, openVideoDialog, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
     fillerPlay, fillerFadeOut, fillerState, buildStatus, buildProgram, showRemaining, gainFor, nextAfter, setHotFile, hotBuffers, E, queue: () => queue.length + (analysing ? 1 : 0) };
 
   boot().catch(err => { oops(err); requestAnimationFrame(frame); setInterval(updateText, 100); setInterval(safe(tick), 25); });
