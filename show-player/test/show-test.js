@@ -60,6 +60,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const chooseFiles = list => app.evaluate(({ dialog }, l) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: l }); }, list);
   const sp = (fn, arg) => win.evaluate(fn, arg);
   const waitFor = (fn, arg, timeout = 15000) => win.waitForFunction(fn, arg, { timeout, polling: 50 });
+  // Waits up to 2 s for an element's text (the screen refreshes text in its frame loop, so it can lag a few ms).
+  const shows = (sel, text, exact = false) => win.waitForFunction(([s, t, e]) => { const v = document.querySelector(s).textContent; return e ? v === t : v.includes(t); }, [sel, text, exact], { timeout: 2000 }).then(() => true, () => false);
 
   // Add the songs and wait for loudness measuring
   await chooseFiles(files);
@@ -97,8 +99,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(await sp(() => SP.S.live.currentId) === s1.id, 'GO while playing does not skip the song');
   await waitFor(() => SP.S.live.state === 'standby', null, 6000);
   ok(await sp(() => SP.S.live.standbyId === SP.S.show.tracks[1].id), '"Wait for GO": song 1 ends and song 2 stands by');
-  ok((await win.textContent('#nowDance')) === 'Junior Jazz', 'standing by shows the next dance');
-  ok((await win.textContent('#cueNext')).includes('LX 5 go'), 'the next cue shows before GO');
+  ok(await shows('#nowDance', 'Junior Jazz', true), 'standing by shows the next dance');
+  ok(await shows('#cueNext', 'LX 5 go'), 'the next cue shows before GO');
 
   // Song 2 plays straight on into song 3; its cues fire on time
   await win.keyboard.press('Space');
@@ -106,7 +108,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(true, 'cue “LX 5 go” fires at 1.0 s');
   ok(await win.waitForFunction(() => document.getElementById('cueNow').textContent.includes('LX 5 go'), null, { timeout: 2000 }).then(() => true, () => false), 'Cue now shows it');
   ok(await win.waitForFunction(() => document.getElementById('cueNext').textContent.includes('Spot 1 pick up Ava'), null, { timeout: 2000 }).then(() => true, () => false), 'Next cue shows the following cue');
-  ok((await win.textContent('#propsNow')).includes('2 chairs SL'), 'props for this number show');
+  ok(await shows('#propsNow', '2 chairs SL'), 'props for this number show');
   await waitFor(() => SP.S.live.currentId === SP.S.show.tracks[2].id, null, 5000);
   ok(await sp(() => SP.S.live.state === 'playing'), '"Straight on": song 3 starts by itself');
 
@@ -148,7 +150,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await waitFor(() => SP.S.show.filler.length === 2);
   await win.keyboard.press('b');
   await waitFor(() => SP.fillerState.playing);
-  ok((await win.textContent('#fillNow')).includes('Walk-in 1'), 'B starts pre-show music');
+  ok(await win.waitForFunction(() => document.getElementById('fillNow').textContent.includes('Walk-in 1'), null, { timeout: 2000 }).then(() => true, () => false), 'B starts pre-show music');
   await sp(() => { SP.S.show.tracks[0].endAt = 0; SP.cueNext(SP.S.show.tracks[0].id); });
   await win.keyboard.press('Space');
   await waitFor(() => !SP.fillerState.playing, null, 6000).catch(() => {});
@@ -205,7 +207,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(prog && prog.tracks.find(t => t.dance === 'Junior Jazz').cues.length === 2 && prog.tracks.find(t => t.dance === 'Junior Jazz').props[0] === '2 chairs SL', 'cues and props are in the program');
   ok(st && st.state === 'playing' && typeof st.position === 'number' && st.track_id, `status is sent while playing (${got.status.length} so far)`);
   ok(got.badKey === 0, 'the desktop key is accepted');
-  ok((await win.textContent('#wpText')) === 'Phones live', 'the top bar says Phones live');
+  ok(await shows('#wpText', 'Phones live', true), 'the top bar says Phones live');
 
   // Crash the page during a song: it reloads and carries on
   await sp(() => { const t = SP.S.show.tracks.find(t => t.dance === 'Hip Hop Crew'); t.endAt = 0; SP.S.live.state = 'standby'; SP.stopNow(false); SP.cueNext(t.id); });
