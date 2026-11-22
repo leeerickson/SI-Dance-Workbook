@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('desk', {
   chooseMedia: title => ipcRenderer.invoke('media:choose', { title }),
   statMedia: paths => ipcRenderer.invoke('media:stat', paths),
   chooseImage: () => ipcRenderer.invoke('image:choose'),
+  importDance: (filePath, withCues) => ipcRenderer.invoke('dance:import', { filePath, withCues }),
   findMedia: names => ipcRenderer.invoke('media:find', names),
   pathForFile: file => { try { return webUtils.getPathForFile(file); } catch (_) { return ''; } },
   openShow: filePath => ipcRenderer.invoke('show:open', filePath),

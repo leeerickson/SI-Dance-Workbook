@@ -48,7 +48,7 @@
         <span class="muted mono" id="showTotal"></span>
       </div>
       <ol class="plist" id="plist" aria-label="Show playlist"></ol>
-      <div class="dropzone" id="dropShow">Drag music or video files here. Drag rows to change the order, even during the show.</div>
+      <div class="dropzone" id="dropShow">Drag music, video or .dance files here. Drag rows to change the order, even during the show.</div>
     </div>
     <div class="tabpanel" id="panelFiller" hidden>
       <div class="list-head">
@@ -187,6 +187,14 @@
   <div class="cp-types" id="cpTypes" role="radiogroup" aria-label="Cue type"></div>
   <input type="text" id="cpText" placeholder="What to call, e.g. LX 22 go" autocomplete="off" spellcheck="false" aria-label="New cue text">
   <div class="cp-foot"><span class="muted"><kbd>Enter</kbd> save · <kbd>Esc</kbd> cancel · <kbd>Tab</kbd> change type</span><span class="spacer"></span><button type="button" class="btn small" id="cpCancel">Cancel</button><button type="button" class="btn small primary" id="cpSave">Save cue</button></div>
+</dialog>
+
+<!-- Question box. Unlike the built-in one, it doesn't stop the app's timers while it's open. -->
+<dialog id="dlgAsk" class="dlg small">
+  <form method="dialog" class="dlg-in">
+    <p id="askText" class="ask-text"></p>
+    <div class="dlg-foot"><span class="spacer"></span><button class="btn small" value="no" id="askNo">Cancel</button><button class="btn small primary" value="yes" id="askYes">OK</button></div>
+  </form>
 </dialog>
 
 <!-- Settings -->

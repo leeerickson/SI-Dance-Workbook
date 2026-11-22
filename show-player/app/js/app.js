@@ -54,6 +54,21 @@
     b.replaceChildren(h('span', { style: 'flex:1' }, text), ...actions.map(a => h('button', { class: 'btn small', onclick: a.fn }, a.label)), h('button', { class: 'btn small', onclick: () => b.remove() }, 'Dismiss'));
   }
   const unbanner = id => { const b = document.querySelector(`.banner[data-id="${id}"]`); if (b) b.remove(); };
+  // Asks a yes/no question without freezing the app. (The built-in confirm() stops every timer while it's
+  // open, which mid-show could hold up the move to the next song.)
+  const nativeConfirm = window.confirm;
+  let askQueue = Promise.resolve();
+  function ask(text, yes = 'OK', no = 'Cancel') {
+    if (typeof window.confirm === 'function' && window.confirm !== nativeConfirm) return Promise.resolve(!!window.confirm(text)); // tests swap confirm() to answer
+    const run = () => new Promise(resolve => {
+      const d = $('dlgAsk');
+      $('askText').textContent = text; $('askYes').textContent = yes; $('askNo').textContent = no;
+      d.returnValue = 'no';
+      d.addEventListener('close', () => resolve(d.returnValue === 'yes'), { once: true });
+      d.showModal(); $('askYes').focus();
+    });
+    return (askQueue = askQueue.then(run, run));
+  }
   const b64FromI8 = arr => { let s = ''; const u = new Uint8Array(Int8Array.from(arr).buffer); for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
   const i8FromB64 = str => { const bin = atob(str); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new Int8Array(u.buffer); };
 
@@ -142,9 +157,28 @@
       sig: { size: info.size, mtime: info.mtime }, an: null, duration: 0, _fresh: true };
   }
   async function addFiles(list, where = 'show', index = null) {
-    const infos = (list || []).filter(i => i && i.exists !== false && i.path);
-    if (!infos.length) return;
-    const made = infos.map(makeTrack);
+    const picked = (list || []).filter(i => i && i.exists !== false && i.path);
+    if (!picked.length) return;
+    // .dance files from the Choreography Workbook: take the song out, with the dance name, props and (if wanted) cues.
+    const dances = picked.filter(i => /\.dance$/i.test(i.path));
+    const metaFor = new Map();
+    let infos = picked.filter(i => !/\.dance$/i.test(i.path));
+    if (dances.length) {
+      const withCues = where === 'show' && await ask(`Bring in the sections and formations as cues too?\n\nSections become Note cues and formations become Stage cues, at their times in the song. You can delete any you don't want.`, 'Music and cues', 'Music only');
+      const problems = [];
+      for (const d of dances) {
+        const r = await desk.importDance(d.path, withCues);
+        if (r.error) { problems.push(r.error === 'no-music' ? `“${r.title}” has no music inside. In the Workbook, save the share file with “Everything, including music and video”.` : `${d.name}: ${r.error}`); continue; }
+        infos.push(r.info); metaFor.set(r.info.path, r.meta);
+      }
+      if (problems.length) banner('dance-import', problems.join(' '), 'warn');
+      if (!infos.length) return;
+    }
+    const made = infos.map(i => {
+      const t = makeTrack(i), m = metaFor.get(i.path);
+      if (m) { t.dance = m.dance; t.cls = m.cls; t.title = m.title || t.title; t.props = m.props.map(text => ({ id: uid(), text })); t.cues = m.cues.map(c => ({ id: uid(), ...c })); t.fromDance = true; }
+      return t;
+    });
     if (where === 'show') {
       const arr = tracks(); const at = index == null ? arr.length : clamp(index, 0, arr.length);
       arr.splice(at, 0, ...made);
@@ -155,7 +189,7 @@
     }
     made.forEach(t => queueAnalysis(t));
     changed(); renderLists(); renderInspector();
-    toast(`Added ${made.length} file${made.length > 1 ? 's' : ''}. Measuring loudness…`);
+    toast(metaFor.size ? `Added ${made.length} song${made.length > 1 ? 's' : ''} (${metaFor.size} from .dance files). Measuring loudness…` : `Added ${made.length} file${made.length > 1 ? 's' : ''}. Measuring loudness…`);
   }
   async function pathsToInfos(paths) { return (await desk.statMedia(paths)).filter(i => i.exists); }
 
@@ -355,10 +389,10 @@
     cueNext(t.id);
   }
   // Reset show: every song back to "not played", standing by on the first one.
-  function resetShow() {
+  async function resetShow() {
     const L = S.live;
     if (L.state === 'playing' || L.state === 'paused') { toast('Stop the music first, then reset the show.'); return; }
-    if (L.played.size && !confirm('Mark every song as not played and stand by on the first one?')) return;
+    if (L.played.size && !(await ask('Mark every song as not played and stand by on the first one?', 'Reset show'))) return;
     L.played = new Set(); L.lastId = null; L.nextId = null; L.lastCue = null; L.cueFrom = null;
     const first = firstTrack();
     L.standbyId = first ? first.id : null;
@@ -1154,10 +1188,11 @@
   bind('iTrim', 'change', (t, el) => { t.trimDb = clamp(+el.value || 0, -20, 12); if (active && active.track === t) E.ramp(active.trim.gain, E.db2g(gainFor(t)), 0.3); renderInspector(); });
   bind('iShowProps', 'change', (t, el) => { t.showProps = el.checked; renderPropsBox(); });
   bind('iEnabled', 'change', (t, el) => { if (!el.checked && t.id === S.live.currentId && S.live.state === 'playing') { el.checked = true; toast("The song that's playing stays in the show."); return; } t.enabled = el.checked; renderInspector(); });
-  on('iRemove', 'click', () => {
+  on('iRemove', 'click', async () => {
     const t = sel(); if (!t) return;
     if (t.id === S.live.currentId && (S.live.state === 'playing' || S.live.state === 'paused')) { toast("You can't remove the song that's playing."); return; }
-    if (!confirm(`Remove “${label(t)}” from the playlist? Its cues and props go too.`)) return;
+    if (!(await ask(`Remove “${label(t)}” from the playlist? Its cues and props go too.`, 'Remove'))) return;
+    if (t.id === S.live.currentId && (S.live.state === 'playing' || S.live.state === 'paused')) { toast("You can't remove the song that's playing."); return; }
     const i = tracks().indexOf(t); S.show.tracks.splice(i, 1);
     if (S.live.standbyId === t.id) S.live.standbyId = nextAfter(t.id) ? nextAfter(t.id).id : null;
     if (S.live.nextId === t.id) S.live.nextId = null;
@@ -1228,7 +1263,7 @@
   async function confirmLoseChanges() {
     if (S.live.state === 'playing' || S.live.state === 'paused') { toast('Stop the show before opening or starting another one.'); return false; }
     if (!S.dirty || !S.show.tracks.length) return true;
-    const r = confirm('Save the changes to this show first?\n\nOK saves, Cancel keeps them unsaved and carries on.');
+    const r = await ask('Save the changes to this show first?', 'Save', "Don't save");
     if (r) return save();
     return true;
   }
@@ -1555,7 +1590,7 @@
   on('chatReply', 'keydown', e => { if (e.key === 'Enter') { e.preventDefault(); chatSend(); } });
   const chatRead = () => { if (chat.unread) { chat.unread = 0; renderChat(); } };
   on('chatBox', 'click', chatRead); on('chatReply', 'focus', chatRead);
-  on('chatClear', 'click', async () => { if (!confirm('Clear the chat for everyone?')) return; const r = await desk.wpChatSend({ clear: true }); if (r.ok) { chat.messages = []; chat.unread = 0; renderChat(); } else toast(r.error, 6000); });
+  on('chatClear', 'click', async () => { if (!(await ask('Clear the chat for everyone?', 'Clear'))) return; const r = await desk.wpChatSend({ clear: true }); if (r.ok) { chat.messages = []; chat.unread = 0; renderChat(); } else toast(r.error, 6000); });
   renderChat();
   function renderWp() {
     const dot = $('wpDot'), txt = $('wpText');
@@ -1799,9 +1834,9 @@
   }
   on('bTest', 'click', openTest);
   on('tLevel', 'input', e => { $('tLevelTxt').textContent = `${e.target.value} dBFS`; });
-  on('dlgTest', 'click', e => {
+  on('dlgTest', 'click', async e => {
     const b = e.target.closest('[data-test]'); if (!b) return;
-    if (S.live.state === 'playing') { if (!confirm('The show is playing. Play a test sound over it?')) return; }
+    if (S.live.state === 'playing' && !(await ask('The show is playing. Play a test sound over it?', 'Play test sound'))) return;
     E.testStart($('tKind').value, b.dataset.test, +$('tLevel').value);
     $('tMsg').textContent = `Playing ${$('tKind').selectedOptions[0].text.toLowerCase()} — ${b.textContent.toLowerCase()} at ${$('tLevel').value} dBFS.`;
   });
@@ -1902,8 +1937,8 @@
   }
 
   /* ---------- use recommended sound settings ---------- */
-  on('sRec', 'click', () => {
-    if (!confirm('Set the sound settings to the recommended values?\n\nMaster level, balance and left/right trims are left as they are, because they are set for your room.')) return;
+  on('sRec', 'click', async () => {
+    if (!(await ask('Set the sound settings to the recommended values?\n\nMaster level, balance and left/right trims are left as they are, because they are set for your room.', 'Use recommended'))) return;
     for (const [k, v] of Object.entries(REC)) if (!ROOM_KEYS.includes(k)) S.settings[k] = v;
     S.settings.eq = [0, 0, 0, 0, 0];
     applySettings(); saveSettings(); openSettings(); renderListsSoon();
@@ -2040,7 +2075,7 @@
     }
   }
   setInterval(safe(renderStream), 1000);
-  on('sStGo', 'click', () => streamer.want ? (confirm('Stop the live stream?') && streamStop()) : streamStart());
+  on('sStGo', 'click', async () => { if (!streamer.want) return streamStart(); if (await ask('Stop the live stream?', 'Stop streaming', 'Keep streaming')) await streamStop(); });
   on('bStream', 'click', () => openSettings('stream'));
   // The picture: the video when a number has one (with the dance name over the start), otherwise the title card.
   function drawStreamFrame() {

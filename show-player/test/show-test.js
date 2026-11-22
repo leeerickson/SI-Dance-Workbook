@@ -7,6 +7,7 @@ const { _electron: electron } = require('playwright');
 const { execFileSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const AdmZip = require('adm-zip');
 const os = require('os');
 const http = require('http');
 
@@ -405,6 +406,34 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await sp(() => { SP.stopNow(false); });
   await win.click('#bVideo'); await win.waitForSelector('#dlgVideo[open] .screen'); await win.click('#vClose'); await sleep(800); await win.click('#dlgVideo button[value=close]');
   await sp(() => { SP.S.show.tracks = SP.S.show.tracks.filter(t => t.title !== 'Long Video'); });
+
+  // A .dance file from the Choreography Workbook: the song comes out, with the dance name, props and cues
+  const danceSong = tone('dance-audio.wav', 520, 8, 12);
+  const mkDance = (name, withAudio) => { const z = new AdmZip(); z.addFile('project.json', Buffer.from(JSON.stringify({ app: 'choreo-workbook', format: 1, project: { title: 'Spotlight', style: 'Jazz', bpm: 120, offset: 1, phrase: 8,
+    sections: [{ name: 'Intro', start: 1 }, { name: 'Verse', start: 2 }], notes: { 1: 'Hold opening pose' }, formations: [{ id: 'f1', name: 'Opening clump', at: 0 }, { id: 'f2', name: 'Walk into V', at: 16 }],
+    props: [{ id: 'pa', name: 'Chair A', kind: 'chair' }], audio: { name: 'Spotlight Mix.wav', duration: 12 }, video: null } })));
+    if (withAudio) z.addFile('media/audio.wav', fs.readFileSync(danceSong)); const f = path.join(media, name); z.writeZip(f); return f; };
+  const danceFile = mkDance('Spotlight.dance', true), danceNoMusic = mkDance('No Music.dance', false);
+  await sp(async p => SP.addFiles(await window.desk.statMedia(p), 'show'), [danceFile, danceNoMusic]);
+  await waitFor(() => SP.queue() === 0 && SP.S.show.tracks.some(t => t.dance === 'Spotlight' && t.an), null, 20000);
+  const dn = await sp(() => { const t = SP.S.show.tracks.find(t => t.dance === 'Spotlight'); return { title: t.title, cls: t.cls, props: t.props.map(p => p.text), cues: t.cues.map(c => `${c.t} ${c.type} ${c.text}`), dur: Math.round(t.duration), lufs: t.an.lufs, path: t.path }; });
+  ok(dn.title === 'Spotlight Mix' && dn.cls === 'Jazz' && dn.dur === 12 && fs.existsSync(dn.path), `a .dance file adds its song with the dance name and style (${dn.title}, ${dn.cls}, ${dn.dur} s)`);
+  ok(dn.cues.includes('1 note Intro') && dn.cues.includes('5 note Verse') && dn.cues.includes('9 stage Formation: Walk into V') && dn.props[0] === 'Chair A', `sections and formations come in as cues at the right times, and props too (${dn.cues.join(' | ')})`);
+  ok((await win.textContent('.banner[data-id=dance-import]')).includes('has no music inside'), 'a .dance file saved without music says how to fix it');
+  await sp(() => { document.querySelectorAll('.banner').forEach(b => b.remove()); const t = SP.S.show.tracks.find(t => t.dance === 'Spotlight'); SP.stopNow(false); SP.cueNext(t.id); });
+  await sleep(400); await sp(() => SP.go());
+  await waitFor(() => SP.S.live.state === 'playing' && SP.active.track.dance === 'Spotlight' && SP.active.time > 0.5, null, 8000);
+  ok(true, 'the imported song plays');
+  // the question box doesn't freeze the app
+  await win.evaluate(() => { delete window.confirm; });
+  const tq = await sp(() => SP.active.time);
+  await win.click('#tabShow'); await win.click('#plist .row >> nth=0'); await win.click('#iRemove');
+  await win.waitForSelector('#dlgAsk[open]'); await sleep(800);
+  ok(await sp(t0 => SP.active.time > t0 + 0.5 && SP.S.live.state === 'playing', tq), 'while a question box is open, the song and timers keep running');
+  await win.click('#askNo'); await sleep(150);
+  ok(await sp(() => SP.S.show.tracks.length >= 6) && !(await win.isVisible('#dlgAsk')), 'Cancel leaves the playlist as it was');
+  await win.evaluate(() => { window.confirm = () => true; });
+  await sp(() => { SP.stopNow(false); SP.S.show.tracks = SP.S.show.tracks.filter(t => t.dance !== 'Spotlight'); });
 
   // Skip silence at both ends of a new song
   await sp(async p => SP.addFiles(await window.desk.statMedia([p]), 'show'), quietEnds);

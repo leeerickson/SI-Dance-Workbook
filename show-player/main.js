@@ -274,11 +274,52 @@ const mediaInfo = async p => {
 
 ipcMain.handle('media:choose', async (_e, { title } = {}) => {
   const r = await dialog.showOpenDialog(win, { title: title || 'Add music or video', properties: ['openFile', 'multiSelections'],
-    filters: [{ name: 'Music and video', extensions: ['mp3', 'wav', 'aif', 'aiff', 'flac', 'ogg', 'opus', 'm4a', 'aac', 'mp4', 'm4v', 'mov', 'webm', 'mkv'] }, { name: 'All files', extensions: ['*'] }] });
+    filters: [{ name: 'Music, video and .dance files', extensions: ['dance', 'mp3', 'wav', 'aif', 'aiff', 'flac', 'ogg', 'opus', 'm4a', 'aac', 'mp4', 'm4v', 'mov', 'webm', 'mkv'] }, { name: 'All files', extensions: ['*'] }] });
   if (r.canceled) return [];
-  return Promise.all(r.filePaths.filter(p => MEDIA_EXT.test(p)).map(mediaInfo));
+  return Promise.all(r.filePaths.filter(p => MEDIA_EXT.test(p) || /\.dance$/i.test(p)).map(mediaInfo));
 });
 ipcMain.handle('media:stat', (_e, paths) => Promise.all((paths || []).map(mediaInfo)));
+// A .dance file from the Choreography Workbook: a zip with project.json and (when shared with "Everything")
+// the song. The song is copied into this app's own folder; sections and formations become cues at their times.
+ipcMain.handle('dance:import', async (_e, { filePath, withCues }) => {
+  try {
+    const AdmZip = require('adm-zip');
+    const zip = new AdmZip(filePath);
+    const entry = zip.getEntry('project.json');
+    if (!entry) return { error: "This isn't a Choreography Workbook file." };
+    const data = JSON.parse(entry.getData().toString('utf8'));
+    const p = data && data.project;
+    if (!p || data.app !== 'choreo-workbook') return { error: "This isn't a Choreography Workbook file." };
+    const title = String(p.title || path.basename(filePath, path.extname(filePath))).slice(0, 120);
+    const audio = zip.getEntries().find(e => /^media\/audio\.[a-z0-9]+$/i.test(e.entryName));
+    if (!audio) return { error: 'no-music', title };
+    const ext = path.extname(audio.entryName).slice(1).toLowerCase();
+    if (!MEDIA_EXT.test('x.' + ext)) return { error: `The music inside is a .${ext} file, which this app can't play.`, title };
+    const buf = audio.getData();
+    const dir = path.join(userDir, 'dance-imports');
+    await fs.promises.mkdir(dir, { recursive: true });
+    const hash = require('crypto').createHash('sha1').update(buf).digest('hex').slice(0, 8);
+    const safe = title.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Dance';
+    const dest = path.join(dir, `${safe} ${hash}.${ext}`);
+    if (!fs.existsSync(dest)) await fs.promises.writeFile(dest, buf);
+    const beat = 60 / (Number(p.bpm) || 120), offset = Number(p.offset) || 0, phrase = Number(p.phrase) || 8;
+    const cues = [];
+    if (withCues) {
+      for (const s of Array.isArray(p.sections) ? p.sections : []) {
+        const t = offset + (Math.max(1, Number(s.start) || 1) - 1) * phrase * beat;
+        if (s && s.name && isFinite(t)) cues.push({ t: Math.round(t * 10) / 10, type: 'note', text: String(s.name).slice(0, 80) });
+      }
+      for (const f of Array.isArray(p.formations) ? p.formations : []) {
+        const t = offset + (Number(f.at) || 0) * beat;
+        if (f && f.name && isFinite(t)) cues.push({ t: Math.round(t * 10) / 10, type: 'stage', text: ('Formation: ' + String(f.name)).slice(0, 80) });
+      }
+      cues.sort((a, b) => a.t - b.t);
+    }
+    const props = (Array.isArray(p.props) ? p.props : []).map(x => x && x.name ? String(x.name).slice(0, 60) : '').filter(Boolean);
+    log('imported .dance', title, { cues: cues.length, props: props.length });
+    return { info: await mediaInfo(dest), meta: { dance: title, cls: String(p.style || '').slice(0, 60), cues, props, title: p.audio && p.audio.name ? String(p.audio.name).replace(/\.[^.]+$/, '').slice(0, 120) : title } };
+  } catch (err) { log('.dance import failed', filePath, friendly(err)); return { error: "The file couldn't be read. It may be damaged." }; }
+});
 ipcMain.handle('image:choose', async () => {
   const r = await dialog.showOpenDialog(win, { title: 'Choose the studio logo', properties: ['openFile'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'svg', 'gif'] }] });
   return r.canceled ? null : r.filePaths[0];

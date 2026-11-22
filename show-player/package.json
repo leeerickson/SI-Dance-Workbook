@@ -1,7 +1,7 @@
 {
   "name": "recital-show-player",
   "productName": "Recital Show Player",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Run a dance recital's music and video: playlist with GO, crossfades and fades, cues, props, hot sounds, filler music, preflight checks and live status for phones.",
   "main": "main.js",
   "author": "Choreography Workbook",
@@ -16,7 +16,8 @@
     "dist:mac": "electron-builder --mac --publish never"
   },
   "dependencies": {
-    "ffmpeg-static": "5.2.0"
+    "ffmpeg-static": "5.2.0",
+    "adm-zip": "0.5.16"
   },
   "devDependencies": {
     "electron": "33.2.1",
