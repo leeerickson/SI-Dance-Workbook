@@ -3,6 +3,8 @@ on:
   workflow_dispatch:
   push:
     tags: ['show-v*']
+    branches: ['**']
+    paths: ['show-player/**', '.github/workflows/show-player-build.yml']
 permissions:
   contents: write
 jobs:
