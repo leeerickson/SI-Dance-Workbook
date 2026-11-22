@@ -186,6 +186,30 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(await sp(() => SP.S.live.played.size === 0 && SP.S.live.standbyId === SP.S.show.tracks[0].id), 'Reset show clears every played mark and stands by on the first song');
   await sp(() => { SP.S.show.tracks[0].endAt = 0; });
 
+  // Pressing C opens the New cue box with the cursor in it
+  await win.keyboard.press('Space');
+  await waitFor(() => SP.S.live.state === 'playing');
+  await sleep(1200);
+  await win.keyboard.press('c');
+  await sleep(150);
+  ok(await win.evaluate(() => document.getElementById('dlgCue').open && document.activeElement === document.getElementById('cpText')), 'C opens the New cue box with the cursor in the text box');
+  await win.keyboard.press('Tab');
+  await win.keyboard.type('Spot 2 fade', { delay: 30 });
+  await win.keyboard.press('Enter');
+  await sleep(150);
+  const pc = await sp(() => { const c = SP.active.track.cues.find(c => c.text === 'Spot 2 fade'); return c ? { t: c.t, type: c.type, open: document.getElementById('dlgCue').open } : null; });
+  ok(pc && !pc.open && pc.t >= 1 && pc.t <= 1.6, `typing and Enter saves the cue at the time C was pressed (${pc && pc.t} s)`);
+  ok(pc && pc.type !== 'light', `Tab changes the cue type (now ${pc && pc.type})`);
+  ok(await sp(() => SP.S.live.state === 'playing'), 'letters typed in the box (f, p, s…) don\'t trigger shortcuts');
+  const nCues = await sp(() => SP.active.track.cues.length);
+  await win.keyboard.press('c'); await sleep(150);
+  await win.keyboard.type('oops');
+  await win.keyboard.press('Escape'); await sleep(200);
+  ok(await sp(n => SP.active.track.cues.length === n && !document.getElementById('dlgCue').open, nCues), 'Esc cancels the new cue');
+  ok(await sp(() => SP.S.live.state === 'playing' && !SP.S.live.fadingOut), 'Esc in the cue box does not fade out the music');
+  await win.keyboard.press('Shift+Escape');
+  await waitFor(() => SP.S.live.state === 'standby');
+
   // Drag to reorder: move the Finale to the top
   await win.click('#tabShow');
   await win.dragAndDrop('#plist .row >> nth=4', '#plist .row >> nth=0', { targetPosition: { x: 40, y: 3 } });

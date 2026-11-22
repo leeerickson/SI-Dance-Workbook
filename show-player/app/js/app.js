@@ -502,15 +502,61 @@
     if (!t.cues.length) $('iCues').append(h('li', { class: 'muted' }, 'No cues yet. Press C during the song, or "+ Cue at playhead".'));
   }
   const CT = { light: 'Lighting', prop: 'Props', spot: 'Spots', sound: 'Sound', stage: 'Stage', note: 'Note' };
+  // Adds a cue at the exact time (the moment C was pressed), then opens the New cue box to type what to call.
   function addCue(t, at) {
     if (!t) return;
     const c = { id: uid(), t: Math.round(at * 10) / 10, type: $('cueType').value, text: '' };
     t.cues.push(c); changed();
     if (S.selectedId !== t.id) { S.selectedId = t.id; renderLists(); }
     renderInspector();
-    setTimeout(() => { const rows = [...$('iCues').querySelectorAll('.cue')]; const i = t.cues.sort((a, b) => a.t - b.t).indexOf(c); const inp = rows[i] && rows[i].querySelectorAll('input')[1]; if (inp) inp.focus(); }, 30);
-    toast(`Cue added at ${fmt(c.t, true)}. Type what to call.`);
+    openCuePop(t, c);
   }
+  let cuePop = null; // { t, c }
+  const CUE_TYPES = ['light', 'prop', 'spot', 'sound', 'stage', 'note'];
+  function openCuePop(t, c) {
+    if (cuePop && cuePop.c !== c) closeCuePop(true);
+    cuePop = { t, c };
+    $('cpTime').textContent = fmt(c.t, true);
+    $('cpSong').textContent = label(t);
+    $('cpText').value = c.text;
+    renderCueTypes();
+    const d = $('dlgCue');
+    if (!d.open) d.show();
+    $('cpText').focus();
+    requestAnimationFrame(() => { if (cuePop && document.activeElement !== $('cpText')) $('cpText').focus(); });
+  }
+  function renderCueTypes() {
+    if (!cuePop) return;
+    $('cpTypes').replaceChildren(...CUE_TYPES.map(v => h('button', { type: 'button', role: 'radio', 'aria-checked': String(cuePop.c.type === v), style: `--ct:var(--c-${v})`, tabindex: '-1',
+      onmousedown: e => e.preventDefault(), // keep typing in the text box
+      onclick: () => setCuePopType(v) }, CT[v])));
+  }
+  function setCuePopType(v) {
+    if (!cuePop) return;
+    cuePop.c.type = v; $('cueType').value = v; changed(); renderCueTypes(); renderCues();
+  }
+  // keep = save what was typed; otherwise (Esc / Cancel) the new cue is removed.
+  function closeCuePop(keep) {
+    const d = $('dlgCue');
+    if (!cuePop) { if (d.open) d.close(); return; }
+    const { t, c } = cuePop;
+    cuePop = null;
+    if (d.open) d.close();
+    if (keep) { c.text = $('cpText').value.trim(); toast(c.text ? `Cue saved at ${fmt(c.t, true)}: ${c.text}` : `Cue saved at ${fmt(c.t, true)} with no text. You can type it in the song details.`); }
+    else { t.cues = t.cues.filter(x => x !== c); toast('Cue cancelled.'); }
+    changed(); renderInspector();
+    if (document.activeElement && document.activeElement.closest && document.activeElement.closest('#dlgCue')) document.activeElement.blur();
+  }
+  on('cpText', 'input', e => { if (cuePop) { cuePop.c.text = e.target.value; changed(); renderCues(); } });
+  on('cpText', 'keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); closeCuePop(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeCuePop(false); }
+    else if (e.key === 'Tab' && cuePop) { e.preventDefault(); const i = CUE_TYPES.indexOf(cuePop.c.type); setCuePopType(CUE_TYPES[(i + (e.shiftKey ? CUE_TYPES.length - 1 : 1)) % CUE_TYPES.length]); }
+  });
+  on('cpSave', 'click', () => closeCuePop(true));
+  on('cpCancel', 'click', () => closeCuePop(false));
+  // Clicking somewhere else in the app saves the cue as typed so far.
+  document.addEventListener('mousedown', e => { if (cuePop && !e.target.closest('#dlgCue')) closeCuePop(true); }, true);
 
   /* ---------- rendering: transport + now ---------- */
   const STATE_TXT = { idle: 'Not started', standby: 'Standing by', playing: 'Playing', paused: 'Paused', ended: 'Show over' };
@@ -924,14 +970,14 @@
   document.addEventListener('keydown', safe(e => {
     const tg = e.target;
     if (tg.closest && tg.closest('input,textarea,select,[contenteditable="true"]')) { if (e.key === 'Escape') tg.blur(); return; }
-    if (document.querySelector('dialog[open]')) return;
+    if (document.querySelector('dialog:modal')) return;
     if (e.ctrlKey || e.metaKey) return;
     const k = e.key;
     if (k === ' ' || k === 'Spacebar') { e.preventDefault(); if (!e.repeat) go(); }
     else if (k === 'Escape') { e.preventDefault(); e.shiftKey ? stopNow(true) : fadeOut(); }
     else if (k === 'f' || k === 'F') fadeToNext();
     else if (k === 'p' || k === 'P') pause();
-    else if (k === 'c' || k === 'C') { const L = S.live; if (active && active.track && (L.state === 'playing' || L.state === 'paused')) addCue(active.track, active.time); else if (sel()) $('bAddCue').click(); }
+    else if (k === 'c' || k === 'C') { e.preventDefault(); /* the C itself must not be typed into the New cue box */ const L = S.live; if (active && active.track && (L.state === 'playing' || L.state === 'paused')) addCue(active.track, active.time); else if (sel()) $('bAddCue').click(); }
     else if (k === 'r' || k === 'R') restart();
     else if (k === 'b' || k === 'B') fillerState.playing && !fillerState.fading ? fillerFadeOut(3) : fillerPlay();
     else if (/^[1-8]$/.test(k) && !e.repeat) fireHot(+k - 1);
@@ -1488,7 +1534,7 @@
   window.addEventListener('beforeunload', () => { snapshot(); autosave(); });
 
   // for automated tests
-  window.SP = { S, decks, restart, resetShow, applySettings, openVideoDialog, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
+  window.SP = { S, decks, closeCuePop, restart, resetShow, applySettings, openVideoDialog, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
     fillerPlay, fillerFadeOut, fillerState, buildStatus, buildProgram, showRemaining, gainFor, nextAfter, setHotFile, hotBuffers, E, queue: () => queue.length + (analysing ? 1 : 0) };
 
   boot().catch(err => { oops(err); requestAnimationFrame(frame); setInterval(safe(tick), 25); });

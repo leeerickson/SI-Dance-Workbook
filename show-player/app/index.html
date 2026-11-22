@@ -171,6 +171,14 @@
   </section>
 </main>
 
+<!-- New cue popup: opens when you press C. Not modal, so GO and the transport still work with the mouse. -->
+<dialog id="dlgCue" class="cuepop" aria-label="New cue">
+  <div class="cp-head"><span class="label">New cue at <b class="mono" id="cpTime"></b></span><span class="muted" id="cpSong"></span></div>
+  <div class="cp-types" id="cpTypes" role="radiogroup" aria-label="Cue type"></div>
+  <input type="text" id="cpText" placeholder="What to call, e.g. LX 22 go" autocomplete="off" spellcheck="false" aria-label="New cue text">
+  <div class="cp-foot"><span class="muted"><kbd>Enter</kbd> save · <kbd>Esc</kbd> cancel · <kbd>Tab</kbd> change type</span><span class="spacer"></span><button type="button" class="btn small" id="cpCancel">Cancel</button><button type="button" class="btn small primary" id="cpSave">Save cue</button></div>
+</dialog>
+
 <!-- Settings -->
 <dialog id="dlgSettings" class="dlg">
   <form method="dialog" class="dlg-in">
