@@ -30,6 +30,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const quietEnds = ff('Quiet Ends.wav', ['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo:d=2', '-f', 'lavfi', '-i', 'sine=frequency=500:duration=4:sample_rate=48000', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo:d=2',
     '-filter_complex', '[1]volume=10dB,aformat=channel_layouts=stereo[t];[0][t][2]concat=n=3:v=0:a=1']);
   const streamOut = path.join(tmp, 'stream-test.flv');
+  const logoPng = path.join(media, 'Studio Logo.png'); execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=#E8508A:s=400x160:d=1', '-frames:v', '1', logoPng]);
   const longVideo = ff('Long Video.mp4', ['-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=25:duration=20', '-f', 'lavfi', '-i', 'sine=frequency=700:duration=20', '-shortest', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac']);
 
   // Stand-in WordPress site: records what the desk sends.
@@ -304,6 +305,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(Math.abs(levels.mono.L - levels.mono.R) < 0.5, 'a mono file plays on both speakers');
   ok(Math.abs(levels.monoWide.L - levels.monoWide.R) < 0.5, 'widening leaves a mono file centred');
   await win.click('#bSettings');
+  await win.click('.set-tab[data-pane=tone]');
   ok(await win.isVisible('#sSpatial') && (await win.textContent('#sWidthTxt')).includes('140%'), 'Settings has the spatial enhancer (140% to start)');
   await win.click('#dlgSettings button[value=close]');
 
@@ -337,6 +339,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
   // Phones: connect to the stand-in WordPress site
   await win.click('#bSettings');
+  await win.click('.set-tab[data-pane=phones]');
+  ok(await win.isVisible('#sWpCode') && !(await win.isVisible('#sSpatial')), 'Settings is split into sections (Phones shows only the phone settings)');
   await win.fill('#sWpCode', wpCode); await win.dispatchEvent('#sWpCode', 'change');
   await win.check('#sWpOn');
   await win.click('#sWpTest');
@@ -365,6 +369,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await sleep(1500);
   const f1 = await sp(() => SP.outFeed.frames); await sleep(1500); const f2 = await sp(() => SP.outFeed.frames);
   ok(f2 > f1 + 10, `the video window shows the picture (${f2 - f1} frames in 1.5 s)`);
+  ok(await sp(() => { try { const c = document.createElement('canvas'); c.width = 64; c.height = 36; const g = c.getContext('2d'); g.drawImage(SP.active.el, 0, 0, 64, 36); c.toDataURL(); return true; } catch (err) { return false; } }), 'video frames can be used in the stream picture');
   await sp(() => SP.videoOut().document.getElementById('v').srcObject.getVideoTracks().forEach(t => t.stop()));
   await sleep(4500);
   const f3 = await sp(() => SP.outFeed.frames); await sleep(1500); const f4 = await sp(() => SP.outFeed.frames);
@@ -382,14 +387,32 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
   // Live streaming (to a test file instead of a stream service)
   await sp(() => { SP.S.settings.stUrl = 'rtmp://example.invalid/live'; SP.S.settings.stKey = 'test'; SP.S.settings.stQ = '480'; });
+  await sp(p => { SP.S.settings.stLogo = p; const t = SP.S.show.tracks.find(t => t.dance === 'Finale'); t.endAt = 0; t.startAt = 0; SP.stopNow(false); SP.cueNext(t.id); }, logoPng);
+  await sleep(400); await sp(() => SP.go());
+  await waitFor(() => SP.S.live.state === 'playing' && SP.active.track.dance === 'Finale');
   await sp(() => SP.streamStart());
   await sleep(6000);
+  ok(await sp(() => { try { SP.streamer.canvas.toDataURL(); return true; } catch (err) { return false; } }), 'the stream picture with the studio logo can be sent (not blocked)');
+  ok(await sp(() => { const im = new Image(); return new Promise(r => { im.onload = () => r(im.naturalWidth === 400); im.onerror = () => r(false); im.src = 'show://media/' + btoa(unescape(encodeURIComponent(SP.S.settings.stLogo))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }); }), 'the studio logo loads');
   ok((await win.textContent('#stText')).startsWith('LIVE'), `the top bar says LIVE while streaming (${await win.textContent('#stText')})`);
   await sp(() => SP.streamStop());
   await sleep(4500);
   let probe = '';
   try { probe = execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_name,width', '-of', 'csv=p=0', streamOut]).toString().trim().replace(/\s+/g, ' '); } catch (err) { probe = 'ffprobe failed: ' + err.message.slice(0, 120); }
   ok(/h264/.test(probe) && /aac/.test(probe) && /854/.test(probe), `the stream has H.264 video at 480p and AAC sound (${probe})`);
+  // the tone in the stream must be smooth: a clean sine never jumps, so every jump is a click or a gap
+  const clicks = (() => {
+    try {
+      const raw = execFileSync('ffmpeg', ['-v', 'error', '-ss', '1.5', '-t', '3', '-i', streamOut, '-vn', '-ac', '1', '-ar', '48000', '-f', 'f32le', 'pipe:1'], { maxBuffer: 1 << 26 });
+      const x = new Float32Array(raw.buffer, raw.byteOffset, raw.length / 4);
+      let peak = 0; for (const v of x) peak = Math.max(peak, Math.abs(v));
+      const d2 = []; for (let i = 1; i < x.length - 1; i++) d2.push(Math.abs(x[i + 1] - 2 * x[i] + x[i - 1]));
+      const typical = d2.slice().sort((a, b) => a - b)[Math.floor(d2.length * 0.99)];
+      let n = 0, last = -1000; for (let i = 0; i < d2.length; i++) if (d2[i] > Math.max(typical * 6, 0.01) && i - last > 48) { n++; last = i; }
+      return { n, samples: x.length, peak };
+    } catch (err) { return { n: -1, err: err.message.slice(0, 100) }; }
+  })();
+  ok(clicks.n === 0 && clicks.samples === 144000 && clicks.peak > 0.05, `the stream's sound has no clicks or gaps (${JSON.stringify(clicks)})`);
   ok((await win.textContent('#stText')) === 'Stream', 'stopping the stream turns the indicator off');
 
   // Crash the page during a song: it reloads and carries on

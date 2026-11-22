@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: data: show:; font-src 'self'; connect-src 'self' show: blob: data:; worker-src 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: show:; media-src 'self' blob: data: show:; font-src 'self'; connect-src 'self' show: blob: data:; worker-src 'self'">
 <title>Recital Show Player</title>
 <link rel="stylesheet" href="style.css">
 </head>
@@ -187,17 +187,21 @@
 <dialog id="dlgSettings" class="dlg">
   <form method="dialog" class="dlg-in">
     <div class="dlg-head"><h2>Settings</h2><div class="inline"><span class="muted"><span class="recmark-key">▲</span> = recommended</span><button class="btn small" type="button" id="sRec" title="Set the sound settings to the recommended values (leaves master, balance and trims alone, since those suit your room)">Use recommended sound</button><button class="btn small" value="close">Done</button></div></div>
-    <div class="dlg-grid">
+    <div class="set-layout">
+      <nav class="set-nav" role="tablist" aria-label="Settings sections">
+        <button type="button" class="set-tab" role="tab" data-pane="output" aria-selected="true">Output & level</button>
+        <button type="button" class="set-tab" role="tab" data-pane="volume" aria-selected="false">Volume</button>
+        <button type="button" class="set-tab" role="tab" data-pane="tone" aria-selected="false">Tone & width</button>
+        <button type="button" class="set-tab" role="tab" data-pane="playback" aria-selected="false">Playback</button>
+        <button type="button" class="set-tab" role="tab" data-pane="phones" aria-selected="false">Phones</button>
+        <button type="button" class="set-tab" role="tab" data-pane="stream" aria-selected="false">Streaming</button>
+        <button type="button" class="set-tab" role="tab" data-pane="reliability" aria-selected="false">Reliability</button>
+      </nav>
+      <div class="set-panes">
+      <section class="set-pane dlg-grid" data-pane="output" role="tabpanel">
       <fieldset><legend>Sound output</legend>
         <label>Play through<select id="sOut"></select></label>
         <p class="muted" id="sOutMsg"></p>
-      </fieldset>
-      <fieldset><legend>Even volume</legend>
-        <label class="chk"><input type="checkbox" id="sNorm"> Even out song volumes (normalize)</label>
-        <label>Target loudness <span class="mono" id="sTargetTxt"></span><input type="range" id="sTarget" min="-24" max="-10" step="1"></label>
-        <label>Most a quiet song can be turned up <span class="mono" id="sBoostTxt"></span><input type="range" id="sBoost" min="0" max="18" step="1"></label>
-        <label class="chk"><input type="checkbox" id="sLimiter"> Safety limiter (stops it ever getting too loud)</label>
-        <label>Limiter ceiling <span class="mono" id="sCeilTxt"></span><input type="range" id="sCeil" min="-9" max="0" step="0.5"></label>
       </fieldset>
       <fieldset><legend>Master and balance</legend>
         <label>Master level <span class="mono" id="sMasterTxt"></span><input type="range" id="sMaster" min="-30" max="12" step="0.5"></label>
@@ -205,14 +209,25 @@
         <label>Left trim (dB)<input type="number" id="sTrimL" min="-12" max="12" step="0.5"></label>
         <label>Right trim (dB)<input type="number" id="sTrimR" min="-12" max="12" step="0.5"></label>
       </fieldset>
-      <fieldset class="span2"><legend>EQ</legend>
-        <label class="chk"><input type="checkbox" id="sEqOn"> EQ on</label>
-        <label class="chk"><input type="checkbox" id="sHpf"> Cut rumble below 60 Hz</label>
-        <div class="eq" id="sEq"></div>
+      </section>
+      <section class="set-pane dlg-grid" data-pane="volume" role="tabpanel" hidden>
+      <fieldset><legend>Even volume</legend>
+        <label class="chk"><input type="checkbox" id="sNorm"> Even out song volumes (normalize)</label>
+        <label>Target loudness <span class="mono" id="sTargetTxt"></span><input type="range" id="sTarget" min="-24" max="-10" step="1"></label>
+        <label>Most a quiet song can be turned up <span class="mono" id="sBoostTxt"></span><input type="range" id="sBoost" min="0" max="18" step="1"></label>
+        <label class="chk"><input type="checkbox" id="sLimiter"> Safety limiter (stops it ever getting too loud)</label>
+        <label>Limiter ceiling <span class="mono" id="sCeilTxt"></span><input type="range" id="sCeil" min="-9" max="0" step="0.5"></label>
       </fieldset>
       <fieldset><legend>Multiband compressor</legend>
         <label class="chk"><input type="checkbox" id="sMb"> On (evens out bass, middle and treble separately)</label>
         <label>Amount <span class="mono" id="sMbTxt"></span><input type="range" id="sMbAmt" min="0" max="3" step="0.5"></label>
+      </fieldset>
+      </section>
+      <section class="set-pane dlg-grid" data-pane="tone" role="tabpanel" hidden>
+      <fieldset class="span2"><legend>EQ</legend>
+        <label class="chk"><input type="checkbox" id="sEqOn"> EQ on</label>
+        <label class="chk"><input type="checkbox" id="sHpf"> Cut rumble below 60 Hz</label>
+        <div class="eq" id="sEq"></div>
       </fieldset>
       <fieldset><legend>Spatial enhancer</legend>
         <label class="chk"><input type="checkbox" id="sSpatial"> On (widens the stereo picture)</label>
@@ -220,6 +235,8 @@
         <label class="chk"><input type="checkbox" id="sBassC"> Keep bass centred</label>
         <p class="muted">100% leaves the sound as it is. Above 100% sounds wider; 130–160% suits most rooms. 0% is mono, for a PA with one speaker or speakers far apart.</p>
       </fieldset>
+      </section>
+      <section class="set-pane dlg-grid" data-pane="playback" role="tabpanel" hidden>
       <fieldset><legend>Playback</legend>
         <label>New songs: after the song<select id="sDefTrans"><option value="stop">Wait for GO</option><option value="straight">Straight on</option><option value="crossfade">Crossfade</option></select></label>
         <label>Default crossfade (s)<input type="number" id="sXfade" min="0.5" max="30" step="0.5"></label>
@@ -234,27 +251,47 @@
         <label>Music ducks by <span class="mono" id="sDuckTxt"></span><input type="range" id="sDuck" min="-30" max="0" step="1"></label>
         <label>Hot sound level <span class="mono" id="sHotTxt"></span><input type="range" id="sHot" min="-20" max="6" step="1"></label>
       </fieldset>
+      </section>
+      <section class="set-pane dlg-grid" data-pane="phones" role="tabpanel" hidden>
       <fieldset class="span2"><legend>Phones (Recital Live for WordPress)</legend>
         <p class="muted">In WordPress, open <b>Recital Live → Shows</b>, edit the show and copy its connection code. Paste it here.</p>
         <label>Connection code<input type="text" id="sWpCode" class="mono" spellcheck="false" placeholder="Paste the connection code"></label>
         <div class="inline"><label class="chk"><input type="checkbox" id="sWpOn"> Send live status to phones</label><button class="btn small" type="button" id="sWpTest">Test connection</button><span id="sWpMsg" class="muted"></span></div>
         <p class="muted" id="sWpLink"></p>
       </fieldset>
+      </section>
+      <section class="set-pane dlg-grid" data-pane="stream" role="tabpanel" hidden>
       <fieldset class="span2" id="streamBox"><legend>Streaming <span class="by">by StreamingIdiot</span></legend>
         <p class="muted">Send the show live, so family who can't be there can watch: the sound everyone hears, with the video when a number has one and a title card with the dance name the rest of the time. Copy the <b>stream address</b> and <b>stream key</b> from your <a href="https://streamingidiot.com" target="_blank" rel="noopener">StreamingIdiot</a> account (any service that gives an RTMP address works too).</p>
         <div class="fields">
           <label class="wide">Stream address<input type="text" id="sStUrl" class="mono" spellcheck="false" placeholder="rtmp://…"></label>
           <label class="wide">Stream key<input type="password" id="sStKey" class="mono" spellcheck="false" autocomplete="off" placeholder="Kept on this computer only"></label>
           <label>Quality<select id="sStQ"><option value="720">720p (2.5 Mbps upload)</option><option value="480">480p (1.2 Mbps upload, slower internet)</option></select></label>
-          <label>Title card text<input type="text" id="sStTitle" placeholder="Show name (default)"></label>
         </div>
         <div class="inline"><button class="btn small primary" type="button" id="sStGo">Start streaming</button><span class="muted" id="sStMsg"></span></div>
         <p class="muted">Streaming uses some of the computer's power, at low priority so the show always comes first. Start it a few minutes early and check it on a phone. If the internet drops, it reconnects by itself.</p>
       </fieldset>
+      <fieldset class="span2" id="streamPicBox"><legend>Stream picture</legend>
+        <p class="muted">What viewers see when a number has no video: the show title, what's on now, what's next and your studio logo.</p>
+        <div class="pic-grid">
+          <div class="fields">
+            <label class="wide">Studio logo
+              <span class="inline"><button class="btn small" type="button" id="sLogoPick">Choose image…</button><button class="btn small" type="button" id="sLogoClear">Remove</button><span class="muted" id="sLogoName">No logo</span></span></label>
+            <label class="wide">Title at the top<input type="text" id="sStTitle" placeholder="Show name (default)"></label>
+            <label>Colour<select id="sStAccent"><option value="gold">Stage gold</option><option value="pink">Pink</option><option value="teal">Teal</option><option value="purple">Purple</option><option value="white">White</option></select></label>
+            <label class="chk wide"><input type="checkbox" id="sStProgress"> Show a progress line for each song</label>
+          </div>
+          <div class="pic-preview"><canvas id="sStPreview" width="480" height="270" aria-label="Preview of the stream picture"></canvas><span class="muted">Live preview</span></div>
+        </div>
+      </fieldset>
+      </section>
+      <section class="set-pane dlg-grid" data-pane="reliability" role="tabpanel" hidden>
       <fieldset class="span2"><legend>Reliability</legend>
         <div class="inline"><button class="btn small" type="button" id="sCollect" title="Copies every song, video and sound into a folder next to the show file">Copy all files into the show folder</button><span class="muted" id="sCollectMsg">Do this before the show if the music is on a USB stick, a network drive or in Downloads, so a file can't go missing mid-show.</span></div>
         <label class="chk"><input type="checkbox" id="sSoftDraw"> Software drawing: use if the screen flickers, goes black or freezes (takes effect next time the app starts)</label>
       </fieldset>
+      </section>
+      </div>
     </div>
   </form>
 </dialog>

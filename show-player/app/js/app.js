@@ -55,7 +55,7 @@
     eqOn: true, eq: [0, 0, 0, 0, 0], hpf: false, mbOn: false, mbAmount: 1, defTrans: 'stop', xfade: 5, fadeSec: 3, fadeOutSec: 3, cueWarn: 10,
     fillerAuto: true, autoResume: true, duckDb: -12, hotDb: 0, wpCode: '', wpOn: false, micOffset: null, calTarget: 85,
     spatialOn: false, width: 1.4, bassCentre: true, videoDisplay: null, trimNew: true,
-    stUrl: '', stKey: '', stQ: '720', stTitle: ''
+    stUrl: '', stKey: '', stQ: '720', stTitle: '', stLogo: '', stAccent: 'gold', stProgress: true
   };
   // Recommended values, shown with a ▲ mark in Settings. Master, balance and the trims are marked but
   // "Use recommended" leaves them alone, because they're set for the room.
@@ -1284,7 +1284,16 @@
     try { await E.setOutput(id); S.settings.outputId = id; saveSettings(); $('sOutMsg').textContent = 'Sound is going to the chosen output.'; unbanner('output'); }
     catch (err) { $('sOutMsg').textContent = `Couldn't switch: ${err.message}`; log('setSinkId failed', err.message); }
   }
-  function openSettings() {
+  // Settings sections (list on the left). Remembers the last one opened.
+  let setPane = 'output';
+  function showPane(k) {
+    setPane = k;
+    document.querySelectorAll('.set-tab').forEach(b => b.setAttribute('aria-selected', String(b.dataset.pane === k)));
+    document.querySelectorAll('.set-pane').forEach(p => { p.hidden = p.dataset.pane !== k; });
+  }
+  on(document.querySelector('.set-nav'), 'click', e => { const b = e.target.closest('.set-tab'); if (b) showPane(b.dataset.pane); });
+  function openSettings(pane) {
+    showPane(typeof pane === 'string' ? pane : setPane);
     fillOutputs('sOut');
     ck('sNorm', 'normalize', () => { if (active && active.track) E.ramp(active.trim.gain, E.db2g(gainFor(active.track)), 0.5); });
     sl('sTarget', 'targetLufs', 'sTargetTxt', v => `${v} LUFS`);
@@ -1315,8 +1324,8 @@
     openStreamSettings(); openReliabilitySettings();
     if (!$('dlgSettings').open) $('dlgSettings').showModal();
   }
-  on('bSettings', 'click', openSettings);
-  on('bPhones', 'click', () => { openSettings(); setTimeout(() => $('sWpCode').scrollIntoView({ block: 'center' }), 50); });
+  on('bSettings', 'click', () => openSettings());
+  on('bPhones', 'click', () => openSettings('phones'));
 
   /* ---------- phones: WordPress ---------- */
   function parseWpCode(code) {
@@ -1717,11 +1726,14 @@
     $('sStKey').onchange = safe(() => { S.settings.stKey = $('sStKey').value.trim(); saveSettings(); });
     $('sStQ').onchange = safe(() => { S.settings.stQ = $('sStQ').value; saveSettings(); });
     $('sStTitle').oninput = safe(() => { S.settings.stTitle = $('sStTitle').value; saveSettings(); });
+    $('sStAccent').value = S.settings.stAccent; $('sStAccent').onchange = safe(() => { S.settings.stAccent = $('sStAccent').value; saveSettings(); });
+    $('sStProgress').checked = S.settings.stProgress !== false; $('sStProgress').onchange = safe(() => { S.settings.stProgress = $('sStProgress').checked; saveSettings(); });
+    $('sLogoName').textContent = S.settings.stLogo ? S.settings.stLogo.split(/[\\/]/).pop() : 'No logo';
     renderStream();
   }
   async function streamStart() {
     if (streamer.want) return;
-    if (!S.settings.stUrl) { toast('Paste the stream address from your StreamingIdiot account first (Settings → Streaming).'); openSettings(); setTimeout(() => $('streamBox').scrollIntoView({ block: 'center' }), 60); return; }
+    if (!S.settings.stUrl) { toast('Paste the stream address from your StreamingIdiot account first (Settings → Streaming).'); openSettings('stream'); return; }
     const chk = await desk.streamCheck();
     if (!chk.ok) { $('sStMsg').textContent = chk.error; toast(chk.error); return; }
     streamer.want = true; streamer.retries = 0; streamer.startedAt = Date.now();
@@ -1731,24 +1743,26 @@
   async function streamOpen() {
     if (!streamer.want) return;
     const q = S.settings.stQ === '480' ? [854, 480] : [1280, 720];
-    const r = await desk.streamStart({ url: S.settings.stUrl, key: S.settings.stKey, quality: S.settings.stQ });
+    const r = await desk.streamStart({ url: S.settings.stUrl, key: S.settings.stKey, quality: S.settings.stQ, audioRate: E.ctx.sampleRate });
     if (!r.ok) { streamer.want = false; $('sStMsg').textContent = r.error; toast(`Couldn't start the stream: ${r.error}`, 6000); renderStream(); return; }
     streamer.gen = r.gen;
     if (!streamer.canvas || streamer.canvas.width !== q[0]) { streamer.canvas = document.createElement('canvas'); streamer.canvas.width = q[0]; streamer.canvas.height = q[1]; streamer.g = streamer.canvas.getContext('2d'); }
     clearInterval(streamer.drawTimer);
     streamer.drawTimer = setInterval(drawStreamFrame, 33);
     drawStreamFrame();
-    const tracksOut = [...streamer.canvas.captureStream(30).getVideoTracks(), ...E.streamTap().getAudioTracks()];
-    const mime = ['video/webm;codecs=vp8,opus', 'video/webm'].find(m => MediaRecorder.isTypeSupported(m));
-    const rec = new MediaRecorder(new MediaStream(tracksOut), { mimeType: mime, videoBitsPerSecond: q[0] > 1000 ? 6000000 : 3000000, audioBitsPerSecond: 192000 });
+    // Picture only here; the sound goes separately as exact samples (E.pcmTapStart below).
+    const mime = ['video/webm;codecs=vp8', 'video/webm'].find(m => MediaRecorder.isTypeSupported(m));
+    const rec = new MediaRecorder(new MediaStream(streamer.canvas.captureStream(30).getVideoTracks()), { mimeType: mime, videoBitsPerSecond: q[0] > 1000 ? 6000000 : 3000000 });
     rec.ondataavailable = e => { if (e.data && e.data.size && streamer.rec === rec) e.data.arrayBuffer().then(b => { if (streamer.rec === rec) desk.streamData(b); }).catch(() => {}); };
     rec.onerror = e => { log('stream recorder error', String(e.error || e)); streamReconnect('The recording stopped.'); };
     streamer.rec = rec;
+    await E.pcmTapStart(buf => { if (streamer.rec === rec) desk.streamPcm(buf); });
     rec.start(250);
     renderStream();
   }
   function streamTeardown() {
     const rec = streamer.rec; streamer.rec = null;
+    E.pcmTapStop();
     try { if (rec && rec.state !== 'inactive') rec.stop(); } catch (_) {}
     clearInterval(streamer.drawTimer); streamer.drawTimer = 0;
   }
@@ -1791,37 +1805,159 @@
   }
   setInterval(safe(renderStream), 1000);
   on('sStGo', 'click', () => streamer.want ? (confirm('Stop the live stream?') && streamStop()) : streamStart());
-  on('bStream', 'click', () => { openSettings(); setTimeout(() => $('streamBox').scrollIntoView({ block: 'center' }), 60); });
-  // The picture: the video when a number has one, otherwise a title card with what's on now.
+  on('bStream', 'click', () => openSettings('stream'));
+  // The picture: the video when a number has one (with the dance name over the start), otherwise the title card.
   function drawStreamFrame() {
     try {
       const c = streamer.canvas, g = streamer.g; if (!c) return;
-      const W = c.width, H = c.height, L = S.live, k = W / 1280;
+      const W = c.width, H = c.height, L = S.live;
       const t = active && active.track && (L.state === 'playing' || L.state === 'paused') ? active.track : null;
-      g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
       if (t && t.type === 'video' && active.el.readyState >= 2 && active.el.videoWidth) {
+        g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
         const vw = active.el.videoWidth, vh = active.el.videoHeight, sc = Math.min(W / vw, H / vh);
         g.drawImage(active.el, (W - vw * sc) / 2, (H - vh * sc) / 2, vw * sc, vh * sc);
+        const into = active.time - effStart(t);
+        if (into < 9) drawLowerThird(g, W, H, 'NOW PERFORMING', label(t), Math.min(1, into / 0.6, (9 - into) / 0.8));
         return;
       }
-      const grd = g.createLinearGradient(0, 0, 0, H); grd.addColorStop(0, '#161A2E'); grd.addColorStop(1, '#07080F'); g.fillStyle = grd; g.fillRect(0, 0, W, H);
-      const tapes = ['#F2C200', '#E8508A', '#19A7BC'];
-      tapes.forEach((col, i) => { g.save(); g.translate(70 * k + i * 6 * k, 70 * k + i * 16 * k); g.rotate(-0.1); g.fillStyle = col; g.fillRect(0, 0, 70 * k, 12 * k); g.restore(); });
-      const center = (txt, y, size, weight, color) => { g.fillStyle = color; g.font = `${weight} ${Math.round(size * k)}px Archivo, Arial, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; let s2 = String(txt || ''); while (s2.length > 3 && g.measureText(s2).width > W * 0.9) s2 = s2.slice(0, -2); g.fillText(s2 === String(txt || '') ? s2 : s2 + '…', W / 2, y * k); };
-      center(S.settings.stTitle || S.show.name, 110, 34, 700, '#97A0B8');
-      const inter = S.phones.intermissionEnds > Date.now();
-      const sb = byId(L.standbyId) || (L.state === 'idle' ? firstTrack() : null);
-      if (t) { center('NOW', 270, 26, 800, '#F5B83D'); center(label(t), 345, 72, 850, '#FFFFFF'); center([t.dance ? t.title : '', t.cls].filter(Boolean).join(' · '), 420, 30, 500, '#C9CEDD'); }
-      else if (inter) { center('INTERMISSION', 270, 30, 800, '#F5B83D'); center(`Back in ${fmt((S.phones.intermissionEnds - Date.now()) / 1000)}`, 350, 72, 850, '#FFFFFF'); if (sb) center(`Up next: ${label(sb)}`, 430, 30, 500, '#C9CEDD'); }
-      else if (L.state === 'ended') center('Thank you for watching', 330, 64, 850, '#FFFFFF');
-      else if (sb) { center(L.state === 'idle' ? 'THE SHOW STARTS SOON' : 'UP NEXT', 270, 28, 800, '#F5B83D'); center(label(sb), 345, 72, 850, '#FFFFFF'); }
-      else center('Welcome', 330, 64, 850, '#FFFFFF');
-      if (S.phones.message) center(S.phones.message, 520, 30, 600, '#F5B83D');
-      g.fillStyle = '#E5484D'; g.beginPath(); g.arc(W - 120 * k, 60 * k, 8 * k, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#FFFFFF'; g.font = `800 ${Math.round(20 * k)}px Archivo, Arial, sans-serif`; g.textAlign = 'left'; g.fillText('LIVE', W - 104 * k, 61 * k);
-      center('Streaming by StreamingIdiot', 680, 18, 600, '#5E6680');
+      drawCard(g, W, H);
     } catch (err) { if (!drawStreamFrame.logged) { drawStreamFrame.logged = true; log('stream picture error', String(err)); } }
   }
+  const ACCENTS = { gold: '#F2C200', pink: '#E8508A', teal: '#19A7BC', purple: '#9A6BF7', white: '#FFFFFF' };
+  const accent = () => ACCENTS[S.settings.stAccent] || ACCENTS.gold;
+  const hexA = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
+  const logo = { path: '', img: null, ok: false };
+  function logoImage() {
+    const p = S.settings.stLogo; if (!p) return null;
+    if (logo.path !== p) {
+      logo.path = p; logo.ok = false;
+      const im = new Image(); im.crossOrigin = 'anonymous';
+      im.onload = () => { if (logo.img === im) logo.ok = true; };
+      im.onerror = () => log('studio logo could not be loaded', p);
+      im.src = mediaUrl(p); logo.img = im;
+    }
+    return logo.ok ? logo.img : null;
+  }
+  const sparks = Array.from({ length: 50 }, () => ({ x: Math.random(), y: Math.random(), r: 0.6 + Math.random() * 2.2, v: 0.006 + Math.random() * 0.018, a: 0.12 + Math.random() * 0.4, ph: Math.random() * 6.3 }));
+  const cardFade = { key: '', at: 0 };
+  // What the card says right now.
+  function cardInfo() {
+    const L = S.live, t = active && active.track && (L.state === 'playing' || L.state === 'paused') ? active.track : null;
+    const sb = byId(L.standbyId) || (L.state === 'idle' ? firstTrack() : null);
+    const sub = x => x ? [x.dance ? x.title : '', x.cls].filter(Boolean).join('  ·  ') : '';
+    if (t) { const nx = nextAfter(t.id); return { kicker: 'NOW PERFORMING', big: label(t), sub: sub(t), next: nx ? label(nx) : '', right: fmt(effEnd(t) - active.time), progress: (active.time - effStart(t)) / Math.max(1, effLen(t)) }; }
+    if (S.phones.intermissionEnds > Date.now()) return { kicker: 'INTERMISSION', big: `Back in ${fmt((S.phones.intermissionEnds - Date.now()) / 1000)}`, fadeKey: 'intermission', sub: 'Thank you for your patience', next: sb ? label(sb) : '' };
+    if (L.state === 'ended') return { kicker: 'THANK YOU', big: 'Thank you for watching', sub: '', next: '' };
+    if (L.state === 'idle') return { kicker: 'WELCOME', big: 'The show begins shortly', sub: '', next: sb ? label(sb) : '' };
+    if (sb) { const nx = nextAfter(sb.id); return { kicker: 'UP NEXT', big: label(sb), sub: sub(sb), next: nx ? label(nx) : '', nextLabel: 'THEN' }; }
+    return { kicker: 'WELCOME', big: S.settings.stTitle || S.show.name, sub: '', next: '' };
+  }
+  function fitFont(g, text, max, min, width, weight = 850) {
+    let size = max;
+    for (; size > min; size -= 2) { g.font = `${weight} ${size}px Archivo, Arial, sans-serif`; if (g.measureText(text).width <= width) break; }
+    return size;
+  }
+  function roundRect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+  function drawCard(g, W, H) {
+    const k = W / 1280, now = performance.now() / 1000, acc = accent(), info = cardInfo();
+    g.save();
+    // background: deep stage blue, sweeping light beams, drifting sparkles, vignette
+    const bg = g.createRadialGradient(W / 2, -H * 0.2, 0, W / 2, H * 0.3, W * 0.9);
+    bg.addColorStop(0, '#222A50'); bg.addColorStop(0.55, '#0C0F1E'); bg.addColorStop(1, '#040509');
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    g.globalCompositeOperation = 'lighter';
+    [0.18, 0.5, 0.82].forEach((x0, i) => {
+      const sway = Math.sin(now * 0.22 + i * 2.1) * 0.16, spread = 0.2;
+      g.save(); g.translate(W * x0, -20 * k); g.rotate(sway);
+      const beam = g.createLinearGradient(0, 0, 0, H * 1.1);
+      beam.addColorStop(0, hexA(i === 1 ? acc : '#9FB4FF', 0.2)); beam.addColorStop(1, hexA(i === 1 ? acc : '#9FB4FF', 0));
+      g.fillStyle = beam; g.beginPath(); g.moveTo(-10 * k, 0); g.lineTo(10 * k, 0); g.lineTo(H * 1.1 * spread, H * 1.1); g.lineTo(-H * 1.1 * spread, H * 1.1); g.closePath(); g.fill();
+      g.restore();
+    });
+    for (const p of sparks) {
+      const y = ((p.y - now * p.v) % 1 + 1) % 1, a = p.a * (0.55 + 0.45 * Math.sin(now * 1.7 + p.ph));
+      g.fillStyle = hexA(acc, a * 0.7); g.beginPath(); g.arc((p.x + Math.sin(now * 0.3 + p.ph) * 0.01) * W, y * H, p.r * k, 0, 6.3); g.fill();
+    }
+    const floor = g.createRadialGradient(W / 2, H * 1.02, 0, W / 2, H * 1.02, W * 0.5);
+    floor.addColorStop(0, hexA(acc, 0.16)); floor.addColorStop(1, hexA(acc, 0)); g.fillStyle = floor; g.fillRect(0, H * 0.55, W, H * 0.45);
+    g.globalCompositeOperation = 'source-over';
+    const vig = g.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, W * 0.75);
+    vig.addColorStop(0, 'rgba(0,0,0,0)'); vig.addColorStop(1, 'rgba(0,0,0,0.6)'); g.fillStyle = vig; g.fillRect(0, 0, W, H);
+    // top-left: studio logo (or the tape mark); top-right: LIVE and the time
+    const img = logoImage();
+    if (img && img.naturalWidth) {
+      const bw = 230 * k, bh = 110 * k, sc = Math.min(bw / img.naturalWidth, bh / img.naturalHeight);
+      g.drawImage(img, 56 * k, 40 * k, img.naturalWidth * sc, img.naturalHeight * sc);
+    } else {
+      ['#F2C200', '#E8508A', '#19A7BC'].forEach((col, i) => { g.save(); g.translate(60 * k + i * 7 * k, 52 * k + i * 17 * k); g.rotate(-0.1); g.fillStyle = col; g.fillRect(0, 0, 72 * k, 12 * k); g.restore(); });
+    }
+    g.textBaseline = 'middle';
+    roundRect(g, W - 190 * k, 44 * k, 134 * k, 38 * k, 19 * k); g.fillStyle = 'rgba(0,0,0,0.45)'; g.fill();
+    g.fillStyle = '#E5484D'; g.beginPath(); g.arc(W - 166 * k, 63 * k, (6 + Math.sin(now * 4) * 1.2) * k, 0, 6.3); g.fill();
+    g.fillStyle = '#FFF'; g.font = `800 ${Math.round(17 * k)}px Archivo, Arial, sans-serif`; g.textAlign = 'left'; g.fillText('LIVE', W - 150 * k, 64 * k);
+    g.fillStyle = '#AEB6CC'; g.font = `600 ${Math.round(15 * k)}px Inter, Arial, sans-serif`; g.fillText(new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), W - 102 * k, 64 * k);
+    // show title, letter-spaced, with an accent rule under it
+    g.textAlign = 'center';
+    g.letterSpacing = `${Math.round(6 * k)}px`;
+    g.fillStyle = '#C9D0E6'; fitFont(g, (S.settings.stTitle || S.show.name || '').toUpperCase(), Math.round(26 * k), Math.round(14 * k), W * 0.6, 700);
+    g.fillText((S.settings.stTitle || S.show.name || '').toUpperCase(), W / 2, 150 * k);
+    g.letterSpacing = '0px';
+    g.fillStyle = acc; g.fillRect(W / 2 - 50 * k, 178 * k, 100 * k, 3 * k);
+    // the main message fades and lifts in when it changes
+    const key = info.kicker + '|' + (info.fadeKey || info.big); // a ticking countdown isn't a new message
+    if (cardFade.key !== key) { cardFade.key = key; cardFade.at = now; }
+    const f = Math.min(1, (now - cardFade.at) / 0.7), ease = 1 - Math.pow(1 - f, 3);
+    g.globalAlpha = ease; const lift = (1 - ease) * 18 * k;
+    g.letterSpacing = `${Math.round(4 * k)}px`; g.font = `800 ${Math.round(18 * k)}px Archivo, Arial, sans-serif`;
+    const kw = g.measureText(info.kicker).width + 40 * k;
+    roundRect(g, W / 2 - kw / 2, 262 * k + lift, kw, 40 * k, 20 * k); g.strokeStyle = hexA(acc, 0.85); g.lineWidth = 2 * k; g.stroke();
+    g.fillStyle = acc; g.fillText(info.kicker, W / 2 + 2 * k, 283 * k + lift);
+    g.letterSpacing = '0px';
+    const bigSize = fitFont(g, info.big, Math.round(108 * k), Math.round(44 * k), W * 0.86);
+    g.save(); g.shadowColor = hexA(acc, 0.45); g.shadowBlur = 40 * k; g.fillStyle = '#FFFFFF';
+    g.font = `850 ${bigSize}px Archivo, Arial, sans-serif`; g.fillText(info.big, W / 2, 380 * k + lift); g.restore();
+    if (info.sub) { g.fillStyle = '#C9CEDD'; fitFont(g, info.sub, Math.round(32 * k), Math.round(18 * k), W * 0.8, 500); g.fillText(info.sub, W / 2, 462 * k + lift); }
+    g.globalAlpha = 1;
+    if (S.phones.message) { g.fillStyle = acc; fitFont(g, S.phones.message, Math.round(26 * k), Math.round(16 * k), W * 0.8, 650); g.fillText(S.phones.message, W / 2, 530 * k); }
+    // lower third: up next, and time left in the song
+    if (info.next || info.right) {
+      const x = 80 * k, y = 588 * k, w = W - 160 * k, h = 64 * k;
+      roundRect(g, x, y, w, h, 14 * k); g.fillStyle = 'rgba(255,255,255,0.07)'; g.fill();
+      g.fillStyle = acc; g.fillRect(x, y + 12 * k, 5 * k, h - 24 * k);
+      g.textAlign = 'left';
+      if (info.next) {
+        g.letterSpacing = `${Math.round(3 * k)}px`; g.fillStyle = acc; g.font = `800 ${Math.round(15 * k)}px Archivo, Arial, sans-serif`;
+        const lab = info.nextLabel || 'UP NEXT'; g.fillText(lab, x + 26 * k, y + h / 2); const lw = g.measureText(lab).width;
+        g.letterSpacing = '0px'; g.fillStyle = '#FFF'; fitFont(g, info.next, Math.round(26 * k), Math.round(15 * k), w * 0.62, 750); g.fillText(info.next, x + 46 * k + lw, y + h / 2);
+      }
+      if (info.right) { g.textAlign = 'right'; g.fillStyle = '#AEB6CC'; g.font = `600 ${Math.round(22 * k)}px "JetBrains Mono", monospace`; g.fillText(info.right, x + w - 26 * k, y + h / 2); }
+    }
+    if (info.progress != null && S.settings.stProgress !== false) {
+      g.fillStyle = 'rgba(255,255,255,0.1)'; g.fillRect(0, H - 6 * k, W, 6 * k);
+      g.fillStyle = acc; g.fillRect(0, H - 6 * k, W * clamp(info.progress, 0, 1), 6 * k);
+    }
+    g.textAlign = 'center'; g.fillStyle = '#56607A'; g.font = `600 ${Math.round(14 * k)}px Inter, Arial, sans-serif`; g.letterSpacing = `${Math.round(1 * k)}px`;
+    g.fillText('Streaming by StreamingIdiot', W / 2, H - 28 * k);
+    g.restore();
+  }
+  // "Now performing" over the start of a video number.
+  function drawLowerThird(g, W, H, kicker, name, alpha) {
+    const k = W / 1280, acc = accent();
+    g.save(); g.globalAlpha = Math.max(0, alpha); g.textBaseline = 'middle'; g.textAlign = 'left';
+    const x = 60 * k, y = H - 150 * k, w = Math.min(W * 0.7, 760 * k), h = 86 * k;
+    const grd = g.createLinearGradient(x, 0, x + w, 0); grd.addColorStop(0, 'rgba(6,8,16,0.85)'); grd.addColorStop(1, 'rgba(6,8,16,0)');
+    g.fillStyle = grd; g.fillRect(x, y, w, h); g.fillStyle = acc; g.fillRect(x, y, 6 * k, h);
+    g.letterSpacing = `${Math.round(3 * k)}px`; g.fillStyle = acc; g.font = `800 ${Math.round(15 * k)}px Archivo, Arial, sans-serif`; g.fillText(kicker, x + 26 * k, y + 26 * k);
+    g.letterSpacing = '0px'; g.fillStyle = '#FFF'; fitFont(g, name, Math.round(36 * k), Math.round(18 * k), w - 50 * k); g.fillText(name, x + 26 * k, y + 58 * k);
+    g.restore();
+  }
+  // Live preview in Settings → Streaming.
+  setInterval(safe(() => {
+    if (!$('dlgSettings').open || setPane !== 'stream') return;
+    const c = $('sStPreview'); drawCard(c.getContext('2d'), c.width, c.height);
+  }), 100);
+  on('sLogoPick', 'click', async () => { const p = await desk.chooseImage(); if (!p) return; S.settings.stLogo = p; saveSettings(); $('sLogoName').textContent = p.split(/[\\/]/).pop(); });
+  on('sLogoClear', 'click', () => { S.settings.stLogo = ''; saveSettings(); $('sLogoName').textContent = 'No logo'; });
 
   /* ---------- reliability ---------- */
   async function openReliabilitySettings() {
@@ -1864,7 +2000,7 @@
     if (audioDog.stuck === 8) banner('audio', "The sound card still isn't responding. Check the cable or USB audio box, or restart the app (it picks up the show where it was).", 'warn', [{ label: 'Restart the app', fn: () => { snapshot(); desk.relaunch(); } }]);
   }), 1000);
   let gpuCrashes = 0;
-  desk.onGpuGone(safe(() => { gpuCrashes++; outFeed.counting = null; setTimeout(safe(() => showVideo(true)), 1000); log('graphics process restarted', gpuCrashes); if (gpuCrashes >= 2) banner('gpu', 'The graphics driver has restarted more than once. If the screen flickers or freezes, turn on Software drawing in Settings → Reliability.', 'info', [{ label: 'Open Settings', fn: openSettings }]); }));
+  desk.onGpuGone(safe(() => { gpuCrashes++; outFeed.counting = null; setTimeout(safe(() => showVideo(true)), 1000); log('graphics process restarted', gpuCrashes); if (gpuCrashes >= 2) banner('gpu', 'The graphics driver has restarted more than once. If the screen flickers or freezes, turn on Software drawing in Settings → Reliability.', 'info', [{ label: 'Open Settings', fn: () => openSettings('reliability') }]); }));
 
   /* ---------- start up ---------- */
   async function boot() {
@@ -1886,7 +2022,7 @@
   window.addEventListener('beforeunload', () => { snapshot(); autosave(); });
 
   // for automated tests
-  window.SP = { S, decks, videoOut: () => outWin, outFeed, streamStart, streamStop, streamer, trimSilence, collectFiles, syncMaster, updateText, closeCuePop, restart, resetShow, applySettings, openVideoDialog, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
+  window.SP = { S, decks, openSettings, drawCard, videoOut: () => outWin, outFeed, streamStart, streamStop, streamer, trimSilence, collectFiles, syncMaster, updateText, closeCuePop, restart, resetShow, applySettings, openVideoDialog, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
     fillerPlay, fillerFadeOut, fillerState, buildStatus, buildProgram, showRemaining, gainFor, nextAfter, setHotFile, hotBuffers, E, queue: () => queue.length + (analysing ? 1 : 0) };
 
   boot().catch(err => { oops(err); requestAnimationFrame(frame); setInterval(updateText, 100); setInterval(safe(tick), 25); });

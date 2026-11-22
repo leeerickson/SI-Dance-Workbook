@@ -4,6 +4,7 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 contextBridge.exposeInMainWorld('desk', {
   chooseMedia: title => ipcRenderer.invoke('media:choose', { title }),
   statMedia: paths => ipcRenderer.invoke('media:stat', paths),
+  chooseImage: () => ipcRenderer.invoke('image:choose'),
   findMedia: names => ipcRenderer.invoke('media:find', names),
   pathForFile: file => { try { return webUtils.getPathForFile(file); } catch (_) { return ''; } },
   openShow: filePath => ipcRenderer.invoke('show:open', filePath),
@@ -35,6 +36,7 @@ contextBridge.exposeInMainWorld('desk', {
   streamCheck: () => ipcRenderer.invoke('stream:check'),
   streamStart: cfg => ipcRenderer.invoke('stream:start', cfg),
   streamData: buf => ipcRenderer.send('stream:data', buf),
+  streamPcm: buf => ipcRenderer.send('stream:pcm', buf),
   streamStop: () => ipcRenderer.invoke('stream:stop'),
   onStreamState: fn => ipcRenderer.on('stream:state', (_e, s) => fn(s)),
   wpConfigure: cfg => ipcRenderer.invoke('wp:configure', cfg),

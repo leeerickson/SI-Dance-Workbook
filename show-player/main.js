@@ -9,14 +9,17 @@ const fs = require('fs');
 const os = require('os');
 const { Readable } = require('stream');
 const { spawn, execFileSync } = require('child_process');
+const nodeNet = require('net');
 
 const SHOW_EXT = 'recital';
 const FORMAT = 1;
 const APP_DIR = path.join(__dirname, 'app');
 const MEDIA_EXT = /\.(mp3|wav|wave|aif|aiff|flac|ogg|oga|opus|m4a|aac|mp4|m4v|mov|webm|mkv)$/i;
+const IMAGE_EXT = /\.(png|jpe?g|webp|svg|gif)$/i; // studio logo for the stream picture
 const MIME = {
   html: 'text/html; charset=utf-8', js: 'text/javascript; charset=utf-8', css: 'text/css', woff2: 'font/woff2', png: 'image/png', svg: 'image/svg+xml', json: 'application/json',
   mp3: 'audio/mpeg', wav: 'audio/wav', wave: 'audio/wav', aif: 'audio/aiff', aiff: 'audio/aiff', flac: 'audio/flac', ogg: 'audio/ogg', oga: 'audio/ogg', opus: 'audio/ogg',
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif',
   m4a: 'audio/mp4', aac: 'audio/aac', mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', mkv: 'video/x-matroska'
 };
 
@@ -130,7 +133,7 @@ async function handleShowProtocol(req) {
     }
     if (u.host === 'media') {
       const file = Buffer.from(u.pathname.slice(1), 'base64url').toString('utf8');
-      if (!MEDIA_EXT.test(file)) return new Response('Not a media file', { status: 403 });
+      if (!MEDIA_EXT.test(file) && !IMAGE_EXT.test(file)) return new Response('Not a media file', { status: 403 });
       return await serveMedia(file, req);
     }
   } catch (err) {
@@ -276,6 +279,10 @@ ipcMain.handle('media:choose', async (_e, { title } = {}) => {
   return Promise.all(r.filePaths.filter(p => MEDIA_EXT.test(p)).map(mediaInfo));
 });
 ipcMain.handle('media:stat', (_e, paths) => Promise.all((paths || []).map(mediaInfo)));
+ipcMain.handle('image:choose', async () => {
+  const r = await dialog.showOpenDialog(win, { title: 'Choose the studio logo', properties: ['openFile'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'svg', 'gif'] }] });
+  return r.canceled ? null : r.filePaths[0];
+});
 
 // Looks for missing files by name in a folder the user picks (searches subfolders too).
 ipcMain.handle('media:find', async (_e, names) => {
@@ -542,7 +549,22 @@ function ffmpegPath() {
   } catch (_) { /* not bundled */ }
   return process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
 }
-const stream = { proc: null, gen: 0, startedAt: 0, bytes: 0, lastStats: '', queued: 0, wanted: false, error: '' };
+const stream = { proc: null, gen: 0, startedAt: 0, bytes: 0, lastStats: '', queued: 0, wanted: false, error: '', audio: null };
+// Sound goes to ffmpeg over its own local connection as raw samples, separate from the picture (which comes on stdin),
+// so a busy moment drawing or compressing the picture can never drop or click the sound.
+function audioPipe() {
+  const a = { server: null, sock: null, pending: [], pendingBytes: 0, port: 0 };
+  a.server = nodeNet.createServer(sock => {
+    if (a.sock) { sock.destroy(); return; }
+    a.sock = sock; sock.setNoDelay(true);
+    sock.on('error', err => log('stream audio connection error', friendly(err)));
+    for (const b of a.pending) sock.write(b);
+    a.pending = []; a.pendingBytes = 0;
+  });
+  a.server.on('error', err => log('stream audio server error', friendly(err)));
+  return new Promise(res => a.server.listen(0, '127.0.0.1', () => { a.port = a.server.address().port; res(a); }));
+}
+function closeAudioPipe(a) { if (!a) return; try { a.sock && a.sock.end(); } catch (_) {} try { a.server.close(); } catch (_) {} }
 function streamReport(extra = {}) {
   if (win && !win.isDestroyed()) win.webContents.send('stream:state', { gen: stream.gen, live: !!stream.proc, startedAt: stream.startedAt, bytes: stream.bytes, stats: stream.lastStats, error: stream.error, queued: stream.queued, ...extra });
 }
@@ -550,12 +572,17 @@ ipcMain.handle('stream:check', () => {
   try { const out = execFileSync(ffmpegPath(), ['-hide_banner', '-version'], { timeout: 8000 }).toString(); return { ok: true, version: (out.split('\n')[0] || '').slice(0, 80) }; }
   catch (err) { return { ok: false, error: 'ffmpeg, which streaming needs, could not be found.' }; }
 });
-ipcMain.handle('stream:start', (_e, cfg) => {
+ipcMain.handle('stream:start', async (_e, cfg) => {
   if (stream.proc) return { ok: true, gen: stream.gen };
   const target = process.env.SHOW_PLAYER_STREAM_OUT || (String(cfg.url || '').replace(/\/+$/, '') + (cfg.key ? '/' + cfg.key : ''));
   if (!process.env.SHOW_PLAYER_STREAM_OUT && !/^rtmps?:\/\//i.test(target)) return { ok: false, error: 'The stream address must start with rtmp:// or rtmps://' };
   const kbps = cfg.quality === '480' ? 1200 : 2500, size = cfg.quality === '480' ? '854:480' : '1280:720';
-  const args = ['-hide_banner', '-loglevel', 'error', '-stats', '-fflags', '+genpts', '-i', 'pipe:0',
+  const rate = Math.round(+cfg.audioRate || 48000);
+  const audio = await audioPipe();
+  const args = ['-hide_banner', '-loglevel', 'error', '-stats',
+    '-thread_queue_size', '512', '-fflags', '+genpts', '-i', 'pipe:0',
+    '-thread_queue_size', '4096', '-f', 's16le', '-ar', String(rate), '-ac', '2', '-i', `tcp://127.0.0.1:${audio.port}`,
+    '-map', '0:v:0', '-map', '1:a:0', '-af', 'aresample=async=1000:first_pts=0',
     '-vf', `scale=${size}:force_original_aspect_ratio=decrease,pad=${size}:(ow-iw)/2:(oh-ih)/2,fps=30`,
     '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency', '-pix_fmt', 'yuv420p', '-g', '60', '-keyint_min', '60', '-sc_threshold', '0',
     '-b:v', `${kbps}k`, '-maxrate', `${kbps}k`, '-bufsize', `${kbps * 2}k`,
@@ -564,6 +591,7 @@ ipcMain.handle('stream:start', (_e, cfg) => {
     const proc = spawn(ffmpegPath(), args, { stdio: ['pipe', 'ignore', 'pipe'], windowsHide: true });
     try { os.setPriority(proc.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch (_) {}
     const gen = ++stream.gen;
+    closeAudioPipe(stream.audio); stream.audio = audio;
     stream.proc = proc; stream.startedAt = Date.now(); stream.bytes = 0; stream.queued = 0; stream.error = ''; stream.wanted = true;
     proc.stdin.on('error', err => log('stream input error', friendly(err)));
     proc.stderr.on('data', d => {
@@ -575,7 +603,7 @@ ipcMain.handle('stream:start', (_e, cfg) => {
     proc.on('error', err => { stream.error = /ENOENT/.test(String(err)) ? 'ffmpeg, which streaming needs, could not be found.' : friendly(err); log('stream failed to start', stream.error); });
     proc.on('exit', (code, signal) => {
       log('stream ended', { code, signal });
-      if (stream.proc === proc) stream.proc = null;
+      if (stream.proc === proc) { stream.proc = null; closeAudioPipe(stream.audio); stream.audio = null; }
       if (gen === stream.gen) streamReport({ ended: true, code, gen });
     });
     log('stream started', process.env.SHOW_PLAYER_STREAM_OUT ? 'test file' : target.replace(/\/[^/]*$/, '/•••'), `${cfg.quality || '720'}p`);
@@ -592,11 +620,21 @@ ipcMain.on('stream:data', (_e, buf) => {
   if (p.stdin.writableLength > 64 * 1024 * 1024) { log('stream backed up; restarting'); stream.error = 'The connection is too slow for this quality.'; p.kill('SIGKILL'); return; }
   p.stdin.write(b);
 });
+ipcMain.on('stream:pcm', (_e, buf) => {
+  const a = stream.audio; if (!a || !stream.proc) return;
+  const b = Buffer.from(buf);
+  if (a.sock && a.sock.writable) {
+    if (a.sock.writableLength > 8 * 1024 * 1024) { log('stream audio backed up; restarting'); stream.error = 'The connection is too slow for this quality.'; stream.proc.kill('SIGKILL'); return; }
+    a.sock.write(b);
+  } else if (a.pendingBytes < 4 * 1024 * 1024) { a.pending.push(b); a.pendingBytes += b.length; } // until ffmpeg connects (about a second)
+});
 ipcMain.handle('stream:stop', () => {
   stream.wanted = false;
   const p = stream.proc; if (!p) return true;
   stream.proc = null; stream.gen++; // anything this ffmpeg says from now on is ignored
+  const a = stream.audio; stream.audio = null;
   try { p.stdin.end(); } catch (_) {}
+  closeAudioPipe(a);
   setTimeout(() => { try { p.kill('SIGKILL'); } catch (_) {} }, 4000);
   streamReport();
   return true;
