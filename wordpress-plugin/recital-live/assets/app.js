@@ -316,6 +316,7 @@
 		$('bar').style.width = (d > 0 ? Math.min(100, (pos / d) * 100) : 0).toFixed(2) + '%';
 	}
 
+	var flashUntil = 0;
 	function renderCues(s, list, cur) {
 		var t = cur >= 0 ? list[cur] : null;
 		var anyCues = false;
@@ -338,11 +339,15 @@
 		next = upcoming[0] || null;
 
 		var cueNow = $('cueNow');
-		cueNow.className = 'cue-now ' + (now ? typeClass(now.type) : '');
+		// The flash on a new cue stays for 2 s (this runs four times a second and used to wipe it at once).
+		var flashing = performance.now() < flashUntil;
+		var cls = 'cue-now ' + (now ? typeClass(now.type) : '') + (flashing ? ' flash' : '');
+		if (cueNow.className !== cls) cueNow.className = cls;
 		setText(cueNow.querySelector('.cue-type'), now ? typeName(now.type) + ' · ' + fmt(now.t) : 'Current cue');
 		setText(cueNow.querySelector('.cue-text'), now ? now.text : (active ? 'No cue yet' : 'Cues appear when a number is on'));
 		var key = now ? (t ? str(t.id) : '') + '|' + num(now.t) + '|' + str(now.text) : '';
 		if (lastCueKey !== null && key && key !== lastCueKey) {
+			flashUntil = performance.now() + 2000;
 			cueNow.classList.remove('flash');
 			void cueNow.offsetWidth; // restart the animation
 			cueNow.classList.add('flash');
