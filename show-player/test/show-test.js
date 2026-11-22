@@ -53,7 +53,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const app = await electron.launch({
     executablePath: require('electron'),
     args: [path.join(__dirname, '..'), '--no-sandbox', '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', `--user-data-dir=${path.join(tmp, 'profile')}`],
-    env: { ...process.env, SHOW_PLAYER_DATA: path.join(tmp, 'data'), SHOW_PLAYER_MAXIMIZE: '1', SHOW_PLAYER_STREAM_OUT: streamOut }
+    env: { ...process.env, SHOW_PLAYER_DATA: path.join(tmp, 'data'), SHOW_PLAYER_MAXIMIZE: '1', SHOW_PLAYER_STREAM_OUT: streamOut, SHOW_PLAYER_SELFTEST_GPU: '1' }
   });
   let win = await app.firstWindow();
   const errors = []; const watch = w => w.on('pageerror', e => errors.push(e.message));
@@ -434,6 +434,35 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   })();
   ok(clicks.n === 0 && clicks.samples === 144000 && clicks.peak > 0.05, `the stream's sound has no clicks or gaps (${JSON.stringify(clicks)})`);
   ok((await win.textContent('#stText')) === 'Stream', 'stopping the stream turns the indicator off');
+
+  // Live system checks
+  await sp(() => { SP.stopNow(false); });
+  await win.click('#sysBox'); await win.waitForSelector('#dlgSys[open]');
+  await waitFor(() => /Computer \d+%/.test(document.getElementById('syCpuT').textContent) && document.querySelectorAll('#syProcs tr').length >= 3 && document.querySelectorAll('#syCores i').length >= 1, null, 5000);
+  ok(/of .* GB in use/.test(await win.textContent('#syRamT')) && (await win.textContent('#syProcs')).includes('Graphics'), `the System window shows CPU per core, memory and the app's parts (${(await win.textContent('#syCpuT')).slice(0, 60)})`);
+  ok((await win.textContent('#syFacts')).includes('Sound engine') && (await win.textContent('#syFacts')).includes('running'), 'it shows the sound engine, disk, power and running time');
+  await win.click('#dlgSys button[value=close]');
+  ok(Math.abs((await sp(() => window.desk.selftestGpu())) - 42.75) < 0.01, 'graphics-card load is worked out correctly from the Windows counters (sample data)');
+  // a song whose file disappears: flagged within seconds, and a failed automatic move doesn't loop
+  const tB = path.join(media, 'Ghost Song.wav'); fs.copyFileSync(files[0], tB);
+  await sp(async p => SP.addFiles(await window.desk.statMedia([p]), 'show', 1), tB);
+  await waitFor(() => SP.queue() === 0 && SP.S.show.tracks[1].title === 'Ghost Song' && SP.S.show.tracks[1].an, null, 20000);
+  await sp(() => { const [a, b] = SP.S.show.tracks; a.startAt = 0; a.endAt = 3; a.transition = 'straight'; b.startAt = 0; b.endAt = 0; SP.S.live.played = new Set(); SP.cueNext(a.id); });
+  fs.renameSync(tB, tB + '.gone');
+  await sleep(400); await sp(() => SP.go());
+  await waitFor(() => SP.health.items.some(i => i.id.startsWith('file-')), null, 9000).catch(() => {});
+  ok(await sp(() => SP.health.items.some(i => i.id.startsWith('file-')) && document.getElementById('sysHealth').classList.contains('bad')), 'a missing file for the next song is flagged in the top bar while the current song plays');
+  await waitFor(() => SP.S.live.state === 'standby', null, 9000).catch(() => {});
+  await sleep(1500);
+  const logFile = path.join(tmp, 'data', 'logs', fs.readdirSync(path.join(tmp, 'data', 'logs'))[0]);
+  const fails = fs.readFileSync(logFile, 'utf8').split('\n').filter(l => l.includes('start failed')).length;
+  if (process.env.DEBUG_AUDIT) console.log('DEBUG', JSON.stringify(await sp(() => ({ st: SP.S.live.state, sb: SP.S.live.standbyId, failed: SP.S.live.failed, banners: [...document.querySelectorAll('.banner')].map(b => b.textContent.slice(0, 80)) }))), fs.readFileSync(logFile, 'utf8').split('\n').slice(-12).join('\n'));
+  const preFails = fs.readFileSync(logFile, 'utf8').split('\n').filter(l => l.includes('preload failed')).length;
+  ok(await sp(() => SP.S.live.state === 'standby' && !!document.querySelector('.banner')) && fails <= 2 && preFails <= 3, `when the next song can't load, the current one finishes, it stands by and says so, without retrying over and over (${fails} start attempt, ${preFails} preload attempt${preFails === 1 ? '' : 's'})`);
+  fs.renameSync(tB + '.gone', tB);
+  await waitFor(() => !SP.health.items.some(i => i.id.startsWith('file-')), null, 9000).catch(() => {});
+  ok(await sp(() => !SP.health.items.some(i => i.id.startsWith('file-'))), 'when the file comes back, the warning clears by itself');
+  await sp(() => { document.querySelectorAll('.banner').forEach(b => b.remove()); SP.S.live.failed = null; SP.S.show.tracks[0].endAt = 0; SP.S.live.standbyId = null; SP.S.live.state = 'idle'; SP.S.show.tracks.splice(1, 1); });
 
   // Crash the page during a song: it reloads and carries on
   await sp(() => { const t = SP.S.show.tracks.find(t => t.dance === 'Hip Hop Crew'); t.endAt = 0; SP.S.live.state = 'standby'; SP.stopNow(false); SP.cueNext(t.id); });

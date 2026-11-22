@@ -33,7 +33,15 @@
   };
   const log = (...a) => { try { desk.log(...a); } catch (_) {} };
   function safe(fn) { return function (...args) { try { const r = fn.apply(this, args); if (r && r.catch) r.catch(oops); return r; } catch (err) { oops(err); } }; }
-  function oops(err) { console.error(err); log('error', String(err && err.stack || err)); toast('Something went wrong (it has been logged). The show keeps running.'); }
+  const oopsSeen = new Map(); let oopsToastAt = 0;
+  function oops(err) {
+    const text = String(err && err.stack || err), key = text.slice(0, 200), now = Date.now();
+    const seen = oopsSeen.get(key) || { n: 0, at: 0 };
+    seen.n++;
+    if (now - seen.at > 10000) { log('error', seen.n > 1 ? `(x${seen.n}) ` + text : text); seen.at = now; seen.n = 0; console.error(err); }
+    oopsSeen.set(key, seen); if (oopsSeen.size > 50) oopsSeen.clear();
+    if (now - oopsToastAt > 15000) { oopsToastAt = now; toast('Something went wrong (it has been logged). The show keeps running.'); }
+  }
   window.addEventListener('error', e => log('page error', e.message, e.filename, e.lineno));
   window.addEventListener('unhandledrejection', e => log('page rejection', String(e.reason && e.reason.stack || e.reason)));
   const on = (el, ev, fn) => (typeof el === 'string' ? $(el) : el).addEventListener(ev, safe(fn));
@@ -67,7 +75,7 @@
   const newShow = () => ({ id: uid(), name: 'Recital', tracks: [], filler: [], fillerOpts: { loop: true, shuffle: false, levelDb: -6 }, hotCues: Array(8).fill(null) });
   const S = {
     settings: { ...DEFAULTS }, show: newShow(), filePath: null, dirty: false, selectedId: null,
-    live: { state: 'idle', currentId: null, standbyId: null, nextId: null, played: new Set(), lastId: null, cueFrom: null, lastCue: null, lastPos: 0, busy: false, fadingOut: false, xfade: null, endsAt: 0 },
+    live: { state: 'idle', currentId: null, standbyId: null, nextId: null, played: new Set(), lastId: null, cueFrom: null, failed: null, lastCue: null, lastPos: 0, busy: false, fadingOut: false, xfade: null, endsAt: 0 },
     phones: { message: '', intermissionEnds: 0 }
   };
   const tracks = () => S.show.tracks;
@@ -153,6 +161,8 @@
 
   /* ---------- loudness + waveform analysis (one at a time, in the background) ---------- */
   const queue = []; let analysing = false;
+  const deferred = []; // big files waiting for the music to stop
+  setInterval(() => { if (deferred.length && S.live.state !== 'playing' && S.live.state !== 'paused') { deferred.splice(0).forEach(t => { if (t.anError === 'Will be measured when the music stops.') t.anError = ''; queueAnalysis(t); }); } }, 3000);
   const sigOk = (t, info) => t.sig && info && t.sig.size === info.size && Math.abs((t.sig.mtime || 0) - (info.mtime || 0)) < 2000;
   function queueAnalysis(item, opts = {}) { if (!queue.includes(item)) queue.push(item); if (opts.buffer) item._wantBuffer = true; runQueue(); }
   async function runQueue() {
@@ -167,6 +177,11 @@
           t.missing = false;
           const wantBuf = t._wantBuffer; delete t._wantBuffer;
           if (t.an && t.an.peaks && sigOk(t, info) && !wantBuf) continue;
+          // Measuring loads the whole file into memory. Mid-song, big files wait until the music stops.
+          if (info.size > 80 * 1024 * 1024 && (S.live.state === 'playing' || S.live.state === 'paused') && !(t.an && sigOk(t, info))) {
+            if (wantBuf) t._wantBuffer = true;
+            deferred.push(t); t.anError = t.anError || 'Will be measured when the music stops.'; continue;
+          }
           if (t.an && sigOk(t, info) && wantBuf) { await loadHotBuffer(t); continue; }
           const r = await E.analyze(mediaUrl(t.path), { keep: wantBuf });
           t.an = { lufs: r.lufs, peak: r.peak, peaks: b64FromI8(r.peaks), duration: r.duration };
@@ -226,13 +241,14 @@
       else await preload.promise;
       preload = { deck: null, id: null, promise: null };
       const outgoing = active;
+      E.ramp(deck.trim.gain, E.db2g(gainFor(t)), 0.01);
+      // The new song must be playing before the old one is touched: if it can't start, the old one carries on.
+      await deck.play(1, xfade > 0 ? xfade : fadeIn);
       if (outgoing && outgoing !== deck) {
         if (xfade > 0) { outgoing.fade(0, xfade, 'out'); L.xfade = { from: outgoing, until: E.ctx.currentTime + xfade }; setTimeout(safe(() => finishXfade(outgoing)), xfade * 1000 + 80); }
         else outgoing.stop(0.03);
       }
-      E.ramp(deck.trim.gain, E.db2g(gainFor(t)), 0.01);
-      await deck.play(1, xfade > 0 ? xfade : fadeIn);
-      active = deck;
+      active = deck; L.failed = null;
       L.currentId = t.id; L.standbyId = null; if (L.nextId === t.id) L.nextId = null;
       L.played.add(t.id); L.lastId = t.id; L.cueFrom = null; L.lastPos = deck.time; L.fadingOut = false; L.lastCue = null;
       stall.t = deck.time; stall.at = performance.now();
@@ -241,6 +257,8 @@
       log('play', numberOf(t), label(t), xfade ? `crossfade ${xfade}s` : '');
     } catch (err) {
       log('start failed', t.name, err.message);
+      try { deck.el.pause(); } catch (_) {}
+      L.failed = { id: t.id, at: Date.now() }; // the automatic move to this song won't be tried again for a while
       banner('play-' + t.id, `Couldn't play “${label(t)}”: ${err.message}. Check the file, or pick another song.`);
       if (!active || !active.playing) { L.standbyId = t.id; setState('standby'); }
     } finally { L.busy = false; renderTransport(); }
@@ -381,12 +399,16 @@
       if (nowMs - stall.at > 5000) { stall.at = nowMs; active.el.currentTime = pos + 0.05; active.el.play().catch(() => {}); }
     }
     if (L.fadingOut || L.xfade) { if (left <= 0.02 || active.el.ended) { if (!L.xfade) endOf(t); } return; }
-    const next = nextAfter(t.id);
+    let next = nextAfter(t.id);
+    // If the next song just failed to load, don't keep retrying 40 times a second: let this song finish and stand by.
+    const nextFailed = next && L.failed && L.failed.id === next.id && Date.now() - L.failed.at < 60000;
     // get the next song ready on the other deck
-    if (next && (preload.id !== next.id) && left < 45 && !L.xfade) {
+    const preWait = next && L.preFail && L.preFail.id === next.id && Date.now() - L.preFail.at < 5000; // a failed preload is retried every 5 s, not every tick
+    if (next && !nextFailed && !preWait && (preload.id !== next.id) && left < 45 && !L.xfade) {
       const d = freeDeck();
-      if (d && d !== active) { const p = loadDeck(d, next, effStart(next)); p.catch(err => { log('preload failed', next.name, err.message); preload = { deck: null, id: null, promise: null }; }); preload = { deck: d, id: next.id, promise: p }; }
+      if (d && d !== active) { const p = loadDeck(d, next, effStart(next)); p.catch(err => { log('preload failed', next.name, err.message); L.preFail = { id: next.id, at: Date.now() }; preload = { deck: null, id: null, promise: null }; }); preload = { deck: d, id: next.id, promise: p }; }
     }
+    if (nextFailed) next = null;
     if (next && t.transition === 'crossfade') {
       const xf = clamp(+t.xfade || 5, 0.5, Math.max(0.5, effLen(next) / 2));
       if (left <= xf) { startTrack(next, { xfade: Math.max(0.3, left) }); return; }
@@ -618,6 +640,7 @@
   // On-screen numbers (timers, cue countdowns, clock) run on their own 10-a-second timer, not on screen
   // redraws: Windows stops redraws when it thinks the window is covered, and the numbers must keep moving.
   // Each part is separate, so a problem in one can't freeze the others.
+  const setTxt = (id, v) => { const el = $(id); if (el._t !== v) { el._t = v; el.textContent = v; } };
   let intermissionToasted = 0;
   function updateText() {
     const L = S.live;
@@ -627,11 +650,11 @@
     part('timers', () => {
       const sbT = byId(L.standbyId);
       const pos = t ? active.time - effStart(t) : (sbT ? fromOffset(sbT) : 0), left = t ? effEnd(t) - active.time : (sbT ? effLen(sbT) - fromOffset(sbT) : 0);
-      $('tElapsed').textContent = fmt(pos);
-      $('tLeft').textContent = fmt(left);
+      setTxt('tElapsed', fmt(pos));
+      setTxt('tLeft', fmt(left));
       const big = $('tLeft').parentElement; big.classList.toggle('amber', !!t && left < 30 && left >= 10); big.classList.toggle('red', !!t && left < 10);
-      const rem = showRemaining(); $('tShow').textContent = fmt(rem);
-      $('tEnds').textContent = rem > 0 ? new Date(Date.now() + rem * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '–';
+      const rem = showRemaining(); setTxt('tShow', fmt(rem));
+      setTxt('tEnds', rem > 0 ? new Date(Date.now() + rem * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '–');
     });
     part('cues', () => {
       const ci = cueInfo();
@@ -642,12 +665,12 @@
       if (ci.nextIn != null) when = `in ${fmt(ci.nextIn, ci.nextIn < 10)}`;
       else if (ci.nextCue && t) when = `after GO · this song ends in ${fmt(effEnd(t) - active.time)}`; // next song waits for GO
       else if (ci.nextCue) { const nt = ci.nextTrack; when = `${fmt(Math.max(0, ci.nextCue.t - effStart(nt) - fromOffset(nt)))} after GO`; }
-      $('cueNextIn').textContent = when;
+      setTxt('cueNextIn', when);
       $('cueNextBox').classList.toggle('warnsoon', ci.nextIn != null && ci.nextIn <= S.settings.cueWarn);
       $('cueNextBox').style.borderLeftColor = ci.nextCue ? `var(--c-${ci.nextCue.type})` : '';
       $('cueNowBox').style.borderLeftColor = lc ? `var(--c-${lc.type})` : '';
     });
-    part('clock', () => { $('clock').textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); });
+    part('clock', () => { setTxt('clock', new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })); });
     part('intermission', () => {
       if (!S.phones.intermissionEnds) return;
       const s = (S.phones.intermissionEnds - Date.now()) / 1000;
@@ -681,12 +704,19 @@
     const t = byId(L.standbyId) || sel() || (L.state === 'idle' ? firstTrack() : null);
     return t ? { t, pos: effStart(t) + fromOffset(t) } : null;
   }
+  // Theme colours, looked up once every 2 s instead of 60 times a second.
+  const themeCss = { at: 0, vals: {}, getPropertyValue(name) { const now = performance.now(); if (now - this.at > 2000) { this.at = now; this.vals = {}; } return this.vals[name] ?? (this.vals[name] = getComputedStyle(document.documentElement).getPropertyValue(name)); } };
+  let waveKey = '';
   function drawWave() {
     const dpr = window.devicePixelRatio || 1, W = Math.round(wave.clientWidth * dpr), H = Math.round(wave.clientHeight * dpr);
     if (!W || !H) return;
     if (wave.width !== W || wave.height !== H) { wave.width = W; wave.height = H; waveCache.key = ''; }
-    const css = getComputedStyle(document.documentElement);
+    const css = themeCss;
     const wt = waveTrack();
+    // Nothing moved by a whole pixel and nothing was edited: leave the picture as it is.
+    const drawKey = wt ? [wt.t.id, W, H, Math.round(wt.pos / (wt.t.duration || 1) * W), wt.t.startAt, wt.t.endAt, wt.t.transition, wt.t.xfade, wt.t.an ? wt.t.an.peaks.length : 0, document.documentElement.dataset.theme || '', wt.t.cues.map(c => c.t + c.type + c.text).join('|')].join('~') : `none|${W}|${H}`;
+    if (drawKey === waveKey) return;
+    waveKey = drawKey;
     wctx.clearRect(0, 0, W, H);
     if (!wt) { wctx.fillStyle = css.getPropertyValue('--muted'); wctx.font = `${13 * dpr}px Inter`; wctx.fillText('The waveform shows here', 12 * dpr, H / 2); return; }
     const { t, pos } = wt, dur = t.duration || (t.an && t.an.duration) || 0;
@@ -777,25 +807,132 @@
   }
 
   /* ---------- system utilisation ---------- */
-  const sys = { cpu: [], app: [], lag: [], last: null, maxLag: 0 };
+  const HIST = 120; // two minutes of history
+  const sys = { cpu: [], app: [], lag: [], ram: [], appMem: [], gpu: [], last: null, maxLag: 0, lagNow: 0, battery: null, heap0: null };
   let lagT = performance.now();
   setInterval(() => { const n = performance.now(); const lag = Math.max(0, n - lagT - 250); lagT = n; if (lag > sys.maxLag) sys.maxLag = lag; if (lag > 300) log('event loop lag', Math.round(lag)); }, 250);
-  desk.onStats(safe(s => {
-    sys.last = s;
-    sys.cpu.push(s.cpu); sys.app.push(s.appCpu); sys.lag.push(sys.maxLag); sys.maxLag = 0;
-    for (const a of [sys.cpu, sys.app, sys.lag]) while (a.length > 60) a.shift();
-    const c = $('sysGraph'), x = c.getContext('2d'), W = c.width, H = c.height;
+  const mb = b => `${Math.round(b / 1048576)} MB`, gb = b => `${(b / 1073741824).toFixed(1)} GB`;
+  const ramUsedPct = s => 100 * (1 - s.freeMem / s.totalMem);
+  function sparkline(canvas, series, max = 100) {
+    const x = canvas.getContext('2d'), W = canvas.width, H = canvas.height;
     x.clearRect(0, 0, W, H);
-    const css = getComputedStyle(document.documentElement);
-    const line = (arr, color, max = 100) => { x.strokeStyle = color; x.lineWidth = 1.5; x.beginPath(); arr.forEach((v, i) => { const px = W - (arr.length - 1 - i) * (W / 59), py = H - 2 - clamp(v / max, 0, 1) * (H - 4); i ? x.lineTo(px, py) : x.moveTo(px, py); }); x.stroke(); };
-    line(sys.cpu, css.getPropertyValue('--muted').trim());
-    line(sys.app, css.getPropertyValue('--accent').trim());
-    const memUsed = 100 * (1 - s.freeMem / s.totalMem);
-    $('sysCpu').textContent = `CPU ${Math.round(s.cpu)}% · app ${Math.round(s.appCpu)}%`;
-    $('sysMem').textContent = `RAM ${Math.round(memUsed)}% · lag ${Math.round(sys.lag[sys.lag.length - 1])}ms`;
-    $('sysBox').classList.toggle('hot', s.cpu > 85 || memUsed > 92 || sys.lag[sys.lag.length - 1] > 150);
-    $('sysBox').title = `Computer CPU (grey) and this app (purple), last minute.\nApp memory ${Math.round(s.appMem / 1048576)} MB, free ${Math.round(s.freeMem / 1048576)} MB.\nAudio: ${E.ctx.sampleRate} Hz, latency ${Math.round((E.ctx.baseLatency + (E.ctx.outputLatency || 0)) * 1000)} ms.`;
+    for (const { arr, color, fill } of series) {
+      if (!arr.length) continue;
+      x.beginPath();
+      arr.forEach((v, i) => { const px = W - (arr.length - 1 - i) * (W / (HIST - 1)), py = H - 2 - clamp((v || 0) / max, 0, 1) * (H - 4); i ? x.lineTo(px, py) : x.moveTo(px, py); });
+      x.strokeStyle = color; x.lineWidth = 1.5; x.stroke();
+      if (fill) { x.lineTo(W, H); x.lineTo(W - (arr.length - 1) * (W / (HIST - 1)), H); x.closePath(); x.globalAlpha = 0.15; x.fillStyle = color; x.fill(); x.globalAlpha = 1; }
+    }
+  }
+  desk.onStats(safe(s => {
+    sys.last = s; sys.lagNow = Math.max(sys.maxLag, s.mainLag || 0); sys.maxLag = 0;
+    const push = (k, v) => { sys[k].push(v); if (sys[k].length > HIST) sys[k].shift(); };
+    push('cpu', s.cpu); push('app', s.appCpu); push('lag', sys.lagNow); push('ram', ramUsedPct(s)); push('appMem', s.appMem / 1048576); push('gpu', s.gpu);
+    const col = n => themeCss.getPropertyValue(n).trim();
+    sparkline($('sysGraph'), [{ arr: sys.cpu.slice(-60).concat(), color: col('--muted') }, { arr: sys.app.slice(-60), color: col('--accent') }]);
+    setTxt('sysCpu', `CPU ${Math.round(s.cpu)}%${s.gpu != null ? ` · GPU ${Math.round(s.gpu)}%` : ` · app ${Math.round(s.appCpu)}%`}`);
+    setTxt('sysMem', `RAM ${Math.round(ramUsedPct(s))}% · app ${mb(s.appMem)}`);
+    runHealth();
+    if ($('dlgSys').open) renderSys();
   }));
+  desk.onPower(safe(p => {
+    if (p.what === 'on-battery') banner('power', 'The computer is running on battery. Plug the charger back in.', 'warn');
+    if (p.what === 'on-ac') { unbanner('power'); toast('Back on mains power.'); }
+    if (p.what === 'resume') { log('computer woke from sleep'); E.ctx.resume().catch(() => {}); checkOutput(); }
+    runHealth();
+  }));
+  if (navigator.getBattery) navigator.getBattery().then(b => { sys.battery = b; }).catch(() => {});
+
+  /* ---------- live health checks ----------
+     Every second, from numbers already collected (nothing here does heavy work). A file check for the
+     current, standing-by and next songs runs every 5 s. Problems show in the top bar and the System window;
+     new serious ones also raise a banner. */
+  const health = { items: [], fileAt: 0, missing: new Map(), announced: new Set(), hot: { cpu: 0, gpu: 0, lag: 0 } };
+  function avg(arr, n) { const a = arr.slice(-n).filter(v => v != null); return a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0; }
+  async function checkFiles() {
+    const L = S.live, cur = byId(L.currentId), sb = byId(L.standbyId) || (L.state === 'idle' ? firstTrack() : null), nx = cur ? nextAfter(cur.id) : (sb ? nextAfter(sb.id) : null);
+    const list = [...new Set([cur, sb, nx].filter(Boolean))];
+    if (!list.length) { health.missing.clear(); return; }
+    const st = await desk.statMedia(list.map(t => t.path));
+    health.missing.clear();
+    list.forEach((t, i) => { const gone = !st[i].exists; if (gone) health.missing.set(t.id, t); if (!!t.missing !== gone) { t.missing = gone; renderListsSoon(); } });
+  }
+  function runHealth() {
+    const s = sys.last; if (!s) return;
+    const L = S.live, items = [], add = (level, id, text, fix) => items.push({ level, id, text, fix });
+    const live = L.state === 'playing' || L.state === 'paused';
+    if (Date.now() - health.fileAt > 5000) { health.fileAt = Date.now(); checkFiles().catch(err => log('file check failed', String(err))); }
+    // sound
+    if (E.ctx.state !== 'running') add('bad', 'audio', `The sound engine is ${E.ctx.state}.`, 'It restarts by itself; if not, use Restart the app in the banner.');
+    if (checkOutput.lost) add('warn', 'output', 'The chosen sound output is disconnected (using the system default).', 'Reconnect it.');
+    if (audioDog.stuck >= 3) add('bad', 'audiodog', 'The sound card stopped responding.', 'Check the cable or USB audio box.');
+    // files
+    for (const t of health.missing.values()) add('bad', 'file-' + t.id, `The file for “${label(t)}” can't be found${t.id === L.currentId ? ' (it is playing from memory and may stop)' : ''}.`, 'Reconnect the drive, or use Preflight → Find missing files.');
+    // computer
+    health.hot.cpu = s.cpu > 90 ? health.hot.cpu + 1 : 0;
+    if (health.hot.cpu >= 10) add('warn', 'cpu', `The computer has been at ${Math.round(avg(sys.cpu, 10))}% CPU for 10 seconds.`, 'Close other programs.');
+    health.hot.gpu = s.gpu != null && s.gpu > 95 ? health.hot.gpu + 1 : 0;
+    if (health.hot.gpu >= 15) add('warn', 'gpu', `The graphics card has been at ${Math.round(s.gpu)}% for 15 seconds.`, 'Close other programs that show video, or lower the stream quality.');
+    const freeMb = s.freeMem / 1048576;
+    if (s.platform !== 'darwin' && (freeMb < 400 || ramUsedPct(s) > 95)) add(freeMb < 200 ? 'bad' : 'warn', 'ram', `Only ${mb(s.freeMem)} of memory is free.`, 'Close other programs, especially web browsers.');
+    if (s.appMem > 2.5 * 1073741824) add('warn', 'appmem', `This app is using ${gb(s.appMem)} of memory.`, 'Restart the app at the next break.');
+    health.hot.lag = sys.lagNow > 250 ? health.hot.lag + 3 : Math.max(0, health.hot.lag - 1);
+    if (health.hot.lag >= 6) add('warn', 'lag', `The app keeps pausing (up to ${Math.round(Math.max(...sys.lag.slice(-10)))} ms).`, 'Close other programs. The music itself is not affected by short pauses.');
+    if (s.disk != null && s.disk < 1e9) add(s.disk < 2e8 ? 'bad' : 'warn', 'disk', `Only ${gb(s.disk)} of disk space is free.`, 'Free some space so autosave and logs keep working.');
+    const bat = sys.battery;
+    if (s.onBattery) add(bat && bat.level < 0.2 ? 'bad' : 'warn', 'battery', `Running on battery${bat ? ` (${Math.round(bat.level * 100)}%)` : ''}.`, 'Plug the charger in.');
+    if (s.thermal && !/nominal|fair/.test(s.thermal)) add('warn', 'thermal', `The computer is hot and slowing down (${s.thermal}).`, 'Give it air; close other programs.');
+    // show equipment
+    const cur = byId(L.currentId), nxt = cur ? nextAfter(cur.id) : byId(L.standbyId);
+    if ((cur && cur.type === 'video' || nxt && nxt.type === 'video') && !videoOpen()) add('warn', 'video', `${cur && cur.type === 'video' ? 'This' : 'The next'} number has video, but the video output window is closed.`, 'Click Video output.');
+    if (S.settings.wpOn && parseWpCode(S.settings.wpCode) && wpState.fails >= 3) add('warn', 'phones', "Phones aren't getting updates (the website can't be reached).", 'Check the internet. The show is not affected.');
+    if (streamer.want && !(streamer.state.live && streamer.state.gen === streamer.gen)) add('warn', 'stream', 'The live stream is reconnecting.', 'Check the internet. The show is not affected.');
+    health.items = items;
+    // top bar
+    const bad = items.filter(i => i.level === 'bad').length, warn = items.length - bad;
+    const el = $('sysHealth');
+    setTxt('sysHealth', items.length ? `${items.length} ${items.length === 1 ? 'thing' : 'things'} to check` : 'All systems OK');
+    el.className = 'sys-health ' + (bad ? 'bad' : warn ? 'warn' : 'ok');
+    $('sysBox').classList.toggle('hot', items.length > 0);
+    // new serious problems get a banner once; cleared problems are logged
+    for (const i of items) if (!health.announced.has(i.id)) { health.announced.add(i.id); log('health', i.level, i.text); if (i.level === 'bad' && live && !i.id.startsWith('audio')) banner('health-' + i.id, i.text + ' ' + i.fix, 'warn'); }
+    for (const id of [...health.announced]) if (!items.some(i => i.id === id)) { health.announced.delete(id); unbanner('health-' + id); log('health cleared', id); }
+  }
+  function renderSys() {
+    const s = sys.last; if (!s) return;
+    const col = n => themeCss.getPropertyValue(n).trim();
+    $('syHealth').replaceChildren(...(health.items.length ? health.items.map(i => h('li', { class: 'pf ' + i.level }, h('span', { class: 'ic' }, i.level === 'bad' ? '✕' : '!'), h('div', null, h('div', null, i.text), h('div', { class: 'd' }, i.fix)), h('span')))
+      : [h('li', { class: 'pf ok' }, h('span', { class: 'ic' }, '✓'), h('div', null, 'All systems OK'), h('span'))]));
+    sparkline($('syCpuG'), [{ arr: sys.cpu, color: col('--muted'), fill: true }, { arr: sys.app, color: col('--accent') }]);
+    $('syCpuT').textContent = `Computer ${Math.round(s.cpu)}% · this app ${Math.round(s.appCpu)}% (${Math.round(s.appCpuCores)}% of one core) · ${s.coreCount} cores`;
+    $('syCores').replaceChildren(...s.cores.map((v, i) => h('i', { title: `Core ${i + 1}: ${Math.round(v)}%`, style: `--v:${Math.round(v)}%`, class: v > 90 ? 'hot' : '' })));
+    sparkline($('syRamG'), [{ arr: sys.ram, color: col('--muted'), fill: true }]);
+    $('syRamT').textContent = `${gb(s.totalMem - s.freeMem)} of ${gb(s.totalMem)} in use (${Math.round(ramUsedPct(s))}%) · this app ${mb(s.appMem)}`;
+    const hasGpu = sys.gpu.some(v => v != null);
+    sparkline($('syGpuG'), [{ arr: sys.gpu.map(v => v == null ? 0 : v), color: col('--ok'), fill: true }]);
+    const gp = s.procs.Graphics || { cpu: 0, mem: 0 };
+    $('syGpuT').textContent = hasGpu ? `Graphics card ${s.gpu != null ? Math.round(s.gpu) + '%' : '–'} · graphics process ${Math.round(gp.cpu)}% of a core, ${mb(gp.mem)}`
+      : `This computer doesn't report graphics-card load. Graphics process: ${Math.round(gp.cpu)}% of a core, ${mb(gp.mem)}`;
+    $('syProcs').replaceChildren(...Object.entries(s.procs).map(([k, v]) => h('tr', null, h('td', null, k + (v.n > 1 ? ` ×${v.n}` : '')), h('td', { class: 'mono' }, `${v.cpu.toFixed(1)}%`), h('td', { class: 'mono' }, mb(v.mem)))));
+    const heap = performance.memory ? performance.memory.usedJSHeapSize : 0;
+    const ps = E.ctx.playoutStats; // sound-card glitches, where the browser engine reports them
+    const up = s.uptime, upTxt = up >= 3600 ? `${Math.floor(up / 3600)} h ${Math.floor(up % 3600 / 60)} min` : `${Math.floor(up / 60)} min`;
+    const rows = [
+      ['Sound engine', `${E.ctx.state}, ${E.ctx.sampleRate} Hz, about ${Math.round((E.ctx.baseLatency + (E.ctx.outputLatency || 0)) * 1000)} ms delay`],
+      ['Sound glitches', ps ? `${Math.round(ps.fallbackFramesDuration || 0)} ms lost in ${ps.fallbackFramesEvents || 0} dropouts since start` : 'not reported by this system'],
+      ['Screen pauses', `now ${Math.round(sys.lagNow)} ms · worst in 2 min ${Math.round(Math.max(0, ...sys.lag))} ms`],
+      ['Page memory', heap ? mb(heap) : '–'],
+      ['Disk space free', s.disk != null ? gb(s.disk) : '–'],
+      ['Power', s.onBattery ? `battery${sys.battery ? ` ${Math.round(sys.battery.level * 100)}%` : ''}` : 'mains' + (s.thermal ? ` · ${s.thermal}` : '')],
+      ['Running for', upTxt],
+      ['Phones', !S.settings.wpOn ? 'off' : wpState.fails ? `retrying (${wpState.error || 'no answer'})` : `live, ${wpState.latency || 0} ms`],
+      ['Stream', !streamer.want ? 'off' : streamer.state.live ? `live on ${streamTarget().name} · ${streamer.state.stats || ''}` : 'reconnecting']
+    ];
+    $('syFacts').replaceChildren(...rows.map(([k, v]) => h('tr', null, h('td', null, k), h('td', null, v))));
+  }
+  on('sysBox', 'click', () => { renderSys(); $('dlgSys').showModal(); });
+  on('syLogs', 'click', () => desk.openLogFolder());
+  on('syPre', 'click', () => { $('dlgSys').close(); openPreflight(); });
 
   /* ---------- hot sounds ---------- */
   const hotBuffers = new Map();
@@ -2053,7 +2190,7 @@
   window.addEventListener('beforeunload', () => { snapshot(); autosave(); });
 
   // for automated tests
-  window.SP = { S, decks, applyTheme, streamTarget, openSettings, drawCard, videoOut: () => outWin, outFeed, streamStart, streamStop, streamer, trimSilence, collectFiles, syncMaster, updateText, closeCuePop, restart, resetShow, applySettings, openVideoDialog, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
+  window.SP = { S, decks, health, sys, runHealth, sysLag: () => sys.lag, applyTheme, streamTarget, openSettings, drawCard, videoOut: () => outWin, outFeed, streamStart, streamStop, streamer, trimSilence, collectFiles, syncMaster, updateText, closeCuePop, restart, resetShow, applySettings, openVideoDialog, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
     fillerPlay, fillerFadeOut, fillerState, buildStatus, buildProgram, showRemaining, gainFor, nextAfter, setHotFile, hotBuffers, E, queue: () => queue.length + (analysing ? 1 : 0) };
 
   boot().catch(err => { oops(err); requestAnimationFrame(frame); setInterval(updateText, 100); setInterval(safe(tick), 25); });

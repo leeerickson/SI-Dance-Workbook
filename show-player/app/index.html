@@ -24,10 +24,10 @@
   <button class="btn" id="bSettings" title="Settings (Ctrl+,)">Settings</button>
   <button class="phones" id="bStream" title="Live stream (Streaming by StreamingIdiot)"><i class="dot" id="stDot"></i><span id="stText">Stream</span></button>
   <button class="phones" id="bPhones" title="Live status for phones (WordPress)"><i class="dot" id="wpDot"></i><span id="wpText">Phones off</span></button>
-  <div class="sys" id="sysBox" title="Computer load">
-    <canvas id="sysGraph" width="132" height="30"></canvas>
-    <div class="sys-txt"><span id="sysCpu">CPU –</span><span id="sysMem">RAM –</span></div>
-  </div>
+  <button class="sys" id="sysBox" title="Live system checks. Click for details.">
+    <canvas id="sysGraph" width="132" height="34"></canvas>
+    <span class="sys-txt"><span id="sysCpu">CPU –</span><span id="sysMem">RAM –</span><span id="sysHealth" class="sys-health ok">Checking…</span></span>
+  </button>
   <div class="clock mono" id="clock">--:--</div>
 </header>
 
@@ -366,6 +366,22 @@
     <p class="muted" id="vMsg">Choose the screen or projector the video plays on.</p>
     <ul class="screens" id="vScreens"></ul>
     <div class="dlg-foot"><button type="button" class="btn small" id="vIdentify" title="Shows a big number on every screen for a few seconds">Identify screens</button><span class="spacer"></span><button type="button" class="btn small danger" id="vClose">Close video output</button><button type="button" class="btn small primary" id="vOpen">Open on this screen</button></div>
+  </form>
+</dialog>
+
+<!-- System monitor -->
+<dialog id="dlgSys" class="dlg">
+  <form method="dialog" class="dlg-in">
+    <div class="dlg-head"><h2>System</h2><div class="inline"><button class="btn small" type="button" id="syPre">Run preflight</button><button class="btn small" type="button" id="syLogs">Open log folder</button><button class="btn small" value="close">Done</button></div></div>
+    <ul class="pflist" id="syHealth"></ul>
+    <div class="sy-grid">
+      <fieldset><legend>Processor (CPU)</legend><canvas id="syCpuG" width="420" height="70"></canvas><p class="muted" id="syCpuT"></p><div class="cores" id="syCores" aria-label="Load on each core"></div></fieldset>
+      <fieldset><legend>Memory (RAM)</legend><canvas id="syRamG" width="420" height="70"></canvas><p class="muted" id="syRamT"></p></fieldset>
+      <fieldset><legend>Graphics (GPU)</legend><canvas id="syGpuG" width="420" height="70"></canvas><p class="muted" id="syGpuT"></p></fieldset>
+      <fieldset><legend>This app, by part</legend><table class="sy-table"><thead><tr><th>Part</th><th>CPU (of one core)</th><th>Memory</th></tr></thead><tbody id="syProcs"></tbody></table></fieldset>
+      <fieldset class="span2"><legend>Details</legend><table class="sy-table"><tbody id="syFacts"></tbody></table></fieldset>
+    </div>
+    <p class="muted">Graphs show the last two minutes. Checks run every second and use almost no power themselves.</p>
   </form>
 </dialog>
 

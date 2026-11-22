@@ -45,6 +45,8 @@ contextBridge.exposeInMainWorld('desk', {
   wpStatus: s => ipcRenderer.send('wp:status', s),
   onWpState: fn => ipcRenderer.on('wp:state', (_e, s) => fn(s)),
   onStats: fn => ipcRenderer.on('stats', (_e, s) => fn(s)),
+  onPower: fn => ipcRenderer.on('power', (_e, p) => fn(p)),
+  selftestGpu: () => ipcRenderer.invoke('selftest:gpu'),
   onMenu: fn => ipcRenderer.on('menu', (_e, name) => fn(name)),
   onIncomingShow: fn => ipcRenderer.on('show:incoming', (_e, p) => fn(p))
 });

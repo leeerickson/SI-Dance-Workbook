@@ -3,7 +3,7 @@
 // the WordPress status sender and the system-utilization numbers.
 // Built to keep a live show running: nothing here waits on the network, and a
 // crashed page is reloaded and picks up where it was.
-const { app, BrowserWindow, Menu, ipcMain, dialog, shell, protocol, powerSaveBlocker, screen, net } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell, protocol, powerSaveBlocker, powerMonitor, screen, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -463,24 +463,102 @@ ipcMain.handle('media:collect', async (_e, { showPath, paths }) => {
   return { dir, map: out, copied, skipped };
 });
 
-let lastCpu = null;
-function systemCpu() {
-  const t = os.cpus().reduce((a, c) => { const tt = Object.values(c.times).reduce((x, y) => x + y, 0); a.total += tt; a.idle += c.times.idle; return a; }, { total: 0, idle: 0 });
-  const prev = lastCpu; lastCpu = t;
-  if (!prev || t.total === prev.total) return 0;
-  return Math.max(0, Math.min(100, 100 * (1 - (t.idle - prev.idle) / (t.total - prev.total))));
+/* ---------- live system numbers ----------
+   Once a second: CPU for the whole computer and for each core, this app's CPU and memory split by
+   process (main, screen, graphics, helpers), memory, graphics-card load where the system reports it,
+   how late the main process's own timer fired, free disk space and power. */
+let lastCores = null;
+function cpuSample() {
+  const now = os.cpus().map(c => { const total = Object.values(c.times).reduce((x, y) => x + y, 0); return { total, idle: c.times.idle }; });
+  const prev = lastCores; lastCores = now;
+  if (!prev || prev.length !== now.length) return { all: 0, cores: now.map(() => 0) };
+  const cores = now.map((c, i) => { const dt = c.total - prev[i].total; return dt > 0 ? Math.max(0, Math.min(100, 100 * (1 - (c.idle - prev[i].idle) / dt))) : 0; });
+  const dTotal = now.reduce((a, c, i) => a + c.total - prev[i].total, 0), dIdle = now.reduce((a, c, i) => a + c.idle - prev[i].idle, 0);
+  return { all: dTotal > 0 ? Math.max(0, Math.min(100, 100 * (1 - dIdle / dTotal))) : 0, cores };
 }
+// Graphics-card load. Windows reports it per engine and per program through performance counters; one small
+// helper (typeperf, part of Windows) prints them every 2 s. Other systems don't offer this, so the page shows
+// the graphics process's CPU and memory instead. Never essential: any failure just means "not available".
+const gpu = { util: null, source: '', proc: null, cols: null, buf: '', timer: null };
+function parseGpuHeader(line) { // column -> engine type, from names like \\PC\GPU Engine(pid_1_luid_..._engtype_3D)\Utilization Percentage
+  return line.split('","').map(h => { const m = /engtype_([A-Za-z0-9 ]+)\)/.exec(h); return m ? m[1] : null; });
+}
+function parseGpuRow(line, cols) { // busiest engine type = what Task Manager shows
+  const cells = line.replace(/^"|"$/g, '').split('","'), sums = {};
+  for (let i = 1; i < cells.length; i++) { const k = cols[i]; const v = parseFloat(cells[i]); if (k && isFinite(v)) sums[k] = (sums[k] || 0) + v; }
+  const vals = Object.values(sums);
+  return vals.length ? Math.max(0, Math.min(100, Math.max(...vals))) : null;
+}
+function startGpuSampler() {
+  if (process.platform !== 'win32' || process.env.SHOW_PLAYER_NO_GPU_SAMPLER) return;
+  const launch = () => {
+    try {
+      const proc = spawn('typeperf', ['\\GPU Engine(*)\\Utilization Percentage', '-si', '2'], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+      try { os.setPriority(proc.pid, os.constants.priority.PRIORITY_LOW); } catch (_) {}
+      gpu.proc = proc; gpu.cols = null; gpu.buf = '';
+      proc.stdout.on('data', d => {
+        gpu.buf += d.toString();
+        let i;
+        while ((i = gpu.buf.indexOf('\n')) >= 0) {
+          const line = gpu.buf.slice(0, i).trim(); gpu.buf = gpu.buf.slice(i + 1);
+          if (!line.startsWith('"')) continue;
+          if (!gpu.cols) { if (/GPU Engine/i.test(line)) gpu.cols = parseGpuHeader(line); continue; }
+          const v = parseGpuRow(line, gpu.cols);
+          if (v != null) { gpu.util = v; gpu.source = 'windows'; gpu.at = Date.now(); }
+        }
+        if (gpu.buf.length > 1e6) gpu.buf = '';
+      });
+      proc.on('error', () => { gpu.proc = null; });
+      proc.on('exit', () => { if (gpu.proc === proc) gpu.proc = null; });
+    } catch (_) { gpu.proc = null; }
+  };
+  launch();
+  // The list of programs using the graphics card is fixed when the helper starts, so start it afresh every 2 minutes.
+  gpu.timer = setInterval(() => { try { if (gpu.proc) gpu.proc.kill(); } catch (_) {} launch(); }, 120000);
+  app.on('before-quit', () => { clearInterval(gpu.timer); try { if (gpu.proc) gpu.proc.kill(); } catch (_) {} });
+}
+const power = { onBattery: null, thermal: '', lastResume: 0 };
+function startPowerWatch() {
+  const tell = what => { log('power', what); if (win && !win.isDestroyed()) win.webContents.send('power', { what, onBattery: power.onBattery, thermal: power.thermal }); };
+  try { power.onBattery = powerMonitor.isOnBatteryPower(); } catch (_) {}
+  powerMonitor.on('on-battery', () => { power.onBattery = true; tell('on-battery'); });
+  powerMonitor.on('on-ac', () => { power.onBattery = false; tell('on-ac'); });
+  powerMonitor.on('suspend', () => tell('suspend'));
+  powerMonitor.on('resume', () => { power.lastResume = Date.now(); tell('resume'); });
+  powerMonitor.on('thermal-state-change', e => { power.thermal = e && e.state || ''; tell('thermal ' + power.thermal); });
+  powerMonitor.on('speed-limit-change', e => { if (e && e.limit < 100) { power.thermal = `slowed to ${e.limit}%`; tell('cpu ' + power.thermal); } else power.thermal = ''; });
+}
+let mainLag = 0, lagMark = Date.now(), diskFree = null, diskAt = 0;
+setInterval(() => { const n = Date.now(); const late = n - lagMark - 250; lagMark = n; if (late > mainLag) mainLag = late; }, 250);
+const PROC_NAMES = { Browser: 'Main', Tab: 'Screen', GPU: 'Graphics', Utility: 'Helpers' };
 function startStats() {
   const cores = os.cpus().length || 1;
+  startGpuSampler(); startPowerWatch();
   setInterval(() => {
     try {
       if (!win || win.isDestroyed()) return;
       const metrics = app.getAppMetrics();
-      const appCpu = Math.min(100, metrics.reduce((a, m) => a + (m.cpu ? m.cpu.percentCPUUsage : 0), 0) / cores);
-      const appMem = metrics.reduce((a, m) => a + (m.memory ? m.memory.workingSetSize : 0), 0) * 1024;
-      win.webContents.send('stats', { cpu: systemCpu(), appCpu, appMem, freeMem: os.freemem(), totalMem: os.totalmem(), t: Date.now() });
+      const procs = {};
+      for (const m of metrics) {
+        const k = PROC_NAMES[m.type] || 'Helpers';
+        const pr = procs[k] || (procs[k] = { cpu: 0, mem: 0, n: 0 });
+        pr.cpu += m.cpu ? m.cpu.percentCPUUsage : 0; pr.mem += (m.memory ? m.memory.workingSetSize : 0) * 1024; pr.n++;
+      }
+      const appCpuCores = Object.values(procs).reduce((a, x) => a + x.cpu, 0); // percent of ONE core
+      const appMem = Object.values(procs).reduce((a, x) => a + x.mem, 0);
+      const c = cpuSample();
+      if (Date.now() - diskAt > 30000) { diskAt = Date.now(); fs.promises.statfs(userDir).then(st => { diskFree = st.bavail * st.bsize; }).catch(() => {}); }
+      const gpuFresh = gpu.util != null && Date.now() - (gpu.at || 0) < 10000;
+      win.webContents.send('stats', { t: Date.now(), cpu: c.all, cores: c.cores, coreCount: cores, appCpu: Math.min(100, appCpuCores / cores), appCpuCores, appMem, procs,
+        freeMem: os.freemem(), totalMem: os.totalmem(), gpu: gpuFresh ? gpu.util : null, gpuSource: gpuFresh ? gpu.source : '', mainLag, disk: diskFree,
+        onBattery: power.onBattery, thermal: power.thermal, uptime: Math.round(process.uptime()), platform: process.platform });
+      mainLag = 0;
     } catch (err) { log('stats error', friendly(err)); }
   }, 1000);
+}
+if (process.env.SHOW_PLAYER_SELFTEST_GPU) { // used by the test: parse a sample of the Windows counter output
+  const head = '"(PDH-CSV 4.0)","\\\\PC\\GPU Engine(pid_10_luid_0x0_0x1_phys_0_eng_0_engtype_3D)\\Utilization Percentage","\\\\PC\\GPU Engine(pid_22_luid_0x0_0x1_phys_0_eng_0_engtype_3D)\\Utilization Percentage","\\\\PC\\GPU Engine(pid_22_luid_0x0_0x1_phys_0_eng_3_engtype_VideoDecode)\\Utilization Percentage"';
+  ipcMain.handle('selftest:gpu', () => parseGpuRow('"11/22/2026 12:00:00.000","12.500000","30.250000","8.000000"', parseGpuHeader(head)));
 }
 
 /* ---------- WordPress status sender ----------

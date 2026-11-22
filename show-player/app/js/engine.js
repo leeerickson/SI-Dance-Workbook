@@ -122,7 +122,7 @@ const Engine = (() => {
           if (startAt > 0 && Math.abs(el.currentTime - startAt) > 0.05) { el.currentTime = startAt; return; } // wait for the seek's canplay
           finish(true);
         };
-        const onErr = () => finish(false, new Error(el.error ? `Can't play this file (${['', 'aborted', 'network', 'decode', 'unsupported format'][el.error.code] || el.error.code})` : "Can't play this file"));
+        const onErr = () => finish(false, new Error(el.error ? `Can't play this file (${['', 'loading was interrupted', 'the file could not be read', 'the file is damaged', 'the file is missing or not a format this app can play'][el.error.code] || el.error.code})` : "Can't play this file"));
         const timer = setTimeout(() => finish(false, new Error('The file took too long to load.')), 12000);
         el.addEventListener('canplay', onReady); el.addEventListener('error', onErr);
         if (el.src !== url) { el.src = url; el.load(); }
