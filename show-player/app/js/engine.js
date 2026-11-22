@@ -76,6 +76,9 @@ const Engine = (() => {
   const balL = gain(), balR = gain();
   const masterStereo = stereo(); master.connect(masterStereo); masterStereo.connect(splitter); splitter.connect(balL, 0); splitter.connect(balR, 1); balL.connect(merger, 0, 0); balR.connect(merger, 0, 1);
   merger.connect(ctx.destination);
+  // What the audience hears, for live streaming (made only when streaming starts).
+  let streamDest = null;
+  const streamTap = () => { if (!streamDest) { streamDest = ctx.createMediaStreamDestination(); merger.connect(streamDest); } return streamDest.stream; };
   const anL = ctx.createAnalyser(), anR = ctx.createAnalyser(); anL.fftSize = anR.fftSize = 2048;
   balL.connect(anL); balR.connect(anR);
   const bufL = new Float32Array(anL.fftSize), bufR = new Float32Array(anR.fftSize);
@@ -341,5 +344,5 @@ const Engine = (() => {
   setInterval(() => { if (ctx.state !== 'running' && ctx.state !== 'closed') ctx.resume().catch(() => {}); }, 1000);
 
   return { ctx, Deck, program, db2g, g2db, ramp, apply, setMasterDb, playHot, stopHot, hotPlaying, hotProgress, testStart, testStop, micStart, micLevel, micStop, meters,
-    outputs, inputs, setOutput, get sinkId() { return sinkId; }, analyze, decode, duckGain: duck, master, EQ_BANDS };
+    outputs, inputs, setOutput, streamTap, get sinkId() { return sinkId; }, analyze, decode, duckGain: duck, master, EQ_BANDS };
 })();

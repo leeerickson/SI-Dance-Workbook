@@ -27,6 +27,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ];
   const sfx = tone('Applause.wav', 1200, -6, 2);
   const filler = [tone('Walk-in 1.wav', 300, -12, 30), tone('Walk-in 2.wav', 350, -12, 30)];
+  const quietEnds = ff('Quiet Ends.wav', ['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo:d=2', '-f', 'lavfi', '-i', 'sine=frequency=500:duration=4:sample_rate=48000', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo:d=2',
+    '-filter_complex', '[1]volume=10dB,aformat=channel_layouts=stereo[t];[0][t][2]concat=n=3:v=0:a=1']);
+  const streamOut = path.join(tmp, 'stream-test.flv');
 
   // Stand-in WordPress site: records what the desk sends.
   const got = { program: [], status: [], badKey: 0 };
@@ -48,7 +51,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const app = await electron.launch({
     executablePath: require('electron'),
     args: [path.join(__dirname, '..'), '--no-sandbox', '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', `--user-data-dir=${path.join(tmp, 'profile')}`],
-    env: { ...process.env, SHOW_PLAYER_DATA: path.join(tmp, 'data'), SHOW_PLAYER_MAXIMIZE: '1' }
+    env: { ...process.env, SHOW_PLAYER_DATA: path.join(tmp, 'data'), SHOW_PLAYER_MAXIMIZE: '1', SHOW_PLAYER_STREAM_OUT: streamOut }
   });
   let win = await app.firstWindow();
   const errors = []; const watch = w => w.on('pageerror', e => errors.push(e.message));
@@ -186,8 +189,43 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(await sp(() => SP.S.live.played.size === 0 && SP.S.live.standbyId === SP.S.show.tracks[0].id), 'Reset show clears every played mark and stands by on the first song');
   await sp(() => { SP.S.show.tracks[0].endAt = 0; });
 
+  // Drag the waveform while stopped to choose where GO starts; the master slider doesn't swallow Space
+  const box = await win.$eval('#wave', el => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; });
+  await win.mouse.move(box.x + box.w * 0.2, box.y + box.h / 2); await win.mouse.down();
+  await win.mouse.move(box.x + box.w * 0.5, box.y + box.h / 2, { steps: 5 }); await win.mouse.up();
+  await sleep(150);
+  const from = await sp(() => SP.S.live.cueFrom && { id: SP.S.live.cueFrom.id, at: SP.S.live.cueFrom.at, sb: SP.S.live.standbyId });
+  ok(from && from.id === from.sb && Math.abs(from.at - 4) < 0.4, `dragging the waveform while stopped sets where GO starts (${from && from.at.toFixed(1)} s of 8)`);
+  ok((await win.textContent('#goSub')).startsWith('From 0:0'), 'the GO button shows the start point');
+  await win.keyboard.press('r'); await sleep(100);
+  ok(await sp(() => SP.S.live.cueFrom === null), 'R puts the start point back to the top');
+  await win.mouse.click(box.x + box.w * 0.5, box.y + box.h / 2); await sleep(150);
+  await win.evaluate(() => { const el = document.getElementById('mMaster'); el.value = -3; el.dispatchEvent(new Event('input', { bubbles: true })); el.focus(); });
+  ok(await sp(() => SP.S.settings.masterDb === -3 && document.getElementById('mMasterTxt').textContent === '-3 dB'), 'the master slider on the main page sets the master level');
+  await win.keyboard.press('Space');
+  await waitFor(() => SP.S.live.state === 'playing');
+  const startedAt = await sp(() => SP.active.time);
+  ok(Math.abs(startedAt - 4) < 0.6, `Space works with the slider focused, and GO plays from the chosen point (${startedAt.toFixed(1)} s)`);
+  await win.evaluate(() => { const el = document.getElementById('mMaster'); el.value = 0; el.dispatchEvent(new Event('input', { bubbles: true })); el.blur(); });
+  await win.keyboard.press('Shift+Escape');
+  await waitFor(() => SP.S.live.state === 'standby');
+  ok(await sp(() => SP.S.live.cueFrom === null), 'after playing, the start point is cleared');
+
+  // Settings: recommended marks and "Use recommended"
+  await win.click('#bSettings');
+  const marks = await win.$$eval('#dlgSettings .recmark', els => els.length);
+  ok(marks >= 9, `sound sliders have recommended marks (${marks})`);
+  ok((await win.textContent('#dlgSettings')).includes('✓ recommended'), 'settings at the recommended value say so');
+  await win.evaluate(() => { const el = document.getElementById('sTarget'); el.value = -12; el.dispatchEvent(new Event('input', { bubbles: true })); window.confirm = () => true; });
+  ok((await win.textContent('#sTarget >> xpath=ancestor::label')).includes('recommended -16 LUFS'), 'a changed setting shows the recommended value');
+  await win.click('#sRec'); await sleep(200);
+  ok(await sp(() => SP.S.settings.targetLufs === -16 && SP.S.settings.masterDb === 0), '"Use recommended sound" puts it back');
+  ok((await win.textContent('#streamBox legend')).includes('by StreamingIdiot'), 'Settings has Streaming by StreamingIdiot');
+  await win.click('#dlgSettings button[value=close]');
+
   // Pressing C opens the New cue box with the cursor in it (and the next-cue countdown counts down)
   await sp(() => { SP.S.show.tracks[0].cues.push({ id: 'cd1', t: 7.5, type: 'stage', text: 'Curtain' }); });
+  await sleep(350);
   await win.keyboard.press('Space');
   await waitFor(() => SP.S.live.state === 'playing');
   await sleep(300);
@@ -313,6 +351,25 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(st && st.state === 'playing' && typeof st.position === 'number' && st.track_id, `status is sent while playing (${got.status.length} so far)`);
   ok(got.badKey === 0, 'the desktop key is accepted');
   ok(await shows('#wpText', 'Phones live', true), 'the top bar says Phones live');
+
+  // Skip silence at both ends of a new song
+  await sp(async p => SP.addFiles(await window.desk.statMedia([p]), 'show'), quietEnds);
+  await waitFor(() => SP.queue() === 0 && SP.S.show.tracks.some(t => t.title === 'Quiet Ends' && t.an), null, 20000);
+  const qe = await sp(() => { const t = SP.S.show.tracks.find(t => t.title === 'Quiet Ends'); return { s: t.startAt, e: t.endAt }; });
+  ok(Math.abs(qe.s - 1.9) < 0.25 && Math.abs(qe.e - 6.4) < 0.3, `a new song skips its silent start and end (starts ${qe.s} s, ends ${qe.e} s; sound is 2–6 s)`);
+  await sp(() => { SP.S.show.tracks = SP.S.show.tracks.filter(t => t.title !== 'Quiet Ends'); });
+
+  // Live streaming (to a test file instead of a stream service)
+  await sp(() => { SP.S.settings.stUrl = 'rtmp://example.invalid/live'; SP.S.settings.stKey = 'test'; SP.S.settings.stQ = '480'; });
+  await sp(() => SP.streamStart());
+  await sleep(6000);
+  ok((await win.textContent('#stText')).startsWith('LIVE'), `the top bar says LIVE while streaming (${await win.textContent('#stText')})`);
+  await sp(() => SP.streamStop());
+  await sleep(4500);
+  let probe = '';
+  try { probe = execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_name,width', '-of', 'csv=p=0', streamOut]).toString().trim().replace(/\s+/g, ' '); } catch (err) { probe = 'ffprobe failed: ' + err.message.slice(0, 120); }
+  ok(/h264/.test(probe) && /aac/.test(probe) && /854/.test(probe), `the stream has H.264 video at 480p and AAC sound (${probe})`);
+  ok((await win.textContent('#stText')) === 'Stream', 'stopping the stream turns the indicator off');
 
   // Crash the page during a song: it reloads and carries on
   await sp(() => { const t = SP.S.show.tracks.find(t => t.dance === 'Hip Hop Crew'); t.endAt = 0; SP.S.live.state = 'standby'; SP.stopNow(false); SP.cueNext(t.id); });

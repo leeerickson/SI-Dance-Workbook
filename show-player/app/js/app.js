@@ -54,12 +54,19 @@
     outputId: '', normalize: true, targetLufs: -16, maxBoost: 12, limiterOn: true, ceiling: -1.5, masterDb: 0, balance: 0, trimL: 0, trimR: 0,
     eqOn: true, eq: [0, 0, 0, 0, 0], hpf: false, mbOn: false, mbAmount: 1, defTrans: 'stop', xfade: 5, fadeSec: 3, fadeOutSec: 3, cueWarn: 10,
     fillerAuto: true, autoResume: true, duckDb: -12, hotDb: 0, wpCode: '', wpOn: false, micOffset: null, calTarget: 85,
-    spatialOn: false, width: 1.4, bassCentre: true, videoDisplay: null
+    spatialOn: false, width: 1.4, bassCentre: true, videoDisplay: null, trimNew: true,
+    stUrl: '', stKey: '', stQ: '720', stTitle: ''
   };
+  // Recommended values, shown with a ▲ mark in Settings. Master, balance and the trims are marked but
+  // "Use recommended" leaves them alone, because they're set for the room.
+  const REC = { normalize: true, targetLufs: -16, maxBoost: 9, limiterOn: true, ceiling: -1.5, masterDb: 0, balance: 0, trimL: 0, trimR: 0,
+    eqOn: true, hpf: true, mbOn: false, mbAmount: 1, spatialOn: false, width: 1.3, bassCentre: true, duckDb: -12, hotDb: 0,
+    xfade: 5, fadeSec: 3, fadeOutSec: 3, cueWarn: 10, fillerAuto: true, autoResume: true, trimNew: true };
+  const ROOM_KEYS = ['masterDb', 'balance', 'trimL', 'trimR'];
   const newShow = () => ({ id: uid(), name: 'Recital', tracks: [], filler: [], fillerOpts: { loop: true, shuffle: false, levelDb: -6 }, hotCues: Array(8).fill(null) });
   const S = {
     settings: { ...DEFAULTS }, show: newShow(), filePath: null, dirty: false, selectedId: null,
-    live: { state: 'idle', currentId: null, standbyId: null, nextId: null, played: new Set(), lastId: null, lastCue: null, lastPos: 0, busy: false, fadingOut: false, xfade: null, endsAt: 0 },
+    live: { state: 'idle', currentId: null, standbyId: null, nextId: null, played: new Set(), lastId: null, cueFrom: null, lastCue: null, lastPos: 0, busy: false, fadingOut: false, xfade: null, endsAt: 0 },
     phones: { message: '', intermissionEnds: 0 }
   };
   const tracks = () => S.show.tracks;
@@ -70,6 +77,8 @@
   const effEnd = t => { const d = t.duration || (t.an && t.an.duration) || 0; return t.endAt > 0 && t.endAt < d ? t.endAt : d; };
   const effLen = t => Math.max(0, effEnd(t) - effStart(t));
   const label = t => t ? (t.dance || t.title || t.name) : '';
+  // Seconds into the song where GO will start it (set by dragging the waveform while stopped).
+  const fromOffset = t => (t && S.live.cueFrom && S.live.cueFrom.id === t.id) ? Math.max(0, S.live.cueFrom.at - effStart(t)) : 0;
   function gainFor(t) {
     let g = +t.trimDb || 0;
     if (S.settings.normalize && t.an && t.an.lufs > -70) g += clamp(S.settings.targetLufs - t.an.lufs, -30, S.settings.maxBoost);
@@ -99,6 +108,7 @@
   /* ---------- settings ---------- */
   function applySettings() {
     E.apply(S.settings);
+    syncMaster();
     fillerBus.gain.value = E.db2g(S.show.fillerOpts.levelDb);
     if (active && active.track) E.ramp(active.trim.gain, E.db2g(gainFor(active.track)), 0.3);
   }
@@ -120,7 +130,7 @@
     const base = info.name.replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ').replace(/^\d{1,3}[\s.\-]+/, '').trim();
     return { id: uid(), path: info.path, name: info.name, title: base || info.name, dance: '', cls: '', notes: '', type: isVideo(info.name) ? 'video' : 'audio',
       transition: S.settings.defTrans, xfade: S.settings.xfade, trimDb: 0, startAt: 0, endAt: 0, enabled: true, showProps: true, props: [], cues: [],
-      sig: { size: info.size, mtime: info.mtime }, an: null, duration: 0 };
+      sig: { size: info.size, mtime: info.mtime }, an: null, duration: 0, _fresh: true };
   }
   async function addFiles(list, where = 'show', index = null) {
     const infos = (list || []).filter(i => i && i.exists !== false && i.path);
@@ -163,6 +173,7 @@
           t.sig = { size: info.size, mtime: info.mtime }; t.anError = '';
           if (r.buffer) hotBuffers.set(t.id, r.buffer);
           if (active && active.track === t) E.ramp(active.trim.gain, E.db2g(gainFor(t)), 0.5);
+          if (t._fresh) { delete t._fresh; if (S.settings.trimNew && S.show.tracks.includes(t) && !t.startAt && !t.endAt) trimSilence(t, true); }
         } catch (err) {
           t.anError = err.message === 'too-large' ? 'Too big to measure; set the volume trim by ear.' : `Couldn't measure: ${err.message}`;
           if (!t.duration) { const p = await probe(t.path).catch(() => null); if (p) { t.duration = p.duration; if (p.video) t.type = 'video'; } }
@@ -190,7 +201,8 @@
   function setState(st) { S.live.state = st; renderTransport(); renderListsSoon(); pushStatus(true); snapshot(); }
 
   async function go() {
-    if (Date.now() - lastGo < 600 || S.live.busy) return; // a double press can't skip a song
+    // A bounced key can't fire GO twice. (GO already does nothing while a song plays or loads, so this can be short.)
+    if (Date.now() - lastGo < 300 || S.live.busy) return;
     lastGo = Date.now();
     const L = S.live;
     if (L.state === 'playing') { toast('Already playing. Press F to fade into the next song, or Esc to fade out.'); return; }
@@ -199,7 +211,8 @@
     if (!t || !t.enabled) t = L.state === 'idle' ? firstTrack() : null;
     if (!t) { toast(tracks().length ? 'Nothing is standing by. Click a song and choose "Play this next".' : 'Add songs to the show first.'); return; }
     if (fillerState.playing && S.settings.fillerAuto) fillerFadeOut(2.5);
-    await startTrack(t);
+    const from = L.cueFrom && L.cueFrom.id === t.id ? L.cueFrom.at : null;
+    await startTrack(t, from != null ? { at: from } : {});
   }
 
   // Starts a song on the free deck. With xfade, the current song fades out while this one fades in.
@@ -220,7 +233,7 @@
       await deck.play(1, xfade > 0 ? xfade : fadeIn);
       active = deck;
       L.currentId = t.id; L.standbyId = null; if (L.nextId === t.id) L.nextId = null;
-      L.played.add(t.id); L.lastId = t.id; L.lastPos = deck.time; L.fadingOut = false; L.lastCue = null;
+      L.played.add(t.id); L.lastId = t.id; L.cueFrom = null; L.lastPos = deck.time; L.fadingOut = false; L.lastCue = null;
       stall.t = deck.time; stall.at = performance.now();
       showVideo();
       setState('playing');
@@ -291,6 +304,7 @@
     const L = S.live, t = byId(id); if (!t) return;
     if (!t.enabled) { t.enabled = true; changed(); }
     if (id !== L.currentId) L.played.delete(id);
+    if (L.cueFrom && L.cueFrom.id !== id) L.cueFrom = null;
     if (L.state === 'playing' || L.state === 'paused') { L.nextId = id === L.currentId ? null : id; preload = { deck: null, id: null, promise: null }; toast(`Next: ${label(t)}`); }
     else { L.standbyId = id; if (L.state === 'idle' || L.state === 'ended') L.state = 'standby'; toast(`Standing by: ${label(t)}. Press GO.`); }
     renderTransport(); renderLists(); pushStatus(true);
@@ -316,6 +330,7 @@
       toast(`Restarted “${label(t)}” from the top.`);
       return;
     }
+    if (L.cueFrom) { L.cueFrom = null; renderTransport(); toast('GO will start the song from the top.'); return; }
     const t = byId(L.lastId) || byId(L.standbyId);
     if (!t) { toast('Nothing has played yet. Click a song and choose "Play this again", or press GO.'); return; }
     cueNext(t.id);
@@ -325,7 +340,7 @@
     const L = S.live;
     if (L.state === 'playing' || L.state === 'paused') { toast('Stop the music first, then reset the show.'); return; }
     if (L.played.size && !confirm('Mark every song as not played and stand by on the first one?')) return;
-    L.played = new Set(); L.lastId = null; L.nextId = null; L.lastCue = null;
+    L.played = new Set(); L.lastId = null; L.nextId = null; L.lastCue = null; L.cueFrom = null;
     const first = firstTrack();
     L.standbyId = first ? first.id : null;
     setState(first ? 'standby' : 'idle');
@@ -393,7 +408,7 @@
   function showRemaining() {
     const L = S.live; let total = 0, t = null;
     if ((L.state === 'playing' || L.state === 'paused') && active && active.track) { t = active.track; total += Math.max(0, effEnd(t) - active.time); }
-    else { t = byId(L.standbyId) || (L.state === 'idle' ? firstTrack() : null); if (!t) return 0; total += effLen(t); }
+    else { t = byId(L.standbyId) || (L.state === 'idle' ? firstTrack() : null); if (!t) return 0; total += effLen(t) - fromOffset(t); }
     const seen = new Set([t.id]);
     let cur = t, n = nextAfter(t.id);
     while (n && !seen.has(n.id)) {
@@ -420,7 +435,7 @@
       }
     } else {
       const sb = byId(L.standbyId) || (L.state === 'idle' ? firstTrack() : null);
-      const c = sb && sb.cues.slice().sort((a, b) => a.t - b.t).find(c => c.t >= effStart(sb));
+      const c = sb && sb.cues.slice().sort((a, b) => a.t - b.t).find(c => c.t >= effStart(sb) + fromOffset(sb));
       if (c) { nextCue = c; nextTrack = sb; nextIn = null; }
     }
     const upcoming = cur ? cur.cues.filter(c => c.t > pos).sort((a, b) => a.t - b.t).slice(0, 8) : [];
@@ -569,7 +584,7 @@
     const ready = (L.state === 'standby' || L.state === 'idle' || L.state === 'paused') && (sb || L.state === 'paused');
     go.classList.toggle('ready', !!ready && !L.busy);
     go.classList.toggle('busy', L.state === 'playing' || L.busy);
-    $('goSub').textContent = L.state === 'paused' ? 'Resume' : L.state === 'playing' ? 'Playing' : sb ? label(sb) : 'Space';
+    $('goSub').textContent = L.state === 'paused' ? 'Resume' : L.state === 'playing' ? 'Playing' : sb ? (fromOffset(sb) ? `From ${fmt(fromOffset(sb))} · ${label(sb)}` : label(sb)) : 'Space';
     $('pauseTxt').textContent = L.state === 'paused' ? 'Resume' : 'Pause';
     const cur = active && active.track && (L.state === 'playing' || L.state === 'paused') ? active.track : sb;
     document.querySelectorAll('#segTrans button').forEach(b => b.setAttribute('aria-checked', String(!!cur && cur.transition === b.dataset.v)));
@@ -608,7 +623,8 @@
     const t = playing ? active.track : null;
     const part = (name, fn) => { try { fn(); } catch (err) { if (!part.logged) { part.logged = true; log('display error', name, String(err)); } } };
     part('timers', () => {
-      const pos = t ? active.time - effStart(t) : 0, left = t ? effEnd(t) - active.time : (byId(L.standbyId) ? effLen(byId(L.standbyId)) : 0);
+      const sbT = byId(L.standbyId);
+      const pos = t ? active.time - effStart(t) : (sbT ? fromOffset(sbT) : 0), left = t ? effEnd(t) - active.time : (sbT ? effLen(sbT) - fromOffset(sbT) : 0);
       $('tElapsed').textContent = fmt(pos);
       $('tLeft').textContent = fmt(left);
       const big = $('tLeft').parentElement; big.classList.toggle('amber', !!t && left < 30 && left >= 10); big.classList.toggle('red', !!t && left < 10);
@@ -623,7 +639,7 @@
       let when = '';
       if (ci.nextIn != null) when = `in ${fmt(ci.nextIn, ci.nextIn < 10)}`;
       else if (ci.nextCue && t) when = `after GO · this song ends in ${fmt(effEnd(t) - active.time)}`; // next song waits for GO
-      else if (ci.nextCue) when = `at ${fmt(ci.nextCue.t - effStart(ci.nextTrack || t || { startAt: 0 }))} after GO`;
+      else if (ci.nextCue) { const nt = ci.nextTrack; when = `${fmt(Math.max(0, ci.nextCue.t - effStart(nt) - fromOffset(nt)))} after GO`; }
       $('cueNextIn').textContent = when;
       $('cueNextBox').classList.toggle('warnsoon', ci.nextIn != null && ci.nextIn <= S.settings.cueWarn);
       $('cueNextBox').style.borderLeftColor = ci.nextCue ? `var(--c-${ci.nextCue.type})` : '';
@@ -661,7 +677,7 @@
     const L = S.live;
     if (active && active.track && (L.state === 'playing' || L.state === 'paused')) return { t: active.track, pos: active.time };
     const t = byId(L.standbyId) || sel() || (L.state === 'idle' ? firstTrack() : null);
-    return t ? { t, pos: effStart(t) } : null;
+    return t ? { t, pos: effStart(t) + fromOffset(t) } : null;
   }
   function drawWave() {
     const dpr = window.devicePixelRatio || 1, W = Math.round(wave.clientWidth * dpr), H = Math.round(wave.clientHeight * dpr);
@@ -718,14 +734,36 @@
     Object.assign(tintCache, { src: img, color, c }); return c;
   }
   const waveTime = e => { const wt = waveTrack(); if (!wt) return null; const r = wave.getBoundingClientRect(); return { t: wt.t, at: clamp((e.clientX - r.left) / r.width, 0, 1) * (wt.t.duration || 0) }; };
-  on(wave, 'click', e => {
-    const w = waveTime(e); if (!w) return;
-    const L = S.live;
-    if (active && active.track === w.t && (L.state === 'playing' || L.state === 'paused')) {
-      if (!e.shiftKey) { toast('Hold Shift and click to jump to a point in the song.'); return; }
-      active.el.currentTime = clamp(w.at, effStart(w.t), effEnd(w.t) - 0.2); L.lastPos = active.el.currentTime; stall.t = L.lastPos; stall.at = performance.now(); pushStatus(true);
+  let scrub = null;
+  function scrubTo(e) {
+    if (!scrub) return;
+    const r = wave.getBoundingClientRect(), t = scrub.t, L = S.live;
+    const at = clamp(clamp((e.clientX - r.left) / r.width, 0, 1) * (t.duration || 0), effStart(t), Math.max(effStart(t), effEnd(t) - 0.5));
+    if (scrub.active) {
+      if (!(active && active.track === t)) { scrub = null; return; }
+      active.el.currentTime = at; L.lastPos = at; stall.t = at; stall.at = performance.now();
+    } else {
+      if (L.standbyId !== t.id) { L.standbyId = t.id; L.played.delete(t.id); if (L.state === 'idle' || L.state === 'ended') L.state = 'standby'; renderListsSoon(); }
+      L.cueFrom = at - effStart(t) < 0.3 ? null : { id: t.id, at };
     }
+    renderTransport();
+  }
+  on(wave, 'mousedown', e => {
+    if (e.button !== 0) return;
+    const wt = waveTrack(); if (!wt) return;
+    const L = S.live, isActive = !!(active && active.track === wt.t && (L.state === 'playing' || L.state === 'paused'));
+    if (isActive && L.state === 'playing' && !e.shiftKey) { toast('While a song plays, hold Shift and click to jump. When it is stopped or paused, just drag.'); return; }
+    if (L.busy) return;
+    scrub = { t: wt.t, active: isActive };
+    scrubTo(e);
   });
+  window.addEventListener('mousemove', safe(e => { if (scrub) scrubTo(e); }));
+  window.addEventListener('mouseup', safe(() => {
+    if (!scrub) return;
+    const sc = scrub; scrub = null;
+    if (!sc.active && S.live.cueFrom) toast(`GO will start “${label(sc.t)}” at ${fmt(fromOffset(sc.t))}. Press R to go back to the top.`);
+    pushStatus(true);
+  }));
   on(wave, 'dblclick', e => { const w = waveTime(e); if (w) addCue(w.t, w.at); });
 
   function drawMeters() {
@@ -985,7 +1023,8 @@
   document.addEventListener('click', e => { const b = e.target.closest('button'); if (b && !b.closest('dialog')) b.blur(); }, true);
   document.addEventListener('keydown', safe(e => {
     const tg = e.target;
-    if (tg.closest && tg.closest('input,textarea,select,[contenteditable="true"]')) { if (e.key === 'Escape') tg.blur(); return; }
+    if (tg.closest && tg.closest('input:not([type=range]):not([type=checkbox]):not([type=radio]),textarea,select,[contenteditable="true"]')) { if (e.key === 'Escape') tg.blur(); return; }
+    if (tg.matches && tg.matches('input[type=range]') && /^Arrow/.test(e.key)) return; // arrows still nudge a slider
     if (document.querySelector('dialog:modal')) return;
     if (e.ctrlKey || e.metaKey) return;
     const k = e.key;
@@ -1008,7 +1047,7 @@
   function setTab(t) { $('tabShow').setAttribute('aria-selected', t === 'show'); $('tabFiller').setAttribute('aria-selected', t === 'filler'); $('panelShow').hidden = t !== 'show'; $('panelFiller').hidden = t !== 'filler'; }
 
   /* ---------- show files ---------- */
-  function cleanForSave() { return JSON.parse(JSON.stringify(S.show, (k, v) => (k === 'missing' || k === 'bad' || k === '_wantBuffer') ? undefined : v)); }
+  function cleanForSave() { return JSON.parse(JSON.stringify(S.show, (k, v) => (k === 'missing' || k === 'bad' || k === '_wantBuffer' || k === '_fresh') ? undefined : v)); }
   async function save(saveAs = false) {
     try {
       const r = await desk.saveShow(S.filePath, cleanForSave(), saveAs);
@@ -1040,7 +1079,7 @@
     for (const t of [...S.show.tracks, ...S.show.filler]) { t.props = t.props || []; t.cues = t.cues || []; if (t.enabled == null) t.enabled = true; }
     S.filePath = filePath; S.dirty = !!dirty; $('dirty').hidden = !S.dirty;
     S.selectedId = S.show.tracks[0] ? S.show.tracks[0].id : null;
-    const L = S.live; Object.assign(L, { state: 'idle', currentId: null, standbyId: null, nextId: null, lastId: null, lastCue: null }); L.played = new Set();
+    const L = S.live; Object.assign(L, { state: 'idle', currentId: null, standbyId: null, nextId: null, lastId: null, cueFrom: null, lastCue: null }); L.played = new Set();
     active = null; decks.forEach(d => d.unload()); hotBuffers.clear(); fillerStop();
     $('showName').value = S.show.name;
     $('fLevel').value = S.show.fillerOpts.levelDb; $('fLevelTxt').textContent = `${S.show.fillerOpts.levelDb} dB`;
@@ -1060,7 +1099,7 @@
   desk.onIncomingShow(safe(p => openShow(p)));
   desk.onMenu(safe(name => {
     const acts = { new: () => $('bNew').click(), open: () => openShow(), save: () => save(), saveas: () => save(true), add: () => $('bAdd').click(),
-      preflight: () => openPreflight(), test: () => openTest(), settings: () => openSettings(), video: () => toggleVideo(), keys: () => $('dlgKeys').showModal() };
+      preflight: () => openPreflight(), test: () => openTest(), settings: () => openSettings(), video: () => toggleVideo(), collect: () => collectFiles(), keys: () => $('dlgKeys').showModal() };
     (acts[name] || (() => {}))();
   }));
 
@@ -1152,14 +1191,48 @@
   on('bVideo', 'click', openVideoDialog);
 
   /* ---------- settings dialog ---------- */
+  // Adds the ▲ recommended mark under a slider and a "recommended …" note, once. Returns an updater.
+  function recSetup(el, key, fmtv) {
+    if (!(key in REC)) return () => {};
+    const rec = REC[key];
+    if (!el._recHint) {
+      const lab = el.closest('label');
+      if (el.type === 'range') {
+        let box = el.parentElement.classList.contains('rangebox') ? el.parentElement : null;
+        if (!box) { box = h('div', { class: 'rangebox' }); el.replaceWith(box); box.append(el); }
+        const pct = (rec - +el.min) / (+el.max - +el.min);
+        box.append(h('span', { class: 'recmark', style: `left:calc(${pct} * (100% - 16px) + 8px)`, title: `Recommended: ${fmtv(rec)}` }, '▲'));
+      }
+      const hint = h('span', { class: 'rec-hint' });
+      if (el.type === 'checkbox') lab.append(hint);
+      else { const txt = lab.querySelector('span.mono'); if (txt) { const row = h('span', { class: 'valrow' }); txt.replaceWith(row); row.append(txt, hint); } else (el.closest('.rangebox') || el).before(hint); }
+      el._recHint = hint;
+    }
+    const hint = el._recHint;
+    return v => {
+      const same = typeof rec === 'boolean' ? !!v === rec : Math.abs(+v - rec) < 1e-6;
+      hint.textContent = same ? '✓ recommended' : `recommended ${fmtv(rec)}`;
+      hint.classList.toggle('rec-ok', same);
+    };
+  }
   const sl = (id, key, txt, fmtv, apply = true) => {
     const el = $(id); el.value = S.settings[key];
     const show = () => { if (txt) $(txt).textContent = fmtv(+el.value); };
-    show();
-    el.oninput = safe(() => { S.settings[key] = +el.value; show(); if (apply) applySettings(); saveSettings(); renderListsSoon(); });
+    const upd = recSetup(el, key, fmtv);
+    show(); upd(+el.value);
+    el.oninput = safe(() => { S.settings[key] = +el.value; show(); upd(+el.value); if (apply) applySettings(); saveSettings(); renderListsSoon(); });
   };
-  const ck = (id, key, after) => { const el = $(id); el.checked = !!S.settings[key]; el.onchange = safe(() => { S.settings[key] = el.checked; applySettings(); saveSettings(); renderListsSoon(); if (after) after(); }); };
-  const nm = (id, key, min, max) => { const el = $(id); el.value = S.settings[key]; el.onchange = safe(() => { S.settings[key] = clamp(+el.value || 0, min, max); el.value = S.settings[key]; applySettings(); saveSettings(); }); };
+  const onOff = v => v ? 'on' : 'off';
+  const ck = (id, key, after) => {
+    const el = $(id); el.checked = !!S.settings[key];
+    const upd = recSetup(el, key, onOff); upd(el.checked);
+    el.onchange = safe(() => { S.settings[key] = el.checked; upd(el.checked); applySettings(); saveSettings(); renderListsSoon(); if (after) after(); });
+  };
+  const nm = (id, key, min, max, unit = '') => {
+    const el = $(id); el.value = S.settings[key];
+    const upd = recSetup(el, key, v => `${v}${unit}`); upd(+el.value);
+    el.onchange = safe(() => { S.settings[key] = clamp(+el.value || 0, min, max); el.value = S.settings[key]; upd(S.settings[key]); applySettings(); saveSettings(); });
+  };
   async function fillOutputs(selectId) {
     const s = $(selectId);
     let outs = await E.outputs();
@@ -1181,7 +1254,7 @@
     ck('sLimiter', 'limiterOn'); sl('sCeil', 'ceiling', 'sCeilTxt', v => `${v} dBFS`);
     sl('sMaster', 'masterDb', 'sMasterTxt', v => `${v > 0 ? '+' : ''}${v} dB`);
     sl('sBal', 'balance', 'sBalTxt', v => v === 0 ? 'centre' : v < 0 ? `${Math.round(-v * 100)}% left` : `${Math.round(v * 100)}% right`);
-    nm('sTrimL', 'trimL', -12, 12); nm('sTrimR', 'trimR', -12, 12);
+    nm('sTrimL', 'trimL', -12, 12, ' dB'); nm('sTrimR', 'trimR', -12, 12, ' dB');
     ck('sEqOn', 'eqOn'); ck('sHpf', 'hpf');
     $('sEq').replaceChildren(...E.EQ_BANDS.map((b, i) => {
       const val = h('span', null, `${S.settings.eq[i] > 0 ? '+' : ''}${S.settings.eq[i]} dB`);
@@ -1189,18 +1262,20 @@
       inp.oninput = safe(() => { S.settings.eq[i] = +inp.value; val.textContent = `${inp.value > 0 ? '+' : ''}${inp.value} dB`; applySettings(); saveSettings(); });
       return h('label', null, val, inp, b.f >= 1000 ? `${b.f / 1000}k` : `${b.f}`);
     }));
+    if (!$('sEq').nextElementSibling || !$('sEq').nextElementSibling.classList.contains('eq-rec')) $('sEq').after(h('p', { class: 'eq-rec' }, '▲ Recommended: all at 0 dB (flat). Only change them if the room needs it, for example −2 dB at 250 Hz for a boomy hall.'));
     ck('sSpatial', 'spatialOn'); ck('sBassC', 'bassCentre');
     sl('sWidth', 'width', 'sWidthTxt', v => `${Math.round(v * 100)}%${v === 0 ? ' · mono' : v < 1 ? ' · narrower' : v === 1 ? ' · unchanged' : ' · wider'}`);
     ck('sMb', 'mbOn'); sl('sMbAmt', 'mbAmount', 'sMbTxt', v => ['gentle', 'light', 'medium', '', 'firm', '', 'strong'][v * 2] || String(v));
     $('sDefTrans').value = S.settings.defTrans; $('sDefTrans').onchange = safe(() => { S.settings.defTrans = $('sDefTrans').value; saveSettings(); });
-    nm('sXfade', 'xfade', 0.5, 30); nm('sFade', 'fadeSec', 0.5, 20); nm('sFadeOut', 'fadeOutSec', 0.5, 20); nm('sCueWarn', 'cueWarn', 0, 60);
-    ck('sFillAuto', 'fillerAuto'); ck('sResume', 'autoResume');
+    nm('sXfade', 'xfade', 0.5, 30, ' s'); nm('sFade', 'fadeSec', 0.5, 20, ' s'); nm('sFadeOut', 'fadeOutSec', 0.5, 20, ' s'); nm('sCueWarn', 'cueWarn', 0, 60, ' s');
+    ck('sFillAuto', 'fillerAuto'); ck('sResume', 'autoResume'); ck('sTrimNew', 'trimNew');
     sl('sDuck', 'duckDb', 'sDuckTxt', v => `${v} dB`); sl('sHot', 'hotDb', 'sHotTxt', v => `${v > 0 ? '+' : ''}${v} dB`);
     $('sWpCode').value = S.settings.wpCode; $('sWpOn').checked = S.settings.wpOn;
     $('sWpCode').onchange = safe(() => { S.settings.wpCode = $('sWpCode').value.trim(); saveSettings(); configureWp(); showWpLink(); });
     $('sWpOn').onchange = safe(() => { S.settings.wpOn = $('sWpOn').checked; saveSettings(); configureWp(); });
     showWpLink(); $('sWpMsg').textContent = '';
-    $('dlgSettings').showModal();
+    openStreamSettings(); openReliabilitySettings();
+    if (!$('dlgSettings').open) $('dlgSettings').showModal();
   }
   on('bSettings', 'click', openSettings);
   on('bPhones', 'click', () => { openSettings(); setTimeout(() => $('sWpCode').scrollIntoView({ block: 'center' }), 50); });
@@ -1286,13 +1361,23 @@
   /* ---------- crash recovery snapshot ---------- */
   function snapshot() {
     const L = S.live;
-    try { desk.snapshot({ state: L.state, currentId: L.currentId, standbyId: L.standbyId, nextId: L.nextId, pos: active ? active.time : 0, t: Date.now(), played: [...L.played], showId: S.show.id, filler: fillerState.playing ? fillerState.id : null }); } catch (_) {}
+    try { desk.snapshot({ state: L.state, currentId: L.currentId, standbyId: L.standbyId, nextId: L.nextId, pos: active ? active.time : 0, t: Date.now(), played: [...L.played], showId: S.show.id, filler: fillerState.playing ? fillerState.id : null, streaming: streamer.want }); } catch (_) {}
   }
   setInterval(snapshot, 500);
   async function recover() {
-    const r = await desk.recovery(); if (!r || r.showId !== S.show.id) return;
+    const r = await desk.recovery();
+    // Any stream left over from before a crash is closed; it's started again fresh if it was on.
+    await desk.streamStop().catch(() => {});
+    if (r && r.crashed && r.streaming) setTimeout(safe(streamStart), 1500);
+    if (!r || r.showId !== S.show.id) return;
     const L = S.live; L.played = new Set(r.played || []); L.nextId = r.nextId;
     const t = byId(r.currentId);
+    if (r.crashLoop && t) {
+      L.standbyId = t.id; setState('standby');
+      banner('recovered', `The app restarted several times in a few minutes, so it is standing by on “${label(t)}” instead of carrying on. If this keeps happening, turn on Software drawing (Settings → Reliability) or check that song's file.`, 'warn');
+      log('crash loop: standing by');
+      return;
+    }
     if (r.crashed && r.state === 'playing' && t && S.settings.autoResume) {
       const at = r.pos + (r.now - r.t) / 1000 + 0.3;
       log('recovering after crash', label(t), at);
@@ -1382,6 +1467,8 @@
       if (t.type === 'video' && pr && !pr.video) add('warn', `${name}: marked as video but has no picture`);
     });
     if (en.length && !probs) add('ok', `All ${en.length} songs found and playable`, `Total ${fmt(en.reduce((a, t) => a + effLen(t), 0))}${en.some(t => t.transition === 'stop') ? ' plus waits for GO' : ''}`);
+    const remote = en.filter(t => /^(\\\\|\/\/)/.test(t.path) || /^\/Volumes\//.test(t.path) || /^\/media\//.test(t.path));
+    if (remote.length) add('warn', `${remote.length} song${remote.length > 1 ? 's are' : ' is'} on a network or external drive`, 'If it disconnects, the music stops. Use File → Copy all files into the show folder.');
     const noName = en.filter(t => !t.dance).length;
     if (noName) add('warn', `${noName} song${noName > 1 ? 's have' : ' has'} no dance name`, 'Phones and the Up next box show the song title instead.');
     const dupes = en.filter((t, i) => en.findIndex(x => x.path === t.path) !== i);
@@ -1423,7 +1510,11 @@
     const maxLag = Math.max(0, ...sys.lag.slice(-30));
     add(maxLag > 200 ? 'warn' : 'ok', maxLag > 200 ? `The app paused for ${Math.round(maxLag)} ms recently` : 'App is responsive');
     // Phones + saved
-    group('Phones and saving');
+    group('Phones, streaming and saving');
+    if (S.settings.stUrl) {
+      const chk = await desk.streamCheck();
+      add(chk.ok ? 'ok' : 'bad', chk.ok ? (streamer.want ? 'Live stream is on' : 'Live streaming is set up (not started)') : chk.error, chk.ok ? (streamer.want ? (streamer.state.stats || '') : 'Start it a few minutes before the show and check it on a phone.') : '');
+    }
     if (S.settings.wpOn) {
       const c = parseWpCode(S.settings.wpCode);
       if (!c) add('bad', 'Phones are on but the connection code is missing or wrong');
@@ -1531,6 +1622,212 @@
   });
   on('dlgTest', 'close', () => { calStop(); if (songTest) { songTest.stop(0.3); songTest = null; $('tSong').textContent = 'Play selected song'; } });
 
+  /* ---------- master volume on the main page ---------- */
+  const dbTxt = v => `${v > 0 ? '+' : ''}${v} dB`;
+  function syncMaster() {
+    const el = $('mMaster'); if (!el) return;
+    if (document.activeElement !== el) el.value = S.settings.masterDb;
+    $('mMasterTxt').textContent = dbTxt(S.settings.masterDb);
+    if ($('dlgSettings').open && $('sMaster')) { $('sMaster').value = S.settings.masterDb; $('sMasterTxt').textContent = dbTxt(S.settings.masterDb); }
+  }
+  {
+    const el = $('mMaster');
+    el.closest('.rangebox').append(h('span', { class: 'recmark', style: `left:calc(${30 / 42} * (100% - 16px) + 8px)`, title: 'Recommended: 0 dB, with the PA set to the right level' }, '▲'));
+    on(el, 'input', () => { S.settings.masterDb = +el.value; applySettings(); saveSettings(); });
+    on(el, 'change', () => el.blur()); // so Space goes back to being GO
+    on(el, 'dblclick', () => { S.settings.masterDb = 0; el.value = 0; applySettings(); saveSettings(); toast('Master back to 0 dB.'); });
+    on('fLevel', 'change', e => e.target.blur());
+  }
+
+  /* ---------- use recommended sound settings ---------- */
+  on('sRec', 'click', () => {
+    if (!confirm('Set the sound settings to the recommended values?\n\nMaster level, balance and left/right trims are left as they are, because they are set for your room.')) return;
+    for (const [k, v] of Object.entries(REC)) if (!ROOM_KEYS.includes(k)) S.settings[k] = v;
+    S.settings.eq = [0, 0, 0, 0, 0];
+    applySettings(); saveSettings(); openSettings(); renderListsSoon();
+    toast('Sound settings set to the recommended values.');
+  });
+
+  /* ---------- skip silence at the start and end of a song ---------- */
+  function silenceBounds(t) {
+    if (!t.an || !t.an.peaks) return null;
+    const pk = i8FromB64(t.an.peaks), nb = pk.length / 2, dur = t.duration || t.an.duration; if (!dur || !nb) return null;
+    const per = dur / nb, loud = i => Math.max(Math.abs(pk[i * 2]), Math.abs(pk[i * 2 + 1])) >= 2; // about −39 dBFS
+    let a = 0; while (a < nb && !loud(a)) a++;
+    if (a >= nb) return null;
+    let z = nb - 1; while (z > a && !loud(z)) z--;
+    const start = Math.max(0, a * per - 0.1), end = Math.min(dur, (z + 1) * per + 0.4);
+    return { start: start >= 0.4 ? Math.round(start * 10) / 10 : 0, end: dur - end >= 0.6 ? Math.round(end * 10) / 10 : 0 };
+  }
+  function trimSilence(t, quiet) {
+    const b = silenceBounds(t);
+    if (!b) { if (!quiet) toast(t.an ? 'This song seems to be silent all the way through.' : 'Still measuring this song. Try again in a moment.'); return false; }
+    t.startAt = b.start; t.endAt = b.end;
+    changed(); renderInspector(); renderListsSoon();
+    if (!quiet) toast(b.start || b.end ? `Skipping silence: starts at ${fmt(b.start, true)}${b.end ? `, ends at ${fmt(b.end, true)}` : ''}.` : 'No silence to skip at either end.');
+    else if (b.start || b.end) log('skipped silence', label(t), b);
+    return true;
+  }
+  on('iTrimSil', 'click', () => { const t = sel(); if (t) trimSilence(t); });
+  on('iTrimReset', 'click', () => { const t = sel(); if (!t) return; t.startAt = 0; t.endAt = 0; changed(); renderInspector(); renderListsSoon(); toast('Playing the whole file.'); });
+
+  /* ---------- live streaming (Streaming by StreamingIdiot) ---------- */
+  const streamer = { want: false, rec: null, canvas: null, g: null, drawTimer: 0, retryTimer: 0, retries: 0, gen: 0, state: {}, startedAt: 0 };
+  function openStreamSettings() {
+    $('sStUrl').value = S.settings.stUrl; $('sStKey').value = S.settings.stKey; $('sStQ').value = S.settings.stQ; $('sStTitle').value = S.settings.stTitle;
+    $('sStUrl').onchange = safe(() => { S.settings.stUrl = $('sStUrl').value.trim(); saveSettings(); });
+    $('sStKey').onchange = safe(() => { S.settings.stKey = $('sStKey').value.trim(); saveSettings(); });
+    $('sStQ').onchange = safe(() => { S.settings.stQ = $('sStQ').value; saveSettings(); });
+    $('sStTitle').oninput = safe(() => { S.settings.stTitle = $('sStTitle').value; saveSettings(); });
+    renderStream();
+  }
+  async function streamStart() {
+    if (streamer.want) return;
+    if (!S.settings.stUrl) { toast('Paste the stream address from your StreamingIdiot account first (Settings → Streaming).'); openSettings(); setTimeout(() => $('streamBox').scrollIntoView({ block: 'center' }), 60); return; }
+    const chk = await desk.streamCheck();
+    if (!chk.ok) { $('sStMsg').textContent = chk.error; toast(chk.error); return; }
+    streamer.want = true; streamer.retries = 0; streamer.startedAt = Date.now();
+    log('streaming on');
+    await streamOpen();
+  }
+  async function streamOpen() {
+    if (!streamer.want) return;
+    const q = S.settings.stQ === '480' ? [854, 480] : [1280, 720];
+    const r = await desk.streamStart({ url: S.settings.stUrl, key: S.settings.stKey, quality: S.settings.stQ });
+    if (!r.ok) { streamer.want = false; $('sStMsg').textContent = r.error; toast(`Couldn't start the stream: ${r.error}`, 6000); renderStream(); return; }
+    streamer.gen = r.gen;
+    if (!streamer.canvas || streamer.canvas.width !== q[0]) { streamer.canvas = document.createElement('canvas'); streamer.canvas.width = q[0]; streamer.canvas.height = q[1]; streamer.g = streamer.canvas.getContext('2d'); }
+    clearInterval(streamer.drawTimer);
+    streamer.drawTimer = setInterval(drawStreamFrame, 33);
+    drawStreamFrame();
+    const tracksOut = [...streamer.canvas.captureStream(30).getVideoTracks(), ...E.streamTap().getAudioTracks()];
+    const mime = ['video/webm;codecs=vp8,opus', 'video/webm'].find(m => MediaRecorder.isTypeSupported(m));
+    const rec = new MediaRecorder(new MediaStream(tracksOut), { mimeType: mime, videoBitsPerSecond: q[0] > 1000 ? 6000000 : 3000000, audioBitsPerSecond: 192000 });
+    rec.ondataavailable = e => { if (e.data && e.data.size && streamer.rec === rec) e.data.arrayBuffer().then(b => { if (streamer.rec === rec) desk.streamData(b); }).catch(() => {}); };
+    rec.onerror = e => { log('stream recorder error', String(e.error || e)); streamReconnect('The recording stopped.'); };
+    streamer.rec = rec;
+    rec.start(250);
+    renderStream();
+  }
+  function streamTeardown() {
+    const rec = streamer.rec; streamer.rec = null;
+    try { if (rec && rec.state !== 'inactive') rec.stop(); } catch (_) {}
+    clearInterval(streamer.drawTimer); streamer.drawTimer = 0;
+  }
+  // The connection dropped (or ffmpeg stopped): start again with a growing wait, for as long as streaming is wanted.
+  function streamReconnect(why) {
+    if (!streamer.want) return;
+    streamTeardown();
+    clearTimeout(streamer.retryTimer);
+    const wait = Math.min(30, 2 * 2 ** Math.min(4, streamer.retries++));
+    banner('stream', `The live stream dropped (${why || 'connection lost'}). Reconnecting in ${wait} s…`, 'warn', [{ label: 'Stop streaming', fn: streamStop }]);
+    log('stream reconnect', why, wait);
+    streamer.retryTimer = setTimeout(safe(async () => { await desk.streamStop(); await streamOpen(); }), wait * 1000);
+    renderStream();
+  }
+  async function streamStop() {
+    streamer.want = false; clearTimeout(streamer.retryTimer);
+    streamTeardown();
+    await desk.streamStop();
+    unbanner('stream'); log('streaming off');
+    renderStream();
+  }
+  desk.onStreamState(safe(st => {
+    streamer.state = st;
+    if (st.ended && st.gen === streamer.gen && streamer.want) streamReconnect(st.error || 'the stream service closed the connection');
+    else if (st.live && streamer.retries && st.bytes > 200000) { streamer.retries = 0; unbanner('stream'); }
+    renderStream();
+  }));
+  function renderStream() {
+    const st = streamer.state || {}, dot = $('stDot'), txt = $('stText');
+    const live = streamer.want && st.live && st.gen === streamer.gen;
+    if (!streamer.want) { dot.className = 'dot'; txt.textContent = 'Stream'; }
+    else if (live) { dot.className = 'dot live'; txt.textContent = `LIVE ${fmt((Date.now() - streamer.startedAt) / 1000)}`; }
+    else { dot.className = 'dot warn'; txt.textContent = 'Stream: reconnecting'; }
+    $('bStream').title = live ? `Streaming ${st.stats || ''}` : 'Live stream (Streaming by StreamingIdiot)';
+    if ($('sStGo')) {
+      $('sStGo').textContent = streamer.want ? 'Stop streaming' : 'Start streaming';
+      $('sStGo').classList.toggle('danger', streamer.want);
+      $('sStMsg').textContent = live ? `Live for ${fmt((Date.now() - streamer.startedAt) / 1000)} · ${st.stats || 'starting…'}` : streamer.want ? 'Connecting…' : (st.error || '');
+    }
+  }
+  setInterval(safe(renderStream), 1000);
+  on('sStGo', 'click', () => streamer.want ? (confirm('Stop the live stream?') && streamStop()) : streamStart());
+  on('bStream', 'click', () => { openSettings(); setTimeout(() => $('streamBox').scrollIntoView({ block: 'center' }), 60); });
+  // The picture: the video when a number has one, otherwise a title card with what's on now.
+  function drawStreamFrame() {
+    try {
+      const c = streamer.canvas, g = streamer.g; if (!c) return;
+      const W = c.width, H = c.height, L = S.live, k = W / 1280;
+      const t = active && active.track && (L.state === 'playing' || L.state === 'paused') ? active.track : null;
+      g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
+      if (t && t.type === 'video' && active.el.readyState >= 2 && active.el.videoWidth) {
+        const vw = active.el.videoWidth, vh = active.el.videoHeight, sc = Math.min(W / vw, H / vh);
+        g.drawImage(active.el, (W - vw * sc) / 2, (H - vh * sc) / 2, vw * sc, vh * sc);
+        return;
+      }
+      const grd = g.createLinearGradient(0, 0, 0, H); grd.addColorStop(0, '#161A2E'); grd.addColorStop(1, '#07080F'); g.fillStyle = grd; g.fillRect(0, 0, W, H);
+      const tapes = ['#F2C200', '#E8508A', '#19A7BC'];
+      tapes.forEach((col, i) => { g.save(); g.translate(70 * k + i * 6 * k, 70 * k + i * 16 * k); g.rotate(-0.1); g.fillStyle = col; g.fillRect(0, 0, 70 * k, 12 * k); g.restore(); });
+      const center = (txt, y, size, weight, color) => { g.fillStyle = color; g.font = `${weight} ${Math.round(size * k)}px Archivo, Arial, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; let s2 = String(txt || ''); while (s2.length > 3 && g.measureText(s2).width > W * 0.9) s2 = s2.slice(0, -2); g.fillText(s2 === String(txt || '') ? s2 : s2 + '…', W / 2, y * k); };
+      center(S.settings.stTitle || S.show.name, 110, 34, 700, '#97A0B8');
+      const inter = S.phones.intermissionEnds > Date.now();
+      const sb = byId(L.standbyId) || (L.state === 'idle' ? firstTrack() : null);
+      if (t) { center('NOW', 270, 26, 800, '#F5B83D'); center(label(t), 345, 72, 850, '#FFFFFF'); center([t.dance ? t.title : '', t.cls].filter(Boolean).join(' · '), 420, 30, 500, '#C9CEDD'); }
+      else if (inter) { center('INTERMISSION', 270, 30, 800, '#F5B83D'); center(`Back in ${fmt((S.phones.intermissionEnds - Date.now()) / 1000)}`, 350, 72, 850, '#FFFFFF'); if (sb) center(`Up next: ${label(sb)}`, 430, 30, 500, '#C9CEDD'); }
+      else if (L.state === 'ended') center('Thank you for watching', 330, 64, 850, '#FFFFFF');
+      else if (sb) { center(L.state === 'idle' ? 'THE SHOW STARTS SOON' : 'UP NEXT', 270, 28, 800, '#F5B83D'); center(label(sb), 345, 72, 850, '#FFFFFF'); }
+      else center('Welcome', 330, 64, 850, '#FFFFFF');
+      if (S.phones.message) center(S.phones.message, 520, 30, 600, '#F5B83D');
+      g.fillStyle = '#E5484D'; g.beginPath(); g.arc(W - 120 * k, 60 * k, 8 * k, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#FFFFFF'; g.font = `800 ${Math.round(20 * k)}px Archivo, Arial, sans-serif`; g.textAlign = 'left'; g.fillText('LIVE', W - 104 * k, 61 * k);
+      center('Streaming by StreamingIdiot', 680, 18, 600, '#5E6680');
+    } catch (err) { if (!drawStreamFrame.logged) { drawStreamFrame.logged = true; log('stream picture error', String(err)); } }
+  }
+
+  /* ---------- reliability ---------- */
+  async function openReliabilitySettings() {
+    const prefs = await desk.startupPrefs().catch(() => ({}));
+    $('sSoftDraw').checked = !!prefs.softwareDrawing;
+    $('sSoftDraw').onchange = safe(async () => { await desk.setStartupPrefs({ softwareDrawing: $('sSoftDraw').checked }); toast('Saved. It takes effect the next time Recital Show Player starts.', 5000); });
+  }
+  // Copy every file into a folder next to the show file, so nothing depends on a USB stick or network drive.
+  async function collectFiles() {
+    if (S.live.state === 'playing' || S.live.state === 'paused') { toast('Stop the music first, then copy the files.'); return; }
+    if (!S.filePath) { toast('Save the show first, so the app knows where to put the files.'); if (!(await save())) return; }
+    const items = [...S.show.tracks, ...S.show.filler, ...S.show.hotCues.filter(Boolean)].filter(t => t.path);
+    $('sCollectMsg').textContent = 'Copying…'; toast('Copying files into the show folder…');
+    const r = await desk.collectMedia(S.filePath, items.map(t => t.path));
+    let moved = 0;
+    for (const t of items) { const np = r.map[t.path]; if (np && np !== t.path) { t.path = np; t.name = np.split(/[\\/]/).pop(); t.missing = false; moved++; } }
+    changed(); renderLists(); renderInspector();
+    await save();
+    $('sCollectMsg').textContent = `Done: ${r.copied} copied, ${r.skipped} already there, into “${r.dir}”.`;
+    toast(`All files are now in the show folder (${r.copied} copied).`, 5000);
+  }
+  desk.onCollectProgress(safe(pr => { $('sCollectMsg').textContent = `Copying… ${pr.done} of ${pr.total}`; }));
+  on('sCollect', 'click', collectFiles);
+  // Keys only work while this window is the active one: say so when it isn't (e.g. after clicking the video window).
+  let blurTimer = 0;
+  window.addEventListener('blur', () => { clearTimeout(blurTimer); blurTimer = setTimeout(() => { if (!document.hasFocus()) $('focusWarn').hidden = false; }, 600); });
+  window.addEventListener('focus', () => { clearTimeout(blurTimer); $('focusWarn').hidden = true; });
+  on('focusWarn', 'click', () => { $('focusWarn').hidden = true; window.focus(); });
+  // Sound card watchdog: the audio clock must keep moving. If it stops, try to wake it, then offer a restart.
+  const audioDog = { last: -1, stuck: 0, tried: false };
+  setInterval(safe(async () => {
+    const now = E.ctx.currentTime;
+    if (E.ctx.state === 'running' && now === audioDog.last) audioDog.stuck++; else { if (audioDog.stuck >= 3) { unbanner('audio'); log('sound card running again'); } audioDog.stuck = 0; audioDog.tried = false; }
+    audioDog.last = now;
+    if (audioDog.stuck === 3) {
+      log('sound card stopped responding');
+      banner('audio', 'The sound card stopped responding. Trying to wake it…', 'warn', [{ label: 'Restart the app', fn: () => { snapshot(); desk.relaunch(); } }]);
+      if (!audioDog.tried) { audioDog.tried = true; try { await E.setOutput(S.settings.outputId || ''); await E.ctx.resume(); } catch (err) { log('wake sound card failed', String(err)); } }
+    }
+    if (audioDog.stuck === 8) banner('audio', "The sound card still isn't responding. Check the cable or USB audio box, or restart the app (it picks up the show where it was).", 'warn', [{ label: 'Restart the app', fn: () => { snapshot(); desk.relaunch(); } }]);
+  }), 1000);
+  let gpuCrashes = 0;
+  desk.onGpuGone(safe(() => { gpuCrashes++; log('graphics process restarted', gpuCrashes); if (gpuCrashes >= 2) banner('gpu', 'The graphics driver has restarted more than once. If the screen flickers or freezes, turn on Software drawing in Settings → Reliability.', 'info', [{ label: 'Open Settings', fn: openSettings }]); }));
+
   /* ---------- start up ---------- */
   async function boot() {
     try { const s = await desk.readSettings(); if (s) S.settings = { ...DEFAULTS, ...s, eq: (s.eq || DEFAULTS.eq).slice(0, 5) }; } catch (_) {}
@@ -1551,7 +1848,7 @@
   window.addEventListener('beforeunload', () => { snapshot(); autosave(); });
 
   // for automated tests
-  window.SP = { S, decks, updateText, closeCuePop, restart, resetShow, applySettings, openVideoDialog, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
+  window.SP = { S, decks, streamStart, streamStop, streamer, trimSilence, collectFiles, syncMaster, updateText, closeCuePop, restart, resetShow, applySettings, openVideoDialog, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
     fillerPlay, fillerFadeOut, fillerState, buildStatus, buildProgram, showRemaining, gainFor, nextAfter, setHotFile, hotBuffers, E, queue: () => queue.length + (analysing ? 1 : 0) };
 
   boot().catch(err => { oops(err); requestAnimationFrame(frame); setInterval(updateText, 100); setInterval(safe(tick), 25); });

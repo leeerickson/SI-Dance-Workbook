@@ -8,6 +8,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { Readable } = require('stream');
+const { spawn, execFileSync } = require('child_process');
 
 const SHOW_EXT = 'recital';
 const FORMAT = 1;
@@ -27,6 +28,12 @@ app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 // On Windows, a window it thinks is covered (e.g. by full-screen video on a duplicated screen) stops updating. Not for a show controller.
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 
+// "Software drawing" (Settings): turns off the graphics card for drawing, for computers whose graphics
+// driver flickers, goes black or freezes. Read from a small file before start-up, because it can't change later.
+const STARTUP_FILE = path.join(process.env.SHOW_PLAYER_DATA || app.getPath('userData'), 'startup.json');
+const startupPrefs = (() => { try { return JSON.parse(fs.readFileSync(STARTUP_FILE, 'utf8')); } catch (_) { return {}; } })();
+if (startupPrefs.softwareDrawing) app.disableHardwareAcceleration();
+
 protocol.registerSchemesAsPrivileged([{ scheme: 'show', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } }]);
 
 let win = null;
@@ -34,6 +41,7 @@ let userDir = null;
 let pendingOpen = null;
 let liveSnapshot = null;   // latest playback state from the page, kept here so it survives a page crash
 let crashedAt = 0;
+let crashTimes = [];      // recent page crashes, to stop a crash loop from auto-resuming forever
 let isPlaying = false;
 let blockerId = null;
 let outputDisplayId = null;
@@ -84,6 +92,11 @@ function start() {
   liveSnapshot = prev ? { ...prev, fromLastRun: true } : null;
   pendingOpen = pendingOpen || findShowArg(process.argv);
 
+  cleanOldLogs();
+  app.on('child-process-gone', (_e, d) => {
+    log('helper process stopped', d);
+    if (d.type === 'GPU' && win && !win.isDestroyed()) win.webContents.send('gpu:gone');
+  });
   protocol.handle('show', handleShowProtocol);
   createWindow();
   startStats();
@@ -91,6 +104,15 @@ function start() {
   const changed = () => { if (win && !win.isDestroyed()) win.webContents.send('displays:changed'); };
   screen.on('display-added', (_e, d) => { log('screen connected', d.label || d.id); changed(); });
   screen.on('display-removed', (_e, d) => { log('screen disconnected', d.label || d.id); changed(); });
+}
+
+// Logs older than 30 days are deleted, so the log folder can't fill the disk.
+function cleanOldLogs() {
+  const dir = path.join(userDir, 'logs');
+  fs.promises.readdir(dir).then(files => files.forEach(f => {
+    const full = path.join(dir, f);
+    fs.promises.stat(full).then(st => { if (Date.now() - st.mtimeMs > 30 * 86400000) fs.promises.unlink(full).catch(() => {}); }).catch(() => {});
+  })).catch(() => {});
 }
 
 /* ---------- show:// protocol ----------
@@ -180,6 +202,7 @@ function createWindow() {
   win.webContents.on('render-process-gone', (_e, details) => {
     log('page crashed', details);
     crashedAt = Date.now();
+    crashTimes = crashTimes.filter(t => Date.now() - t < 3 * 60 * 1000).concat(Date.now());
     if (details.reason !== 'clean-exit') setTimeout(() => { if (win && !win.isDestroyed()) win.loadURL('show://app/index.html'); }, 300);
   });
   let hangTimer = null;
@@ -216,6 +239,7 @@ function buildMenu() {
       { label: 'Save show as…', accelerator: 'CmdOrCtrl+Shift+S', click: cmd('saveas') },
       { type: 'separator' },
       { label: 'Add music or video…', accelerator: 'CmdOrCtrl+I', click: cmd('add') },
+      { label: 'Copy all files into the show folder…', click: cmd('collect') },
       { type: 'separator' },
       { label: 'Show log folder', click: () => shell.openPath(path.join(userDir, 'logs')) },
       ...(mac ? [] : [{ type: 'separator' }, { role: 'quit', label: 'Exit' }])
@@ -336,9 +360,11 @@ ipcMain.on('live:snapshot', (_e, snap) => {
 ipcMain.handle('live:recovery', () => {
   const snap = liveSnapshot;
   const crashed = crashedAt && Date.now() - crashedAt < 60000;
+  // Three crashes in three minutes: stand by instead of carrying on, so a bad file can't crash it over and over.
+  const loop = crashTimes.filter(t => Date.now() - t < 3 * 60 * 1000).length >= 3;
   crashedAt = 0;
   if (snap && !snap.fromLastRun) liveSnapshot = { ...snap }; // keep for another crash
-  return snap ? { ...snap, crashed: !!crashed, now: Date.now() } : null;
+  return snap ? { ...snap, crashed: !!crashed, crashLoop: loop, now: Date.now() } : null;
 });
 ipcMain.on('log', (_e, parts) => log('page', ...(Array.isArray(parts) ? parts : [parts])));
 
@@ -399,6 +425,36 @@ ipcMain.handle('system:info', async () => {
     powerBlocked: blockerId !== null && powerSaveBlocker.isStarted(blockerId), onBattery: (() => { try { return require('electron').powerMonitor.isOnBatteryPower(); } catch (_) { return null; } })() };
 });
 ipcMain.handle('log:folder', () => shell.openPath(path.join(userDir, 'logs')));
+ipcMain.handle('startup:get', () => startupPrefs);
+ipcMain.handle('startup:set', async (_e, prefs) => { Object.assign(startupPrefs, prefs || {}); await writeAtomic(STARTUP_FILE, JSON.stringify(startupPrefs)); return startupPrefs; });
+// Restarts the whole app (used when the sound card stops answering). The page stands by on the song it was on.
+ipcMain.handle('app:relaunch', () => { log('relaunch requested'); app.forceQuit = true; app.relaunch(); app.exit(0); });
+ipcMain.handle('open:external', (_e, url) => { if (/^https:\/\//.test(url)) shell.openExternal(url); });
+
+// Copies every music, video and sound file into a folder next to the show file, so the show no longer
+// depends on a USB stick, a network drive or someone's Downloads folder. Returns { oldPath: newPath }.
+ipcMain.handle('media:collect', async (_e, { showPath, paths }) => {
+  if (!showPath) throw new Error('Save the show first.');
+  const dir = path.join(path.dirname(showPath), path.basename(showPath, path.extname(showPath)) + ' files');
+  await fs.promises.mkdir(dir, { recursive: true });
+  const out = {}, used = new Set();
+  let copied = 0, skipped = 0;
+  for (const src of [...new Set(paths)]) {
+    try {
+      if (path.dirname(src) === dir) { out[src] = src; skipped++; continue; }
+      const st = await fs.promises.stat(src);
+      let name = path.basename(src), dest = path.join(dir, name), n = 1;
+      // a different file with the same name gets a number added
+      while (used.has(dest.toLowerCase()) || (fs.existsSync(dest) && fs.statSync(dest).size !== st.size)) { dest = path.join(dir, `${path.basename(name, path.extname(name))} (${++n})${path.extname(name)}`); }
+      used.add(dest.toLowerCase());
+      if (!fs.existsSync(dest)) { await fs.promises.copyFile(src, dest); await fs.promises.utimes(dest, st.atime, st.mtime).catch(() => {}); copied++; } else skipped++;
+      out[src] = dest;
+    } catch (err) { log('collect failed', src, friendly(err)); }
+    if (win && !win.isDestroyed()) win.webContents.send('media:collect-progress', { done: Object.keys(out).length, total: paths.length });
+  }
+  log('collected media', dir, { copied, skipped });
+  return { dir, map: out, copied, skipped };
+});
 
 let lastCpu = null;
 function systemCpu() {
@@ -472,3 +528,78 @@ ipcMain.handle('wp:test', async (_e, cfg) => {
   } catch (err) { return { ok: false, error: friendly(err) }; }
   finally { wp.cfg = saved; }
 });
+
+/* ---------- live streaming ----------
+   The page records the show's sound and a picture (the video, or a title card) and sends the recording
+   here in small pieces. ffmpeg turns it into a live stream (H.264 + AAC over RTMP) for StreamingIdiot or
+   any service that takes an RTMP address. ffmpeg runs at low priority, so streaming can never starve the
+   show, and if the connection drops the page starts it again. */
+function ffmpegPath() {
+  try {
+    let p = require('ffmpeg-static');
+    if (p && app.isPackaged) p = p.replace('app.asar', 'app.asar.unpacked');
+    if (p && fs.existsSync(p)) return p;
+  } catch (_) { /* not bundled */ }
+  return process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
+}
+const stream = { proc: null, gen: 0, startedAt: 0, bytes: 0, lastStats: '', queued: 0, wanted: false, error: '' };
+function streamReport(extra = {}) {
+  if (win && !win.isDestroyed()) win.webContents.send('stream:state', { gen: stream.gen, live: !!stream.proc, startedAt: stream.startedAt, bytes: stream.bytes, stats: stream.lastStats, error: stream.error, queued: stream.queued, ...extra });
+}
+ipcMain.handle('stream:check', () => {
+  try { const out = execFileSync(ffmpegPath(), ['-hide_banner', '-version'], { timeout: 8000 }).toString(); return { ok: true, version: (out.split('\n')[0] || '').slice(0, 80) }; }
+  catch (err) { return { ok: false, error: 'ffmpeg, which streaming needs, could not be found.' }; }
+});
+ipcMain.handle('stream:start', (_e, cfg) => {
+  if (stream.proc) return { ok: true, gen: stream.gen };
+  const target = process.env.SHOW_PLAYER_STREAM_OUT || (String(cfg.url || '').replace(/\/+$/, '') + (cfg.key ? '/' + cfg.key : ''));
+  if (!process.env.SHOW_PLAYER_STREAM_OUT && !/^rtmps?:\/\//i.test(target)) return { ok: false, error: 'The stream address must start with rtmp:// or rtmps://' };
+  const kbps = cfg.quality === '480' ? 1200 : 2500, size = cfg.quality === '480' ? '854:480' : '1280:720';
+  const args = ['-hide_banner', '-loglevel', 'error', '-stats', '-fflags', '+genpts', '-i', 'pipe:0',
+    '-vf', `scale=${size}:force_original_aspect_ratio=decrease,pad=${size}:(ow-iw)/2:(oh-ih)/2,fps=30`,
+    '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency', '-pix_fmt', 'yuv420p', '-g', '60', '-keyint_min', '60', '-sc_threshold', '0',
+    '-b:v', `${kbps}k`, '-maxrate', `${kbps}k`, '-bufsize', `${kbps * 2}k`,
+    '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-ac', '2', '-f', 'flv', target];
+  try {
+    const proc = spawn(ffmpegPath(), args, { stdio: ['pipe', 'ignore', 'pipe'], windowsHide: true });
+    try { os.setPriority(proc.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch (_) {}
+    const gen = ++stream.gen;
+    stream.proc = proc; stream.startedAt = Date.now(); stream.bytes = 0; stream.queued = 0; stream.error = ''; stream.wanted = true;
+    proc.stdin.on('error', err => log('stream input error', friendly(err)));
+    proc.stderr.on('data', d => {
+      const txt = d.toString();
+      const m = /frame=\s*\d+.*?bitrate=\s*([\d.]+\S*).*?speed=\s*([\d.]+x)/.exec(txt);
+      if (m) stream.lastStats = `${m[1]} · ${m[2]}`;
+      else if (txt.trim()) { stream.error = txt.trim().split('\n').pop().slice(0, 200); log('stream', stream.error); }
+    });
+    proc.on('error', err => { stream.error = /ENOENT/.test(String(err)) ? 'ffmpeg, which streaming needs, could not be found.' : friendly(err); log('stream failed to start', stream.error); });
+    proc.on('exit', (code, signal) => {
+      log('stream ended', { code, signal });
+      if (stream.proc === proc) stream.proc = null;
+      if (gen === stream.gen) streamReport({ ended: true, code, gen });
+    });
+    log('stream started', process.env.SHOW_PLAYER_STREAM_OUT ? 'test file' : target.replace(/\/[^/]*$/, '/•••'), `${cfg.quality || '720'}p`);
+    streamReport();
+    return { ok: true, gen };
+  } catch (err) { return { ok: false, error: friendly(err) }; }
+});
+ipcMain.on('stream:data', (_e, buf) => {
+  const p = stream.proc; if (!p || !p.stdin.writable) return;
+  const b = Buffer.from(buf);
+  stream.bytes += b.length;
+  stream.queued = p.stdin.writableLength;
+  // If ffmpeg (or the internet connection) can't keep up, stop rather than let memory grow. The page restarts it.
+  if (p.stdin.writableLength > 64 * 1024 * 1024) { log('stream backed up; restarting'); stream.error = 'The connection is too slow for this quality.'; p.kill('SIGKILL'); return; }
+  p.stdin.write(b);
+});
+ipcMain.handle('stream:stop', () => {
+  stream.wanted = false;
+  const p = stream.proc; if (!p) return true;
+  stream.proc = null; stream.gen++; // anything this ffmpeg says from now on is ignored
+  try { p.stdin.end(); } catch (_) {}
+  setTimeout(() => { try { p.kill('SIGKILL'); } catch (_) {} }, 4000);
+  streamReport();
+  return true;
+});
+setInterval(() => { if (stream.proc) streamReport(); }, 1000);
+app.on('before-quit', () => { if (stream.proc) { try { stream.proc.kill('SIGKILL'); } catch (_) {} } });

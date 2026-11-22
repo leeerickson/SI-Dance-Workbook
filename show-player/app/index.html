@@ -22,6 +22,7 @@
   <button class="btn" id="bTest" title="Test speakers and level the PA (Ctrl+T)">Test &amp; calibrate</button>
   <button class="btn" id="bVideo" title="Open the video window on a projector or second screen">Video output</button>
   <button class="btn" id="bSettings" title="Settings (Ctrl+,)">Settings</button>
+  <button class="phones" id="bStream" title="Live stream (Streaming by StreamingIdiot)"><i class="dot" id="stDot"></i><span id="stText">Stream</span></button>
   <button class="phones" id="bPhones" title="Live status for phones (WordPress)"><i class="dot" id="wpDot"></i><span id="wpText">Phones off</span></button>
   <div class="sys" id="sysBox" title="Computer load">
     <canvas id="sysGraph" width="132" height="30"></canvas>
@@ -31,6 +32,7 @@
 </header>
 
 <div id="banners"></div>
+<button class="focuswarn" id="focusWarn" hidden>Keyboard shortcuts are off: another window is active. Click here to use Space, F, Esc and the other keys again.</button>
 
 <main class="layout">
   <!-- Left: playlists -->
@@ -122,6 +124,7 @@
         <div class="meter"><span>L</span><div class="bar"><i id="mL"></i><s id="hL"></s></div></div>
         <div class="meter"><span>R</span><div class="bar"><i id="mR"></i><s id="hR"></s></div></div>
         <div class="muted mono" id="meterTxt">–</div>
+        <div class="mvol"><span class="label">Master</span><div class="rangebox"><input type="range" id="mMaster" min="-30" max="12" step="0.5" aria-label="Master volume" title="Master volume. Double-click to go back to 0 dB."></div><b class="mono" id="mMasterTxt">0 dB</b></div>
       </div>
       <div class="panel fillstrip">
         <span class="label">Pre-show / intermission</span>
@@ -158,6 +161,7 @@
         <label>Crossfade seconds<input type="number" id="iXfade" min="0.5" max="30" step="0.5"></label>
         <label>Start at<input type="text" id="iStart" class="mono" placeholder="0:00"></label>
         <label>End at<input type="text" id="iEnd" class="mono" placeholder="end"></label>
+        <div class="wide inline"><button class="btn small" type="button" id="iTrimSil" title="Sets Start at and End at to skip silence at the start and end of the song">Skip silence</button><button class="btn small" type="button" id="iTrimReset" title="Play the whole file again">Whole song</button></div>
         <label>Volume trim (dB)<input type="number" id="iTrim" min="-20" max="12" step="0.5"></label>
         <div class="lufs mono muted" id="iLufs"></div>
       </div>
@@ -182,7 +186,7 @@
 <!-- Settings -->
 <dialog id="dlgSettings" class="dlg">
   <form method="dialog" class="dlg-in">
-    <div class="dlg-head"><h2>Settings</h2><button class="btn small" value="close">Done</button></div>
+    <div class="dlg-head"><h2>Settings</h2><div class="inline"><span class="muted"><span class="recmark-key">▲</span> = recommended</span><button class="btn small" type="button" id="sRec" title="Set the sound settings to the recommended values (leaves master, balance and trims alone, since those suit your room)">Use recommended sound</button><button class="btn small" value="close">Done</button></div></div>
     <div class="dlg-grid">
       <fieldset><legend>Sound output</legend>
         <label>Play through<select id="sOut"></select></label>
@@ -223,6 +227,7 @@
         <label>"Fade out" takes (s)<input type="number" id="sFadeOut" min="0.5" max="20" step="0.5"></label>
         <label>Warn before a cue (s)<input type="number" id="sCueWarn" min="0" max="60" step="1"></label>
         <label class="chk"><input type="checkbox" id="sFillAuto"> GO fades out pre-show music</label>
+        <label class="chk"><input type="checkbox" id="sTrimNew"> Skip silence at the start and end of new songs</label>
         <label class="chk"><input type="checkbox" id="sResume"> If the app has to restart mid-song, carry on playing</label>
       </fieldset>
       <fieldset><legend>Hot sounds</legend>
@@ -234,6 +239,21 @@
         <label>Connection code<input type="text" id="sWpCode" class="mono" spellcheck="false" placeholder="Paste the connection code"></label>
         <div class="inline"><label class="chk"><input type="checkbox" id="sWpOn"> Send live status to phones</label><button class="btn small" type="button" id="sWpTest">Test connection</button><span id="sWpMsg" class="muted"></span></div>
         <p class="muted" id="sWpLink"></p>
+      </fieldset>
+      <fieldset class="span2" id="streamBox"><legend>Streaming <span class="by">by StreamingIdiot</span></legend>
+        <p class="muted">Send the show live, so family who can't be there can watch: the sound everyone hears, with the video when a number has one and a title card with the dance name the rest of the time. Copy the <b>stream address</b> and <b>stream key</b> from your <a href="https://streamingidiot.com" target="_blank" rel="noopener">StreamingIdiot</a> account (any service that gives an RTMP address works too).</p>
+        <div class="fields">
+          <label class="wide">Stream address<input type="text" id="sStUrl" class="mono" spellcheck="false" placeholder="rtmp://…"></label>
+          <label class="wide">Stream key<input type="password" id="sStKey" class="mono" spellcheck="false" autocomplete="off" placeholder="Kept on this computer only"></label>
+          <label>Quality<select id="sStQ"><option value="720">720p (2.5 Mbps upload)</option><option value="480">480p (1.2 Mbps upload, slower internet)</option></select></label>
+          <label>Title card text<input type="text" id="sStTitle" placeholder="Show name (default)"></label>
+        </div>
+        <div class="inline"><button class="btn small primary" type="button" id="sStGo">Start streaming</button><span class="muted" id="sStMsg"></span></div>
+        <p class="muted">Streaming uses some of the computer's power, at low priority so the show always comes first. Start it a few minutes early and check it on a phone. If the internet drops, it reconnects by itself.</p>
+      </fieldset>
+      <fieldset class="span2"><legend>Reliability</legend>
+        <div class="inline"><button class="btn small" type="button" id="sCollect" title="Copies every song, video and sound into a folder next to the show file">Copy all files into the show folder</button><span class="muted" id="sCollectMsg">Do this before the show if the music is on a USB stick, a network drive or in Downloads, so a file can't go missing mid-show.</span></div>
+        <label class="chk"><input type="checkbox" id="sSoftDraw"> Software drawing: use if the screen flickers, goes black or freezes (takes effect next time the app starts)</label>
       </fieldset>
     </div>
   </form>
@@ -327,6 +347,7 @@
       <tr><td><kbd>P</kbd></td><td>Pause or resume</td></tr>
       <tr><td><kbd>R</kbd></td><td>Restart the song from the top (after it ends: stand it by to play again)</td></tr>
       <tr><td><kbd>C</kbd></td><td>Add a cue at the playhead</td></tr>
+      <tr><td>Drag the waveform</td><td>When nothing is playing: choose where GO starts the song</td></tr>
       <tr><td><kbd>1</kbd>–<kbd>8</kbd></td><td>Hot sounds (press again to stop)</td></tr>
       <tr><td><kbd>B</kbd></td><td>Pre-show music: play or fade out</td></tr>
       <tr><td><kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd></td><td>Move the selected song up or down</td></tr>
