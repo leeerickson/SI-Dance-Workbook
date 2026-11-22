@@ -200,6 +200,12 @@
         <label class="chk"><input type="checkbox" id="sMb"> On (evens out bass, middle and treble separately)</label>
         <label>Amount <span class="mono" id="sMbTxt"></span><input type="range" id="sMbAmt" min="0" max="3" step="0.5"></label>
       </fieldset>
+      <fieldset><legend>Spatial enhancer</legend>
+        <label class="chk"><input type="checkbox" id="sSpatial"> On (widens the stereo picture)</label>
+        <label>Width <span class="mono" id="sWidthTxt"></span><input type="range" id="sWidth" min="0" max="2" step="0.05"></label>
+        <label class="chk"><input type="checkbox" id="sBassC"> Keep bass centred</label>
+        <p class="muted">100% leaves the sound as it is. Above 100% sounds wider; 130–160% suits most rooms. 0% is mono, for a PA with one speaker or speakers far apart.</p>
+      </fieldset>
       <fieldset><legend>Playback</legend>
         <label>New songs: after the song<select id="sDefTrans"><option value="stop">Wait for GO</option><option value="straight">Straight on</option><option value="crossfade">Crossfade</option></select></label>
         <label>Default crossfade (s)<input type="number" id="sXfade" min="0.5" max="30" step="0.5"></label>
@@ -262,6 +268,16 @@
         </div>
       </fieldset>
     </div>
+  </form>
+</dialog>
+
+<!-- Video output screen -->
+<dialog id="dlgVideo" class="dlg small">
+  <form method="dialog" class="dlg-in">
+    <div class="dlg-head"><h2>Video output</h2><button class="btn small" value="close">Done</button></div>
+    <p class="muted" id="vMsg">Choose the screen or projector the video plays on.</p>
+    <ul class="screens" id="vScreens"></ul>
+    <div class="dlg-foot"><button type="button" class="btn small" id="vIdentify" title="Shows a big number on every screen for a few seconds">Identify screens</button><span class="spacer"></span><button type="button" class="btn small danger" id="vClose">Close video output</button><button type="button" class="btn small primary" id="vOpen">Open on this screen</button></div>
   </form>
 </dialog>
 

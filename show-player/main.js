@@ -35,6 +35,7 @@ let crashedAt = 0;
 let isPlaying = false;
 let blockerId = null;
 let outputDisplayId = null;
+let videoWin = null;      // the video output window, while it's open
 
 /* ---------- logging ---------- */
 let logStream = null;
@@ -84,6 +85,10 @@ function start() {
   protocol.handle('show', handleShowProtocol);
   createWindow();
   startStats();
+  // Tell the page when a projector or screen is plugged in or out.
+  const changed = () => { if (win && !win.isDestroyed()) win.webContents.send('displays:changed'); };
+  screen.on('display-added', (_e, d) => { log('screen connected', d.label || d.id); changed(); });
+  screen.on('display-removed', (_e, d) => { log('screen disconnected', d.label || d.id); changed(); });
 }
 
 /* ---------- show:// protocol ----------
@@ -157,19 +162,16 @@ function createWindow() {
   // The video output window is opened by the page (so it can share the video picture directly).
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('show://app/output.html')) {
-      const d = screen.getAllDisplays().find(x => x.id === outputDisplayId) || screen.getAllDisplays().find(x => x.id !== screen.getPrimaryDisplay().id) || screen.getPrimaryDisplay();
-      const separate = d.id !== screen.getPrimaryDisplay().id;
-      return { action: 'allow', overrideBrowserWindowOptions: {
-        x: d.bounds.x + (separate ? 0 : 60), y: d.bounds.y + (separate ? 0 : 60),
-        width: separate ? d.bounds.width : 960, height: separate ? d.bounds.height : 540,
-        fullscreen: separate, frame: !separate, autoHideMenuBar: true, backgroundColor: '#000000', title: 'Video output',
-        webPreferences: { backgroundThrottling: false }
-      } };
+      return { action: 'allow', overrideBrowserWindowOptions: { ...outputPlacement(outputDisplayId), autoHideMenuBar: true, backgroundColor: '#000000', title: 'Video output',
+        webPreferences: { backgroundThrottling: false } } };
     }
     if (/^https?:/.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
-  win.webContents.on('did-create-window', child => { child.setMenu(null); });
+  win.webContents.on('did-create-window', (child, details) => {
+    child.setMenu(null);
+    if (String(details.url).startsWith('show://app/output.html')) { videoWin = child; child.on('closed', () => { if (videoWin === child) videoWin = null; }); }
+  });
   win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('show://')) { e.preventDefault(); if (/^https?:/.test(url)) shell.openExternal(url); } });
 
   // A crashed page is reloaded straight away; the page asks for the snapshot and resumes.
@@ -349,6 +351,45 @@ ipcMain.handle('displays:list', () => {
   return screen.getAllDisplays().map((d, i) => ({ id: d.id, label: d.label || `Display ${i + 1}`, width: d.size.width, height: d.size.height, primary: d.id === primary }));
 });
 ipcMain.handle('displays:choose', (_e, id) => { outputDisplayId = id; return true; });
+
+/* ---------- video output screen ----------
+   On a separate screen the video fills it (full screen, no frame). On the main screen it opens
+   as a normal window so it doesn't cover the controls. */
+function outputDisplay(id) {
+  const all = screen.getAllDisplays(), primary = screen.getPrimaryDisplay();
+  return all.find(x => x.id === id) || all.find(x => x.id !== primary.id) || primary;
+}
+function outputPlacement(id) {
+  const d = outputDisplay(id), separate = d.id !== screen.getPrimaryDisplay().id;
+  return { x: d.bounds.x + (separate ? 0 : 60), y: d.bounds.y + (separate ? 0 : 60), width: separate ? d.bounds.width : 960, height: separate ? d.bounds.height : 540,
+    fullscreen: separate, frame: !separate, displayId: d.id };
+}
+const outputWindow = () => (videoWin && !videoWin.isDestroyed() ? videoWin : null);
+// Moves the open video window to another screen without closing it, so the picture keeps going.
+ipcMain.handle('video:move', async (_e, id) => {
+  outputDisplayId = id;
+  const w = outputWindow(); if (!w) return false;
+  const p = outputPlacement(id);
+  if (w.isFullScreen()) { w.setFullScreen(false); await new Promise(r => setTimeout(r, 400)); }
+  w.setBounds({ x: p.x, y: p.y, width: p.width, height: p.height });
+  if (p.fullscreen) { await new Promise(r => setTimeout(r, 150)); w.setFullScreen(true); }
+  log('video output moved', screen.getAllDisplays().find(d => d.id === p.displayId)?.label || p.displayId);
+  return true;
+});
+ipcMain.handle('video:screen', () => { const w = outputWindow(); return w ? screen.getDisplayMatching(w.getBounds()).id : null; });
+// Shows a big number on every screen for a few seconds so you can tell which is which.
+ipcMain.handle('displays:identify', () => {
+  const primary = screen.getPrimaryDisplay().id;
+  screen.getAllDisplays().forEach((d, i) => {
+    const w = new BrowserWindow({ x: d.bounds.x + Math.round(d.bounds.width / 2 - 260), y: d.bounds.y + Math.round(d.bounds.height / 2 - 170), width: 520, height: 340,
+      frame: false, transparent: false, alwaysOnTop: true, focusable: false, skipTaskbar: true, resizable: false, backgroundColor: '#161A25', show: false });
+    const q = new URLSearchParams({ n: String(i + 1), label: d.label || `Display ${i + 1}`, size: `${d.size.width}×${d.size.height}`, main: d.id === primary ? '1' : '' });
+    w.loadURL(`show://app/identify.html?${q}`);
+    w.once('ready-to-show', () => w.showInactive());
+    setTimeout(() => { if (!w.isDestroyed()) w.close(); }, 3500);
+  });
+  return true;
+});
 ipcMain.handle('system:info', async () => {
   let disk = null;
   try { const s = await fs.promises.statfs(userDir); disk = s.bavail * s.bsize; } catch (_) {}

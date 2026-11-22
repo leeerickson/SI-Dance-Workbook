@@ -177,6 +177,56 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   fs.renameSync(files[2] + '.moved', files[2]);
   await win.keyboard.press('Escape');
 
+  // Spatial enhancer: a left-only 1 kHz tone, measured at the output meters
+  const levels = await sp(async () => {
+    const E = SP.E, ctx = E.ctx, n = ctx.sampleRate * 2;
+    const make = chans => { const b = ctx.createBuffer(chans, n, ctx.sampleRate); const d = b.getChannelData(0); for (let i = 0; i < n; i++) d[i] = 0.2 * Math.sin(2 * Math.PI * 1000 * i / ctx.sampleRate); return b; };
+    const stereoLeft = make(2), mono = make(1);
+    const measure = async (buf, settings) => {
+      Object.assign(SP.S.settings, settings); SP.applySettings();
+      await new Promise(r => setTimeout(r, 250));
+      E.playHot('probe', buf, -6, null, false);
+      await new Promise(r => setTimeout(r, 500));
+      const m = E.meters(); E.stopHot('probe', 0.01);
+      await new Promise(r => setTimeout(r, 150));
+      return { L: m.rmsL, R: m.rmsR };
+    };
+    const out = {
+      off: await measure(stereoLeft, { spatialOn: false }),
+      w100: await measure(stereoLeft, { spatialOn: true, width: 1 }),
+      w200: await measure(stereoLeft, { spatialOn: true, width: 2 }),
+      w0: await measure(stereoLeft, { spatialOn: true, width: 0 }),
+      mono: await measure(mono, { spatialOn: false }),
+      monoWide: await measure(mono, { spatialOn: true, width: 2 })
+    };
+    Object.assign(SP.S.settings, { spatialOn: false, width: 1.4 }); SP.applySettings();
+    return out;
+  });
+  const db = v => v.toFixed(1);
+  console.log('INFO spatial (L/R dBFS): ' + Object.entries(levels).map(([k, v]) => `${k} ${db(v.L)}/${db(v.R)}`).join(' | '));
+  ok(levels.off.R < levels.off.L - 40 && levels.w100.R < levels.w100.L - 40, 'spatial at 100% leaves a left-only sound on the left');
+  ok(Math.abs((levels.w200.L - levels.w200.R) - 9.54) < 1, `spatial at 200% spreads it: right is ${db(levels.w200.L - levels.w200.R)} dB below left (9.5 expected)`);
+  ok(Math.abs(levels.w0.L - levels.w0.R) < 0.5, 'spatial at 0% makes it mono');
+  ok(Math.abs(levels.mono.L - levels.mono.R) < 0.5, 'a mono file plays on both speakers');
+  ok(Math.abs(levels.monoWide.L - levels.monoWide.R) < 0.5, 'widening leaves a mono file centred');
+  await win.click('#bSettings');
+  ok(await win.isVisible('#sSpatial') && (await win.textContent('#sWidthTxt')).includes('140%'), 'Settings has the spatial enhancer (140% to start)');
+  await win.click('#dlgSettings button[value=close]');
+
+  // Video output screen chooser
+  await win.click('#bVideo');
+  await win.waitForSelector('#dlgVideo[open] .screen');
+  ok((await win.$$('#vScreens .screen')).length >= 1, 'Video output lists the screens, numbered');
+  const nWin = app.windows().length;
+  await win.click('#vOpen');
+  await waitFor(() => SP.S.settings.videoDisplay && document.getElementById('vOpen').disabled, null, 5000);
+  ok(app.windows().length === nWin + 1, 'Open on this screen opens the video window');
+  ok((await win.textContent('#vScreens')).includes('Video is here'), 'the chooser shows which screen the video is on');
+  ok((await win.textContent('#bVideo')).startsWith('Video: screen'), 'the top bar says which screen has the video');
+  await win.click('#vClose'); await sleep(1200);
+  ok(app.windows().length === nWin, 'Close video output closes it');
+  await win.click('#dlgVideo button[value=close]');
+
   // Save and open
   const showFile = path.join(tmp, 'Spring Recital.recital');
   await sp(() => { SP.S.show.name = 'Spring Recital'; });

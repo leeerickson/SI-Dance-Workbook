@@ -53,7 +53,8 @@
   const DEFAULTS = {
     outputId: '', normalize: true, targetLufs: -16, maxBoost: 12, limiterOn: true, ceiling: -1.5, masterDb: 0, balance: 0, trimL: 0, trimR: 0,
     eqOn: true, eq: [0, 0, 0, 0, 0], hpf: false, mbOn: false, mbAmount: 1, defTrans: 'stop', xfade: 5, fadeSec: 3, fadeOutSec: 3, cueWarn: 10,
-    fillerAuto: true, autoResume: true, duckDb: -12, hotDb: 0, wpCode: '', wpOn: false, micOffset: null, calTarget: 85
+    fillerAuto: true, autoResume: true, duckDb: -12, hotDb: 0, wpCode: '', wpOn: false, micOffset: null, calTarget: 85,
+    spatialOn: false, width: 1.4, bassCentre: true, videoDisplay: null
   };
   const newShow = () => ({ id: uid(), name: 'Recital', tracks: [], filler: [], fillerOpts: { loop: true, shuffle: false, levelDb: -6 }, hotCues: Array(8).fill(null) });
   const S = {
@@ -977,19 +978,73 @@
       } catch (err) { log('video output error', String(err)); }
     }
   }
-  async function toggleVideo() {
-    if (outWin && !outWin.closed) { outWin.close(); outWin = null; showVideo(); $('bVideo').textContent = 'Video output'; return; }
-    const ds = await desk.displays();
-    const target = ds.find(d => !d.primary) || ds[0];
-    await desk.chooseDisplay(target.id);
-    outWin = window.open('output.html', 'videoout');
-    if (!outWin) { toast("Couldn't open the video window."); return; }
-    outWin.addEventListener('load', safe(() => { showVideo(); }));
-    $('bVideo').textContent = 'Close video output';
-    toast(ds.length > 1 ? `Video output is on ${target.label} (${target.width}×${target.height}).` : 'Only one screen is connected, so the video window opened here. Connect a projector for full screen.', 5000);
-    const watch = setInterval(() => { if (!outWin || outWin.closed) { clearInterval(watch); outWin = null; $('bVideo').textContent = 'Video output'; showVideo(); } }, 1000);
+  // Screens are numbered in the order the computer lists them, the same numbers "Identify screens" shows.
+  const screenName = (d, i) => `${i + 1} · ${d.label}`;
+  function savedScreen(ds) {
+    const v = S.settings.videoDisplay; if (!v) return null;
+    return ds.find(d => d.id === v.id) || ds.find(d => d.label === v.label && d.width === v.width && d.height === v.height) || null;
   }
-  on('bVideo', 'click', toggleVideo);
+  function rememberScreen(d) { S.settings.videoDisplay = { id: d.id, label: d.label, width: d.width, height: d.height }; saveSettings(); }
+  const videoOpen = () => !!(outWin && !outWin.closed);
+  async function openVideoOn(d, ds) {
+    rememberScreen(d);
+    if (videoOpen()) {
+      await desk.moveVideo(d.id);
+      toast(`Video moved to screen ${screenName(d, ds.indexOf(d))}.`);
+    } else {
+      await desk.chooseDisplay(d.id);
+      outWin = window.open('output.html', 'videoout');
+      if (!outWin) { toast("Couldn't open the video window."); return; }
+      outWin.addEventListener('load', safe(() => { showVideo(); }));
+      const watch = setInterval(() => { if (!videoOpen()) { clearInterval(watch); outWin = null; videoButton(); showVideo(); } }, 1000);
+      toast(d.primary ? 'The video opened in a window on the main screen. Choose another screen for full screen.' : `Video output is full screen on ${screenName(d, ds.indexOf(d))} (${d.width}×${d.height}).`, 5000);
+    }
+    videoButton(d, ds);
+    showVideo();
+  }
+  function closeVideo() { if (videoOpen()) outWin.close(); outWin = null; videoButton(); showVideo(); }
+  function videoButton(d, ds) { $('bVideo').textContent = videoOpen() && d ? `Video: screen ${ds.indexOf(d) + 1}` : 'Video output'; }
+  // Ctrl+Shift+O: open straight on the remembered screen, or close it.
+  async function toggleVideo() {
+    if (videoOpen()) return closeVideo();
+    const ds = await desk.displays(), d = savedScreen(ds);
+    if (d) return openVideoOn(d, ds);
+    return openVideoDialog();
+  }
+  let vChoice = null;
+  async function openVideoDialog() {
+    const ds = await desk.displays();
+    const here = videoOpen() ? await desk.videoScreen() : null;
+    const pick = ds.find(d => d.id === vChoice) || ds.find(d => d.id === here) || savedScreen(ds) || ds.find(d => !d.primary) || ds[0];
+    vChoice = pick ? pick.id : null;
+    $('vScreens').replaceChildren(...ds.map((d, i) => h('li', null, h('label', { class: 'screen' },
+      h('input', { type: 'radio', name: 'vscreen', value: d.id, checked: d.id === vChoice, onchange: () => { vChoice = d.id; videoDialogButtons(ds, here); } }),
+      h('span', { class: 'num' }, i + 1),
+      h('span', null, h('span', { class: 'nm' }, d.label, d.id === here ? h('span', { class: 'here' }, 'Video is here') : null),
+        h('div', { class: 'sz' }, `${d.width}×${d.height} · ${d.primary ? 'main screen (the controls): opens as a window' : 'full screen'}`))))));
+    $('vMsg').textContent = ds.length > 1 ? 'Choose the screen or projector the video plays on. Not sure which is which? Click Identify screens.' : 'Only one screen is connected. Connect the projector, and it appears here.';
+    videoDialogButtons(ds, here);
+    if (!$('dlgVideo').open) $('dlgVideo').showModal();
+  }
+  function videoDialogButtons(ds, here) {
+    $('vClose').hidden = !videoOpen();
+    $('vOpen').textContent = videoOpen() ? (vChoice === here ? 'Video is on this screen' : 'Move video here') : 'Open on this screen';
+    $('vOpen').disabled = videoOpen() && vChoice === here;
+  }
+  on('vOpen', 'click', async () => { const ds = await desk.displays(), d = ds.find(x => x.id === vChoice); if (!d) return openVideoDialog(); await openVideoOn(d, ds); await openVideoDialog(); });
+  on('vClose', 'click', async () => { closeVideo(); await openVideoDialog(); });
+  on('vIdentify', 'click', () => desk.identifyDisplays());
+  // A projector unplugged or plugged back in during the show.
+  desk.onDisplaysChanged(safe(async () => {
+    const ds = await desk.displays(), want = savedScreen(ds);
+    if ($('dlgVideo').open) openVideoDialog();
+    if (!videoOpen()) return;
+    const here = await desk.videoScreen();
+    if (!want && S.settings.videoDisplay) banner('screen', `The video screen “${S.settings.videoDisplay.label}” was disconnected. The video window moved to another screen. Reconnect it, or choose another screen.`, 'warn', [{ label: 'Choose screen', fn: openVideoDialog }]);
+    else if (want && here !== want.id) { unbanner('screen'); banner('screen', `Screen “${want.label}” is connected again.`, 'info', [{ label: 'Move video back', fn: async () => { await openVideoOn(want, await desk.displays()); unbanner('screen'); } }]); }
+    else unbanner('screen');
+  }));
+  on('bVideo', 'click', openVideoDialog);
 
   /* ---------- settings dialog ---------- */
   const sl = (id, key, txt, fmtv, apply = true) => {
@@ -1029,6 +1084,8 @@
       inp.oninput = safe(() => { S.settings.eq[i] = +inp.value; val.textContent = `${inp.value > 0 ? '+' : ''}${inp.value} dB`; applySettings(); saveSettings(); });
       return h('label', null, val, inp, b.f >= 1000 ? `${b.f / 1000}k` : `${b.f}`);
     }));
+    ck('sSpatial', 'spatialOn'); ck('sBassC', 'bassCentre');
+    sl('sWidth', 'width', 'sWidthTxt', v => `${Math.round(v * 100)}%${v === 0 ? ' · mono' : v < 1 ? ' · narrower' : v === 1 ? ' · unchanged' : ' · wider'}`);
     ck('sMb', 'mbOn'); sl('sMbAmt', 'mbAmount', 'sMbTxt', v => ['gentle', 'light', 'medium', '', 'firm', '', 'strong'][v * 2] || String(v));
     $('sDefTrans').value = S.settings.defTrans; $('sDefTrans').onchange = safe(() => { S.settings.defTrans = $('sDefTrans').value; saveSettings(); });
     nm('sXfade', 'xfade', 0.5, 30); nm('sFade', 'fadeSec', 0.5, 20); nm('sFadeOut', 'fadeOutSec', 0.5, 20); nm('sCueWarn', 'cueWarn', 0, 60);
@@ -1241,6 +1298,9 @@
       const ds = await desk.displays();
       if (ds.length < 2) add('warn', 'The show has video but only one screen is connected', 'Connect the projector, then open Video output.');
       else add('ok', `${ds.length} screens connected`, ds.map(d => `${d.label} ${d.width}×${d.height}${d.primary ? ' (main)' : ''}`).join(', '));
+      const want = savedScreen(ds);
+      if (S.settings.videoDisplay && !want) add('warn', `The chosen video screen “${S.settings.videoDisplay.label}” isn't connected`, 'Connect it, or choose another screen with Video output.');
+      else if (want) add('ok', `Video goes to screen ${ds.indexOf(want) + 1}: ${want.label}`);
       add(outWin && !outWin.closed ? 'ok' : 'warn', outWin && !outWin.closed ? 'Video output window is open' : 'Video output window is closed', outWin && !outWin.closed ? '' : 'Click “Video output” in the top bar.');
     }
     // Computer
@@ -1385,7 +1445,7 @@
   window.addEventListener('beforeunload', () => { snapshot(); autosave(); });
 
   // for automated tests
-  window.SP = { S, decks, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
+  window.SP = { S, decks, applySettings, openVideoDialog, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
     fillerPlay, fillerFadeOut, fillerState, buildStatus, buildProgram, showRemaining, gainFor, nextAfter, setHotFile, hotBuffers, E, queue: () => queue.length + (analysing ? 1 : 0) };
 
   boot().catch(err => { oops(err); requestAnimationFrame(frame); setInterval(safe(tick), 25); });

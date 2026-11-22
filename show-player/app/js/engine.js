@@ -13,6 +13,9 @@ const Engine = (() => {
   const db2g = db => Math.pow(10, db / 20);
   const g2db = g => g > 0.0000001 ? 20 * Math.log10(g) : -140;
   const gain = (v = 1) => { const g = ctx.createGain(); g.gain.value = v; return g; };
+  // A splitter keeps a mono signal on the left only, so anything split into L/R goes through this first:
+  // fixed at two channels with speaker upmixing, a mono file arrives as the same signal on both sides.
+  const stereo = () => { const g = gain(); g.channelCount = 2; g.channelCountMode = 'explicit'; g.channelInterpretation = 'speakers'; return g; };
   const now = () => ctx.currentTime;
 
   /* ---------- graph ---------- */
@@ -44,13 +47,34 @@ const Engine = (() => {
   const limiter = ctx.createDynamicsCompressor();
   limiter.threshold.value = -1.5; limiter.knee.value = 0; limiter.ratio.value = 20; limiter.attack.value = 0.002; limiter.release.value = 0.15;
   const limiterBypass = gain(0), limiterOn = gain(1);
-  limiterIn.connect(limiter); limiter.connect(limiterOn); limiterIn.connect(limiterBypass);
+  // Spatial enhancer: mid/side widener. Side (the difference between left and right) is turned up to
+  // widen, or down to narrow (0% = mono). Bass in the side signal is never widened, so the low end stays centred.
+  //   mid  = (L + R) / 2      side = (L - R) / 2      L' = mid + side·w      R' = mid - side·w
+  const wideOut = gain(), spDry = gain(1), spWet = gain(0);
+  limiterIn.connect(spDry); spDry.connect(wideOut);
+  {
+    const split = ctx.createChannelSplitter(2), out = ctx.createChannelMerger(2);
+    const mid = gain(), side = gain();
+    const lToMid = gain(0.5), rToMid = gain(0.5), lToSide = gain(0.5), rToSide = gain(-0.5);
+    const toStereo = stereo(); limiterIn.connect(toStereo); toStereo.connect(split);
+    split.connect(lToMid, 0); split.connect(rToMid, 1); split.connect(lToSide, 0); split.connect(rToSide, 1);
+    lToMid.connect(mid); rToMid.connect(mid); lToSide.connect(side); rToSide.connect(side);
+    // side·all + highpass(side)·extra: exactly the side signal at 100%, with only the part above 150 Hz pushed wider beyond that
+    const sideHigh = ctx.createBiquadFilter(); sideHigh.type = 'highpass'; sideHigh.frequency.value = 150; sideHigh.Q.value = Math.SQRT1_2;
+    const allW = gain(1), extraW = gain(0), sideSum = gain(), sideInv = gain(-1);
+    side.connect(allW); side.connect(sideHigh); sideHigh.connect(extraW); allW.connect(sideSum); extraW.connect(sideSum);
+    mid.connect(out, 0, 0); mid.connect(out, 0, 1);
+    sideSum.connect(out, 0, 0); sideSum.connect(sideInv); sideInv.connect(out, 0, 1);
+    out.connect(spWet); spWet.connect(wideOut);
+    var spatial = { allW, extraW };
+  }
+  wideOut.connect(limiter); limiter.connect(limiterOn); wideOut.connect(limiterBypass);
   const master = gain();
   limiterOn.connect(master); limiterBypass.connect(master);
   const testBus = gain(); testBus.connect(master);
   const splitter = ctx.createChannelSplitter(2), merger = ctx.createChannelMerger(2);
   const balL = gain(), balR = gain();
-  master.connect(splitter); splitter.connect(balL, 0); splitter.connect(balR, 1); balL.connect(merger, 0, 0); balR.connect(merger, 0, 1);
+  const masterStereo = stereo(); master.connect(masterStereo); masterStereo.connect(splitter); splitter.connect(balL, 0); splitter.connect(balR, 1); balL.connect(merger, 0, 0); balR.connect(merger, 0, 1);
   merger.connect(ctx.destination);
   const anL = ctx.createAnalyser(), anR = ctx.createAnalyser(); anL.fftSize = anR.fftSize = 2048;
   balL.connect(anL); balR.connect(anR);
@@ -248,6 +272,12 @@ const Engine = (() => {
       c.threshold.value = -12 - 6 * amt - (k === 'mid' ? 0 : 2); c.ratio.value = 1.5 + amt; c.attack.value = k === 'low' ? 0.03 : k === 'mid' ? 0.012 : 0.004; c.release.value = k === 'low' ? 0.35 : 0.2;
       mbMake[k].gain.value = db2g(1.5 * amt);
     }
+    // spatial enhancer
+    const spOn = !!s.spatialOn, w = Math.max(0, Math.min(2, s.width == null ? 1.4 : +s.width)), bassC = s.bassCentre !== false;
+    ramp(spDry.gain, spOn ? 0 : 1, 0.08); ramp(spWet.gain, spOn ? 1 : 0, 0.08);
+    // With "keep bass centred", side bass is never widened past 100% (it can still be narrowed). Without it, all of the side signal follows the width.
+    ramp(spatial.allW.gain, bassC ? Math.min(1, w) : w, 0.1);
+    ramp(spatial.extraW.gain, bassC ? Math.max(0, w - 1) : 0, 0.1);
     const limOn = s.limiterOn !== false;
     limiter.threshold.value = Math.max(-12, Math.min(0, s.ceiling == null ? -1.5 : +s.ceiling));
     ramp(limiterOn.gain, limOn ? 1 : 0, 0.05); ramp(limiterBypass.gain, limOn ? 0 : 1, 0.05);
