@@ -1105,7 +1105,22 @@
 
   /* ---------- video output ---------- */
   let outWin = null;
-  function showVideo() {
+  // The video window shows the playing deck's picture through a capture stream. Each deck keeps ONE capture
+  // stream for good (held here, so it can't be garbage-collected, which used to make the projector go black
+  // after a while), and a watchdog counts the frames the video window actually shows and reconnects if they stop.
+  const outFeed = { cap: null, frames: 0, lastFrames: -1, still: 0, reconnects: [], counting: null };
+  function captureOf(deck, fresh) {
+    const ended = deck.capture && !deck.capture.getVideoTracks().some(t => t.readyState === 'live') && deck.el.videoWidth > 0;
+    if (fresh || !deck.capture || ended) deck.capture = deck.el.captureStream();
+    return deck.capture;
+  }
+  function countFrames(v) {
+    if ((outFeed.counting && outFeed.counting.v === v) || !v.requestVideoFrameCallback) return;
+    const token = outFeed.counting = { v }; // one counter at a time: an older one stops at its next frame
+    const tick = () => { if (outFeed.counting !== token) return; outFeed.frames++; v.requestVideoFrameCallback(tick); };
+    v.requestVideoFrameCallback(tick);
+  }
+  function showVideo(fresh) {
     const t = active && active.track;
     const isVid = !!(t && t.type === 'video');
     decks.forEach(d => d.el.classList.toggle('show', d === active && isVid));
@@ -1113,15 +1128,38 @@
     if (outWin && !outWin.closed) {
       try {
         const v = outWin.document.getElementById('v'), slate = outWin.document.getElementById('slate');
+        if (!v) return; // still loading; showVideo runs again when it has
         if (isVid) {
-          const stream = active.el.captureStream();
-          const setTracks = () => { const vt = stream.getVideoTracks(); v.srcObject = vt.length ? new MediaStream(vt) : null; v.play().catch(() => {}); };
-          setTracks(); stream.onaddtrack = setTracks;
+          const cap = captureOf(active, fresh);
+          if (v.srcObject !== cap) {
+            v.srcObject = cap;
+            cap.onaddtrack = () => { try { if (v.srcObject === cap) { v.srcObject = null; v.srcObject = cap; v.play().catch(() => {}); } } catch (_) {} };
+          }
+          outFeed.cap = cap;
+          v.play().catch(() => {});
+          countFrames(v);
           slate.hidden = true;
-        } else { v.srcObject = null; slate.hidden = false; slate.textContent = ''; }
+        } else { v.srcObject = null; outFeed.cap = null; slate.hidden = false; slate.textContent = ''; }
       } catch (err) { log('video output error', String(err)); }
     }
   }
+  setInterval(safe(() => {
+    const v = outWin && !outWin.closed ? outWin.document.getElementById('v') : null;
+    const playingVideo = v && active && active.track && active.track.type === 'video' && !active.el.paused && active.el.readyState >= 2 && S.live.state === 'playing';
+    if (!playingVideo) { outFeed.still = 0; outFeed.lastFrames = outFeed.frames; return; }
+    const live = v.srcObject && v.srcObject.getVideoTracks().some(tr => tr.readyState === 'live');
+    if (!live || outFeed.frames === outFeed.lastFrames) outFeed.still++; else outFeed.still = 0;
+    outFeed.lastFrames = outFeed.frames;
+    if (outFeed.still >= 2) {
+      outFeed.still = 0;
+      const now = Date.now();
+      outFeed.reconnects = outFeed.reconnects.filter(x => now - x < 60000).concat(now);
+      log('video output stopped showing frames; reconnecting', { live, tries: outFeed.reconnects.length });
+      outFeed.counting = null;
+      showVideo(true);
+      if (outFeed.reconnects.length >= 4) banner('video', "The video window keeps losing the picture. If it stays black, close and reopen Video output, or turn on Software drawing in Settings → Reliability.", 'warn', [{ label: 'Reopen video output', fn: async () => { closeVideo(); await toggleVideo(); unbanner('video'); } }]);
+    }
+  }), 1500);
   // Screens are numbered in the order the computer lists them, the same numbers "Identify screens" shows.
   const screenName = (d, i) => `${i + 1} · ${d.label}`;
   function savedScreen(ds) {
@@ -1826,7 +1864,7 @@
     if (audioDog.stuck === 8) banner('audio', "The sound card still isn't responding. Check the cable or USB audio box, or restart the app (it picks up the show where it was).", 'warn', [{ label: 'Restart the app', fn: () => { snapshot(); desk.relaunch(); } }]);
   }), 1000);
   let gpuCrashes = 0;
-  desk.onGpuGone(safe(() => { gpuCrashes++; log('graphics process restarted', gpuCrashes); if (gpuCrashes >= 2) banner('gpu', 'The graphics driver has restarted more than once. If the screen flickers or freezes, turn on Software drawing in Settings → Reliability.', 'info', [{ label: 'Open Settings', fn: openSettings }]); }));
+  desk.onGpuGone(safe(() => { gpuCrashes++; outFeed.counting = null; setTimeout(safe(() => showVideo(true)), 1000); log('graphics process restarted', gpuCrashes); if (gpuCrashes >= 2) banner('gpu', 'The graphics driver has restarted more than once. If the screen flickers or freezes, turn on Software drawing in Settings → Reliability.', 'info', [{ label: 'Open Settings', fn: openSettings }]); }));
 
   /* ---------- start up ---------- */
   async function boot() {
@@ -1848,7 +1886,7 @@
   window.addEventListener('beforeunload', () => { snapshot(); autosave(); });
 
   // for automated tests
-  window.SP = { S, decks, streamStart, streamStop, streamer, trimSilence, collectFiles, syncMaster, updateText, closeCuePop, restart, resetShow, applySettings, openVideoDialog, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
+  window.SP = { S, decks, videoOut: () => outWin, outFeed, streamStart, streamStop, streamer, trimSilence, collectFiles, syncMaster, updateText, closeCuePop, restart, resetShow, applySettings, openVideoDialog, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
     fillerPlay, fillerFadeOut, fillerState, buildStatus, buildProgram, showRemaining, gainFor, nextAfter, setHotFile, hotBuffers, E, queue: () => queue.length + (analysing ? 1 : 0) };
 
   boot().catch(err => { oops(err); requestAnimationFrame(frame); setInterval(updateText, 100); setInterval(safe(tick), 25); });

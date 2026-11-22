@@ -30,6 +30,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const quietEnds = ff('Quiet Ends.wav', ['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo:d=2', '-f', 'lavfi', '-i', 'sine=frequency=500:duration=4:sample_rate=48000', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo:d=2',
     '-filter_complex', '[1]volume=10dB,aformat=channel_layouts=stereo[t];[0][t][2]concat=n=3:v=0:a=1']);
   const streamOut = path.join(tmp, 'stream-test.flv');
+  const longVideo = ff('Long Video.mp4', ['-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=25:duration=20', '-f', 'lavfi', '-i', 'sine=frequency=700:duration=20', '-shortest', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac']);
 
   // Stand-in WordPress site: records what the desk sends.
   const got = { program: [], status: [], badKey: 0 };
@@ -351,6 +352,26 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(st && st.state === 'playing' && typeof st.position === 'number' && st.track_id, `status is sent while playing (${got.status.length} so far)`);
   ok(got.badKey === 0, 'the desktop key is accepted');
   ok(await shows('#wpText', 'Phones live', true), 'the top bar says Phones live');
+
+  // Video output keeps its picture, and reconnects if the picture feed dies
+  await sp(async p => SP.addFiles(await window.desk.statMedia([p]), 'show'), longVideo);
+  await waitFor(() => SP.queue() === 0 && SP.S.show.tracks.some(t => t.title === 'Long Video' && t.an), null, 20000);
+  await sp(() => { const t = SP.S.show.tracks.find(t => t.title === 'Long Video'); t.startAt = 0; t.endAt = 0; SP.stopNow(false); SP.cueNext(t.id); });
+  await win.click('#bVideo'); await win.waitForSelector('#dlgVideo[open] .screen'); await win.click('#vOpen');
+  await waitFor(() => document.getElementById('vOpen').disabled, null, 5000);
+  await win.click('#dlgVideo button[value=close]');
+  await sleep(400); await sp(() => SP.go());
+  await waitFor(() => SP.S.live.state === 'playing' && SP.active.track.title === 'Long Video');
+  await sleep(1500);
+  const f1 = await sp(() => SP.outFeed.frames); await sleep(1500); const f2 = await sp(() => SP.outFeed.frames);
+  ok(f2 > f1 + 10, `the video window shows the picture (${f2 - f1} frames in 1.5 s)`);
+  await sp(() => SP.videoOut().document.getElementById('v').srcObject.getVideoTracks().forEach(t => t.stop()));
+  await sleep(4500);
+  const f3 = await sp(() => SP.outFeed.frames); await sleep(1500); const f4 = await sp(() => SP.outFeed.frames);
+  ok(f4 > f3 + 10 && f4 - f3 < (f2 - f1) * 1.5, `when the picture feed dies, the watchdog reconnects it (${f4 - f3} frames in 1.5 s after)`);
+  await sp(() => { SP.stopNow(false); });
+  await win.click('#bVideo'); await win.waitForSelector('#dlgVideo[open] .screen'); await win.click('#vClose'); await sleep(800); await win.click('#dlgVideo button[value=close]');
+  await sp(() => { SP.S.show.tracks = SP.S.show.tracks.filter(t => t.title !== 'Long Video'); });
 
   // Skip silence at both ends of a new song
   await sp(async p => SP.addFiles(await window.desk.statMedia([p]), 'show'), quietEnds);
