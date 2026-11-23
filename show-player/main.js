@@ -703,6 +703,49 @@ function closeAudioPipe(a) { if (!a) return; try { a.sock && a.sock.end(); } cat
 function streamReport(extra = {}) {
   if (win && !win.isDestroyed()) win.webContents.send('stream:state', { gen: stream.gen, live: !!stream.proc, startedAt: stream.startedAt, bytes: stream.bytes, stats: stream.lastStats, error: stream.error, queued: stream.queued, ...extra });
 }
+// What kind of video is in a file (h264, hevc, vp9, av1 …), read from the file's header with the bundled ffmpeg.
+function videoCodecOf(file) {
+  return new Promise(resolve => {
+    let err = '';
+    let p;
+    try { p = spawn(ffmpegPath(), ['-hide_banner', '-i', file], { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] }); } catch (_) { return resolve(null); }
+    const timer = setTimeout(() => { try { p.kill('SIGKILL'); } catch (_) {} }, 8000);
+    p.stderr.on('data', d => { if (err.length < 200000) err += d; });
+    p.on('error', () => { clearTimeout(timer); resolve(null); });
+    p.on('close', () => {
+      clearTimeout(timer);
+      const line = err.split('\n').find(l => /Stream #.*Video:/.test(l) && !/attached pic/.test(l)); // cover art isn't video
+      const m = line && /Video:\s*([a-z0-9_]+)/i.exec(line);
+      resolve(m ? m[1].toLowerCase() : (/Stream #/.test(err) ? 'none' : null));
+    });
+  });
+}
+ipcMain.handle('video:codec', async (_e, files) => { const out = {}; for (const f of files || []) out[f] = await videoCodecOf(f); return out; });
+// Makes an H.264 copy of a video this computer can't play, next to the original. Low priority; one at a time.
+let converting = null;
+ipcMain.handle('video:convert', (_e, { src, duration }) => new Promise(resolve => {
+  if (converting) return resolve({ ok: false, error: 'Another video is being converted.' });
+  const dest = path.join(path.dirname(src), path.basename(src, path.extname(src)) + ' (H.264).mp4');
+  const args = ['-hide_banner', '-loglevel', 'error', '-stats', '-y', '-i', src, '-map', '0:v:0', '-map', '0:a:0?', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p',
+    '-c:a', 'aac', '-b:a', '256k', '-movflags', '+faststart', dest];
+  let last = '';
+  try {
+    const p = converting = spawn(ffmpegPath(), args, { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
+    try { os.setPriority(p.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch (_) {}
+    p.stderr.on('data', d => {
+      const txt = d.toString(); const m = /time=(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(txt);
+      if (m && win && !win.isDestroyed()) win.webContents.send('video:convert-progress', { src, done: +m[1] * 3600 + +m[2] * 60 + +m[3], duration });
+      else if (txt.trim() && !m) last = txt.trim().split('\n').pop().slice(0, 200);
+    });
+    p.on('error', err => { converting = null; resolve({ ok: false, error: /ENOENT/.test(String(err)) ? 'ffmpeg, which converting needs, could not be found.' : friendly(err) }); });
+    p.on('close', async code => {
+      converting = null;
+      if (code === 0 && fs.existsSync(dest)) { log('converted to H.264', dest); resolve({ ok: true, info: await mediaInfo(dest) }); }
+      else { fs.promises.unlink(dest).catch(() => {}); log('convert failed', src, last); resolve({ ok: false, error: last || 'The video could not be converted.' }); }
+    });
+  } catch (err) { converting = null; resolve({ ok: false, error: friendly(err) }); }
+}));
+app.on('before-quit', () => { try { if (converting) converting.kill('SIGKILL'); } catch (_) {} });
 ipcMain.handle('stream:check', () => {
   try { const out = execFileSync(ffmpegPath(), ['-hide_banner', '-version'], { timeout: 8000 }).toString(); return { ok: true, version: (out.split('\n')[0] || '').slice(0, 80) }; }
   catch (err) { return { ok: false, error: 'ffmpeg, which streaming needs, could not be found.' }; }

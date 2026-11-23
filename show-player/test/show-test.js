@@ -545,6 +545,38 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(await sp(() => !SP.health.items.some(i => i.id.startsWith('file-'))), 'when the file comes back, the warning clears by itself');
   await sp(() => { document.querySelectorAll('.banner').forEach(b => b.remove()); SP.S.live.failed = null; SP.S.show.tracks[0].endAt = 0; SP.S.live.standbyId = null; SP.S.live.state = 'idle'; SP.S.show.tracks.splice(1, 1); });
 
+  // Video display test: which kinds of video this computer plays, and what preflight does about HEVC
+  await waitFor(() => SP.videoCaps.avc !== null, null, 15000).catch(() => {});
+  const caps = await sp(() => ({ avc: SP.videoCaps.avc, hevc: SP.videoCaps.hevc }));
+  ok(caps.avc === true && typeof caps.hevc === 'boolean', `the video display test runs at start-up (H.264 ${caps.avc ? 'plays' : 'does not play'}, HEVC ${caps.hevc ? 'plays' : 'does not play'} on this machine)`);
+  await sp(() => document.getElementById('bTest').click());
+  await sp(() => document.getElementById('vtRun').click());
+  await waitFor(() => /plays|couldn't/.test(document.getElementById('vtMsg').textContent), null, 15000).catch(() => {});
+  ok(await sp(() => /Plays on this computer/.test(document.getElementById('vtAvcMsg').textContent) && /Plays|Can't play/.test(document.getElementById('vtHevcMsg').textContent)), 'Test & calibrate shows the result for each kind of video');
+  await win.keyboard.press('Escape');
+  const hevcFile = path.join(tmp, 'Phone clip.mp4');
+  fs.copyFileSync(path.join(__dirname, '..', 'app', 'test-media', 'hevc.mp4'), hevcFile);
+  await sp(async p => SP.addFiles(await window.desk.statMedia([p]), 'show'), hevcFile);
+  await waitFor(() => SP.S.show.tracks.some(t => t.vcodec === 'hevc'), null, 15000).catch(() => {});
+  ok(await sp(() => SP.S.show.tracks.some(t => t.vcodec === 'hevc') && SP.S.show.tracks.filter(t => t.vcodec === 'h264').length > 0), 'each video file is checked for the kind of video inside (HEVC and H.264 told apart)');
+  await sp(() => { SP.videoCaps.hevc = true; });
+  pf = await sp(() => SP.runPreflight());
+  ok(!pf.items.some(i => /can't play/.test(i.title || '')) && await sp(() => document.getElementById('pfConvert').hidden), 'when the computer plays HEVC, preflight allows every video');
+  await sp(() => { SP.videoCaps.hevc = false; });
+  pf = await sp(() => SP.runPreflight());
+  ok(pf.bad > 0 && pf.items.some(i => /Phone clip.*HEVC.*can't play/.test(i.title || '')) && pf.items.filter(i => /can't play/.test(i.title || '')).length === 1, 'when it plays H.264 only, preflight marks the HEVC video as unplayable (and only that one)');
+  await sleep(400);
+  ok(await sp(() => [...document.querySelectorAll('.badge')].some(b => b.textContent === "CAN'T PLAY") && !document.getElementById('pfConvert').hidden), 'the playlist row is marked and preflight offers to convert it');
+  await sp(() => document.getElementById('pfConvert').click());
+  await waitFor(() => SP.S.show.tracks.some(t => / \(H\.264\)\.mp4$/.test(t.path) && t.vcodec === 'h264' && t.duration > 0), null, 40000).catch(() => {});
+  const conv = await sp(() => { const t = SP.S.show.tracks.find(t => / \(H\.264\)\.mp4$/.test(t.path)); return t ? { path: t.path, d: t.duration, bad: SP.cantShow(t) } : null; });
+  ok(conv && fs.existsSync(conv.path) && fs.existsSync(hevcFile) && !conv.bad && conv.d > 0.5, 'Convert makes an H.264 copy, keeps the original and points the song at the copy');
+  await sleep(1500);
+  pf = await sp(() => SP.runPreflight());
+  ok(!pf.items.some(i => /can't play/.test(i.title || '')), 'after converting, preflight no longer complains');
+  await win.keyboard.press('Escape');
+  await sp(() => { const i = SP.S.show.tracks.findIndex(t => / \(H\.264\)\.mp4$/.test(t.path)); if (i >= 0) SP.S.show.tracks.splice(i, 1); document.querySelectorAll('.banner').forEach(b => b.remove()); });
+
   // Crash the page during a song: it reloads and carries on
   await sp(() => { const t = SP.S.show.tracks.find(t => t.dance === 'Hip Hop Crew'); t.endAt = 0; SP.S.live.state = 'standby'; SP.stopNow(false); SP.cueNext(t.id); });
   await sleep(300);

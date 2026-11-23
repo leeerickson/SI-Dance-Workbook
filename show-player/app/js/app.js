@@ -220,11 +220,13 @@
           const r = await E.analyze(mediaUrl(t.path), { keep: wantBuf });
           t.an = { lufs: r.lufs, peak: r.peak, peaks: b64FromI8(r.peaks), duration: r.duration };
           t.duration = t.duration || r.duration;
-          t.sig = { size: info.size, mtime: info.mtime }; t.anError = '';
+          t.sig = { size: info.size, mtime: info.mtime }; t.anError = ''; t.vcodec = null;
           if (r.buffer) hotBuffers.set(t.id, r.buffer);
           if (active && active.track === t) E.ramp(active.trim.gain, E.db2g(gainFor(t)), 0.5);
+          if (isVideo(t.name || t.path) && !t.vcodec && S.show.tracks.includes(t)) findCodec([t]);
           if (t._fresh) { delete t._fresh; if (S.settings.trimNew && S.show.tracks.includes(t) && !t.startAt && !t.endAt) trimSilence(t, true); }
         } catch (err) {
+          if (isVideo(t.name || t.path) && !t.vcodec && S.show.tracks.includes(t)) findCodec([t]);
           t.anError = err.message === 'too-large' ? 'Too big to measure; set the volume trim by ear.' : `Couldn't measure: ${err.message}`;
           if (!t.duration) { const p = await probe(t.path).catch(() => null); if (p) { t.duration = p.duration; if (p.video) t.type = 'video'; } }
           log('analysis failed', t.name, err.message);
@@ -517,11 +519,11 @@
       else if (nextT && t.id === nextT.id) cls.push('next');
       else if (L.played.has(t.id)) cls.push('done');
       if (!t.enabled) cls.push('off');
-      if (t.missing || (t.anError && !t.duration)) cls.push('bad');
+      if (t.missing || (t.anError && !t.duration) || cantShow(t)) cls.push('bad');
       const g = t.an ? `${gainFor(t) >= 0 ? '+' : ''}${gainFor(t).toFixed(1)} dB` : t.anError ? '!' : '…';
       return h('li', { class: cls.join(' '), 'data-id': t.id, draggable: 'true', title: t.path },
         h('span', { class: 'n' }, t.enabled ? n : '–'),
-        h('span', { class: 't1' }, label(t), t.type === 'video' ? h('span', { class: 'badge v', style: 'margin-left:6px' }, 'VIDEO') : null, t.missing ? h('span', { class: 'badge', style: 'margin-left:6px;color:var(--warn)' }, 'MISSING') : null),
+        h('span', { class: 't1' }, label(t), t.type === 'video' ? h('span', { class: 'badge v', style: 'margin-left:6px' }, 'VIDEO') : null, cantShow(t) ? h('span', { class: 'badge', style: 'margin-left:6px;color:var(--warn)', title: `This is ${CODEC_NAMES[t.vcodec] || t.vcodec} video, which this computer can't play. Convert it in Preflight.` }, "CAN'T PLAY") : null, t.missing ? h('span', { class: 'badge', style: 'margin-left:6px;color:var(--warn)' }, 'MISSING') : null),
         h('span', { class: 't2' }, t.dance ? t.title : (t.cls || t.name)),
         h('span', { class: 'meta' }, h('span', { class: 'len' }, h('b', { class: 'eta', 'data-eta': t.id, title: 'Estimated clock time this song starts, if the show runs straight through from now' }), fmt(effLen(t))), h('span', { class: 'tr' }, TRS[t.transition] || ''), h('span', { title: 'Volume change to even it out' }, g)));
     });
@@ -963,6 +965,7 @@
     if (checkOutput.lost) add('warn', 'output', 'The chosen sound output is disconnected (using the system default).', 'Reconnect it.');
     if (audioDog.stuck >= 3) add('bad', 'audiodog', 'The sound card stopped responding.', 'Check the cable or USB audio box.');
     // files
+    for (const t of [byId(L.currentId), byId(L.standbyId), byId(L.currentId) ? nextAfter(L.currentId) : null]) if (t && cantShow(t) && !items.some(i => i.id === 'codec-' + t.id)) add('bad', 'codec-' + t.id, `“${label(t)}” is ${CODEC_NAMES[t.vcodec] || t.vcodec} video, which this computer can't play.`, 'Convert it to H.264 in Preflight.');
     for (const t of health.missing.values()) add('bad', 'file-' + t.id, `The file for “${label(t)}” can't be found${t.id === L.currentId ? ' (it is playing from memory and may stop)' : ''}.`, 'Reconnect the drive, or use Preflight → Find missing files.');
     // computer
     health.hot.cpu = s.cpu > 90 ? health.hot.cpu + 1 : 0;
@@ -1810,12 +1813,15 @@
     let probs = 0;
     const en = enabled();
     if (!en.length) add('bad', 'The show playlist is empty');
+    await findCodec(all.filter(t => t.enabled && isVideo(t.name || t.path) && !t.vcodec));
+    if (videoCaps.avc === null) await testVideoCaps();
     const probes = await Promise.all(all.map((t, i) => t.enabled && stats[i].exists ? probe(t.path).then(p => p, e => ({ error: e.message })) : null));
     all.forEach((t, i) => {
       if (!t.enabled) return;
       const name = `#${numberOf(t)} ${label(t)}`;
       const st = stats[i], pr = probes[i];
       if (!st.exists) { probs++; t.missing = true; add('bad', `${name}: file is missing`, `${t.path}. Use “Find missing files…”.`); return; }
+      if (cantShow(t)) { probs++; add('bad', `${name}: ${CODEC_NAMES[t.vcodec] || t.vcodec} video, which this computer can't play`, 'Click “Convert HEVC videos to H.264” above (it makes a copy and keeps the original), or use a computer that plays it.'); return; }
       if (pr && pr.error) { probs++; add('bad', `${name}: won't play (${pr.error})`, t.path); return; }
       if (pr && pr.duration) t.duration = t.duration || pr.duration;
       if (!sigOk(t, st)) { add('warn', `${name}: file changed since it was measured`, 'Measuring it again now.'); t.an = null; queueAnalysis(t); }
@@ -1836,6 +1842,8 @@
     if (noName) add('warn', `${noName} song${noName > 1 ? 's have' : ' has'} no dance name`, 'Phones and the Up next box show the song title instead.');
     const dupes = en.filter((t, i) => en.findIndex(x => x.path === t.path) !== i);
     if (dupes.length) add('warn', `${dupes.length} song${dupes.length > 1 ? 's are' : ' is'} in the show twice`, dupes.map(label).join(', '));
+    if (en.some(t => t.vcodec && t.vcodec !== 'none')) add(videoCaps.avc === false ? 'bad' : 'ok', videoCaps.avc === false ? "This computer couldn't play the H.264 test clip" : `Video this computer can play: H.264${videoCaps.hevc ? ' and HEVC' : ' (not HEVC)'}`, videoCaps.avc === false ? 'Try Software drawing in Settings → Reliability, or update the graphics driver.' : 'From the video display test (Test & calibrate).');
+    $('pfConvert').hidden = !all.some(t => t.enabled && cantShow(t));
     // Filler + hot
     group('Pre-show music and hot sounds');
     const fst = await desk.statMedia(S.show.filler.map(t => t.path));
@@ -1898,6 +1906,7 @@
   /* ---------- test & calibrate ---------- */
   let calTimer = 0, autoLevel = null;
   function openTest() {
+    renderVideoCaps();
     fillOutputs('tOut');
     $('tOut').onchange = safe(async () => { await chooseOutput($('tOut').value); });
     $('tLevelTxt').textContent = `${$('tLevel').value} dBFS`;
@@ -1992,6 +2001,82 @@
     $('sLcars').textContent = S.settings.lcars ? 'LCARS mode: on' : 'LCARS mode';
   }
   on('sLcars', 'click', () => { S.settings.lcars = !S.settings.lcars; saveSettings(); applyTheme(); toast(S.settings.lcars ? 'LCARS mode engaged.' : 'Back to the standard look.'); });
+
+  /* ---------- video display test: which kinds of video can this computer show? ----------
+     Really plays two tiny built-in clips (H.264 and HEVC) and counts decoded frames. Run at start-up and from
+     Test & calibrate. Preflight uses the result: a video the computer can't decode is marked unplayable. */
+  const videoCaps = { avc: null, hevc: null, at: 0 };
+  const CODEC_NAMES = { h264: 'H.264', hevc: 'HEVC (H.265)', vp9: 'VP9', vp8: 'VP8', av1: 'AV1', mpeg4: 'MPEG-4', prores: 'ProRes', mpeg2video: 'MPEG-2' };
+  // A video whose picture this computer can't show. Only when the test has actually said so.
+  function cantShow(t) { return !!t && ((t.vcodec === 'hevc' && videoCaps.hevc === false) || (t.vcodec === 'h264' && videoCaps.avc === false)); }
+  function testClip(url, el) {
+    return new Promise(resolve => {
+      const v = el || document.createElement('video');
+      v.muted = true; v.playsInline = true; v.loop = !!el;
+      let frames = 0, done = false;
+      const fin = (ok, why) => { if (done) return; done = true; clearTimeout(timer); v.onerror = null; if (!el) { v.removeAttribute('src'); v.load(); } resolve({ ok, why }); };
+      const timer = setTimeout(() => fin(false, v.videoWidth ? 'opened, but no picture came out' : 'could not be opened'), 5000);
+      v.onerror = () => fin(false, 'not supported by this computer');
+      const cb = () => { frames++; if (frames >= 3) fin(true); else if (!done) v.requestVideoFrameCallback(cb); };
+      v.requestVideoFrameCallback(cb);
+      v.src = `${url}?t=${Date.now()}`;
+      v.play().catch(() => {});
+    });
+  }
+  let capsRunning = null;
+  function testVideoCaps(show) {
+    if (capsRunning) return capsRunning;
+    return (capsRunning = (async () => {
+      try {
+        const a = await testClip('test-media/avc.mp4', show ? $('vtAvc') : null);
+        const hv = await testClip('test-media/hevc.mp4', show ? $('vtHevc') : null);
+        const changed = videoCaps.hevc !== hv.ok || videoCaps.avc !== a.ok;
+        Object.assign(videoCaps, { avc: a.ok, hevc: hv.ok, at: Date.now(), avcWhy: a.why, hevcWhy: hv.why });
+        if (changed) { log('video display test', { h264: a.ok, hevc: hv.ok }); renderListsSoon(); }
+        renderVideoCaps();
+        return videoCaps;
+      } finally { capsRunning = null; }
+    })());
+  }
+  function renderVideoCaps() {
+    const line = (id, vid, ok, why, name) => {
+      const el = $(id); el.className = ok ? 'yes' : ok === false ? 'no' : 'muted';
+      el.textContent = ok ? '✓ Plays on this computer' : ok === false ? `✕ Can't play here (${why || 'no picture'})` : 'Not tested yet';
+      $(vid).className = ok ? 'yes' : ok === false ? 'no' : '';
+    };
+    line('vtAvcMsg', 'vtAvc', videoCaps.avc, videoCaps.avcWhy); line('vtHevcMsg', 'vtHevc', videoCaps.hevc, videoCaps.hevcWhy);
+    $('vtMsg').textContent = videoCaps.avc === null ? '' : videoCaps.avc && videoCaps.hevc ? 'This computer plays both. All video files are allowed.'
+      : videoCaps.avc ? 'This computer plays H.264 only. Preflight will mark HEVC videos as unplayable and offer to convert them.'
+      : "This computer couldn't play the H.264 clip. Try Software drawing in Settings → Reliability, or update the graphics driver.";
+  }
+  on('vtRun', 'click', async () => { $('vtMsg').textContent = 'Testing…'; await testVideoCaps(true); });
+  async function findCodec(list) {
+    const need = list.filter(t => t.path && !t.vcodec); if (!need.length) return;
+    const r = await desk.videoCodec(need.map(t => t.path)).catch(() => ({}));
+    let any = false;
+    for (const t of need) { const c = r[t.path]; if (c) { t.vcodec = c; any = true; if (c !== 'none' && t.type !== 'video') t.type = 'video'; } }
+    if (any) { changed({ quiet: true }); renderListsSoon(); if (need.some(cantShow)) toast("One of those videos is HEVC, which this computer can't play. Run Preflight to convert it.", 7000); }
+  }
+  // Convert every HEVC video the computer can't play to H.264 (a copy next to the original), one at a time.
+  desk.onConvertProgress(safe(p => { $('pfSummary').textContent = `Converting “${p.src.split(/[\\/]/).pop()}”… ${p.duration ? Math.min(99, Math.round(p.done / p.duration * 100)) + '%' : fmt(p.done)}`; }));
+  on('pfConvert', 'click', async () => {
+    if (S.live.state === 'playing' || S.live.state === 'paused') { toast('Stop the music first. Converting uses a lot of the computer.'); return; }
+    const list = S.show.tracks.filter(t => t.enabled && cantShow(t)); if (!list.length) return;
+    $('pfConvert').disabled = true;
+    let done = 0;
+    for (const t of list) {
+      $('pfSummary').textContent = `Converting “${label(t)}”…`;
+      const r = await desk.convertVideo(t.path, t.duration || 0);
+      if (!r.ok) { banner('convert', `Couldn't convert “${label(t)}”: ${r.error}`); continue; }
+      t.path = r.info.path; t.name = r.info.name; t.sig = { size: r.info.size, mtime: r.info.mtime }; t.vcodec = 'h264'; t.an = null; t.anError = ''; t.duration = 0; t.missing = false;
+      queueAnalysis(t); done++;
+    }
+    $('pfConvert').disabled = false;
+    changed(); renderLists(); renderInspector();
+    toast(done ? `Converted ${done} video${done > 1 ? 's' : ''} to H.264. The originals are kept.` : 'Nothing was converted.', 6000);
+    await new Promise(r => setTimeout(r, 600));
+    runPreflight();
+  });
 
   /* ---------- master volume on the main page ---------- */
   const dbTxt = v => `${v > 0 ? '+' : ''}${v} dB`;
@@ -2367,12 +2452,13 @@
     requestAnimationFrame(frame);
     setInterval(updateText, 100);
     setInterval(safe(tick), 25);
+    setTimeout(safe(() => testVideoCaps(false)), 1500); // which kinds of video can this computer show?
     log('ready', S.show.name, S.show.tracks.length + ' songs');
   }
   window.addEventListener('beforeunload', () => { snapshot(); autosave(); });
 
   // for automated tests
-  window.SP = { S, decks, gfx, chat, etaTimes, health, sys, runHealth, sysLag: () => sys.lag, applyTheme, streamTarget, openSettings, drawCard, videoOut: () => outWin, outFeed, streamStart, streamStop, streamer, trimSilence, collectFiles, syncMaster, updateText, closeCuePop, restart, resetShow, applySettings, openVideoDialog, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
+  window.SP = { S, decks, videoCaps, testVideoCaps, cantShow, findCodec, gfx, chat, etaTimes, health, sys, runHealth, sysLag: () => sys.lag, applyTheme, streamTarget, openSettings, drawCard, videoOut: () => outWin, outFeed, streamStart, streamStop, streamer, trimSilence, collectFiles, syncMaster, updateText, closeCuePop, restart, resetShow, applySettings, openVideoDialog, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
     fillerPlay, fillerFadeOut, fillerState, buildStatus, buildProgram, showRemaining, gainFor, nextAfter, setHotFile, hotBuffers, E, queue: () => queue.length + (analysing ? 1 : 0) };
 
   boot().catch(err => { oops(err); requestAnimationFrame(frame); setInterval(updateText, 100); setInterval(safe(tick), 25); });

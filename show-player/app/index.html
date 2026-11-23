@@ -348,6 +348,14 @@
         </div>
         <p class="muted" id="tMsg">Walk the room: Left should come only from the left speakers, Right only from the right. "Polarity check" should sound thinner and more spread than "Both".</p>
       </fieldset>
+      <fieldset><legend>Video display test</legend>
+        <p class="muted">Plays two short clips to see which kinds of video this computer can show. Most videos are H.264 (AVC). Newer phones and cameras often record HEVC (H.265), which some computers can't play.</p>
+        <div class="vtest">
+          <div><video id="vtAvc" muted playsinline></video><b>H.264 (AVC)</b><span id="vtAvcMsg" class="muted">Not tested yet</span></div>
+          <div><video id="vtHevc" muted playsinline></video><b>HEVC (H.265)</b><span id="vtHevcMsg" class="muted">Not tested yet</span></div>
+        </div>
+        <div class="inline"><button class="btn" type="button" id="vtRun">Run video test</button><span class="muted" id="vtMsg"></span></div>
+      </fieldset>
       <fieldset><legend>Song loudness check</legend>
         <p class="muted">Plays 20 seconds from the loudest part of the selected song at show level, through the limiter.</p>
         <div class="inline"><button class="btn" type="button" id="tSong">Play selected song</button><span class="muted" id="tSongMsg"></span></div>
@@ -401,7 +409,7 @@
 <!-- Preflight -->
 <dialog id="dlgPreflight" class="dlg">
   <form method="dialog" class="dlg-in">
-    <div class="dlg-head"><h2>Preflight check</h2><div class="inline"><button class="btn small" type="button" id="pfRun">Run again</button><button class="btn small" type="button" id="pfFind">Find missing files…</button><button class="btn small" value="close">Done</button></div></div>
+    <div class="dlg-head"><h2>Preflight check</h2><div class="inline"><button class="btn small" type="button" id="pfRun">Run again</button><button class="btn small primary" type="button" id="pfConvert" hidden>Convert HEVC videos to H.264</button><button class="btn small" type="button" id="pfFind">Find missing files…</button><button class="btn small" value="close">Done</button></div></div>
     <p class="muted" id="pfSummary"></p>
     <ul class="pflist" id="pfList"></ul>
   </form>
