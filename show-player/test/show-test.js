@@ -410,6 +410,24 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const f3 = await sp(() => SP.outFeed.frames); await sleep(1500); const f4 = await sp(() => SP.outFeed.frames);
   ok(f4 > f3 + 10 && f4 - f3 < (f2 - f1) * 1.5, `when the picture feed dies, the watchdog reconnects it (${f4 - f3} frames in 1.5 s after)`);
   await sp(() => { SP.stopNow(false); });
+  // Take graphics live: with no video playing, the video window shows the title graphics instead of black
+  const outV = () => sp(() => { const v = SP.videoOut().document.getElementById('v'); return { has: !!v.srcObject, w: v.videoWidth, paused: v.paused, t: v.currentTime }; });
+  await sleep(400);
+  ok(!(await outV()).has, 'with graphics off, the video window is black when no video is playing');
+  await win.click('#bGfx');
+  await waitFor(() => SP.videoOut().document.getElementById('v').videoWidth === 1280, null, 6000).catch(() => {});
+  const g1 = await outV(); await sleep(1000); const g2 = await outV();
+  ok(g1.w === 1280 && g2.t > g1.t && (await win.textContent('#bGfx')) === 'Graphics are live', `"Take graphics live" puts the title graphics on the video window (${g1.w} px wide, moving)`);
+  ok(await win.isVisible('#gfxPrev'), 'the preview box shows the graphics that are going out');
+  await sp(() => { const t = SP.S.show.tracks.find(t => t.title === 'Long Video'); SP.cueNext(t.id); });
+  await sleep(400); await sp(() => SP.go());
+  await waitFor(() => SP.S.live.state === 'playing' && SP.videoOut().document.getElementById('v').videoWidth === 320, null, 8000).catch(() => {});
+  ok((await outV()).w === 320, 'when a video number starts, the video window switches to the video');
+  await sp(() => SP.stopNow(false));
+  await waitFor(() => SP.videoOut().document.getElementById('v').videoWidth === 1280, null, 6000).catch(() => {});
+  ok((await outV()).w === 1280, 'when it stops, the graphics come back');
+  await win.click('#bGfx'); await sleep(400);
+  ok(!(await outV()).has && await sp(() => !SP.gfx.timer), 'turning graphics off goes back to black and stops drawing them');
   await win.click('#bVideo'); await win.waitForSelector('#dlgVideo[open] .screen'); await win.click('#vClose'); await sleep(800); await win.click('#dlgVideo button[value=close]');
   await sp(() => { SP.S.show.tracks = SP.S.show.tracks.filter(t => t.title !== 'Long Video'); });
 
@@ -440,6 +458,25 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(await sp(() => SP.S.show.tracks.length >= 6) && !(await win.isVisible('#dlgAsk')), 'Cancel leaves the playlist as it was');
   await win.evaluate(() => { window.confirm = () => true; });
   await sp(() => { SP.stopNow(false); SP.S.show.tracks = SP.S.show.tracks.filter(t => t.dance !== 'Spotlight'); });
+
+  // Drag a cue on the waveform while paused
+  await sp(() => { const t = SP.S.show.tracks[0]; t.startAt = 0; t.endAt = 0; t.cues = [{ id: 'dq', t: 2, type: 'light', text: 'LX 9' }]; SP.S.live.played = new Set(); SP.cueNext(t.id); });
+  await sleep(400); await sp(() => SP.go());
+  await waitFor(() => SP.S.live.state === 'playing' && SP.active.time > 0.6);
+  const wb = await win.$eval('#wave', el => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; });
+  const dur0 = await sp(() => SP.S.show.tracks[0].duration);
+  const cueX = t => wb.x + t / dur0 * wb.w;
+  await win.mouse.move(cueX(2), wb.y + wb.h * 0.7); await win.mouse.down(); await win.mouse.move(cueX(5), wb.y + wb.h * 0.7, { steps: 4 }); await win.mouse.up(); await sleep(150);
+  ok(await sp(() => SP.S.show.tracks[0].cues[0].t === 2), 'while the song plays, a cue cannot be dragged');
+  await sp(() => SP.pause()); await sleep(200);
+  const posBefore = await sp(() => SP.active.time);
+  await sp(() => { SP.S.dirty = false; });
+  await win.mouse.move(cueX(2), wb.y + wb.h * 0.7); await win.mouse.down(); await win.mouse.move(cueX(5), wb.y + wb.h * 0.7, { steps: 6 }); await win.mouse.up(); await sleep(200);
+  const moved = await sp(() => ({ t: SP.S.show.tracks[0].cues[0].t, dirty: SP.S.dirty, pos: SP.active.time, row: (document.querySelector('#iCues .cue input') || {}).value }));
+  ok(Math.abs(moved.t - 5) < 0.3 && moved.dirty, `paused: dragging a cue on the waveform moves it and saves it (2.0 s → ${moved.t} s)`);
+  ok(Math.abs(moved.pos - posBefore) < 0.05, 'dragging a cue does not move the playhead');
+  ok(/Cue “LX 9” moved/.test(await win.textContent('#toast')), 'a note says where the cue moved to');
+  await sp(() => { SP.stopNow(false); SP.S.show.tracks[0].cues = SP.S.show.tracks[0].cues.filter(c => c.id !== 'dq'); });
 
   // Skip silence at both ends of a new song
   await sp(async p => SP.addFiles(await window.desk.statMedia([p]), 'show'), quietEnds);

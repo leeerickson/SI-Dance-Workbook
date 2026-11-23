@@ -79,7 +79,7 @@
     fillerAuto: true, autoResume: true, duckDb: -12, hotDb: 0, wpCode: '', wpOn: false, micOffset: null, calTarget: 85,
     spatialOn: false, width: 1.4, bassCentre: true, videoDisplay: null, trimNew: true,
     stUrl: '', stKey: '', stQ: '720', stTitle: '', stLogo: '', stAccent: 'gold', stProgress: true,
-    stService: 'streamingidiot', stYtKey: '', stCredit: true, lcars: false
+    stService: 'streamingidiot', stYtKey: '', stCredit: true, lcars: false, outGraphics: false
   };
   // Recommended values, shown with a ▲ mark in Settings. Master, balance and the trims are marked but
   // "Use recommended" leaves them alone, because they're set for the room.
@@ -843,23 +843,56 @@
     }
     renderTransport();
   }
+  // Which cue is under the pointer: its line (within 5 px) or its label along the top.
+  function cueAt(e) {
+    const wt = waveTrack(); if (!wt) return null;
+    const r = wave.getBoundingClientRect(), dur = wt.t.duration || 0; if (!dur || !r.width) return null;
+    const mx = e.clientX - r.left, my = e.clientY - r.top;
+    wctx.save(); wctx.font = '600 11px Inter';
+    let hit = null;
+    for (const c of wt.t.cues) {
+      const cx = c.t / dur * r.width, lw = Math.min(140, wctx.measureText(c.text || CT[c.type]).width + 8);
+      if (Math.abs(mx - cx) <= 5 || (my <= 16 && mx >= cx && mx <= cx + lw)) hit = { t: wt.t, c, grab: mx - cx };
+    }
+    wctx.restore();
+    return hit;
+  }
+  let cueDrag = null;
+  function cueDragTo(e) {
+    const { t, c, grab } = cueDrag, r = wave.getBoundingClientRect();
+    const at = clamp((e.clientX - r.left - grab) / r.width * (t.duration || 0), effStart(t), Math.max(effStart(t), effEnd(t) - 0.1));
+    const v = Math.round(at * 10) / 10;
+    if (v !== c.t) { c.t = v; cueDrag.moved = true; if (S.selectedId === t.id) renderCues(); }
+  }
   on(wave, 'mousedown', e => {
     if (e.button !== 0) return;
     const wt = waveTrack(); if (!wt) return;
     const L = S.live, isActive = !!(active && active.track === wt.t && (L.state === 'playing' || L.state === 'paused'));
+    // Paused or stopped: a cue can be dragged to a new time. (Not while playing, so a slip can't move one mid-show.)
+    if (L.state !== 'playing') { const hit = cueAt(e); if (hit) { cueDrag = { ...hit, moved: false, from: hit.c.t }; e.preventDefault(); return; } }
     if (isActive && L.state === 'playing' && !e.shiftKey) { toast('While a song plays, hold Shift and click to jump. When it is stopped or paused, just drag.'); return; }
     if (L.busy) return;
     scrub = { t: wt.t, active: isActive };
     scrubTo(e);
   });
-  window.addEventListener('mousemove', safe(e => { if (scrub) scrubTo(e); }));
+  window.addEventListener('mousemove', safe(e => { if (cueDrag) cueDragTo(e); else if (scrub) scrubTo(e); }));
+  on(wave, 'mousemove', e => { if (!cueDrag && !scrub) wave.style.cursor = S.live.state !== 'playing' && cueAt(e) ? 'ew-resize' : ''; });
+  window.addEventListener('mouseup', safe(() => {
+    if (!cueDrag) return;
+    const d = cueDrag; cueDrag = null;
+    if (!d.moved) return;
+    d.t.cues.sort((a, b) => a.t - b.t);
+    changed(); renderInspector(); pushStatus(true);
+    toast(`Cue “${d.c.text || CT[d.c.type]}” moved from ${fmt(d.from, true)} to ${fmt(d.c.t, true)}.`);
+    log('cue moved', label(d.t), d.c.text, d.from, d.c.t);
+  }));
   window.addEventListener('mouseup', safe(() => {
     if (!scrub) return;
     const sc = scrub; scrub = null;
     if (!sc.active && S.live.cueFrom) toast(`GO will start “${label(sc.t)}” at ${fmt(fromOffset(sc.t))}. Press R to go back to the top.`);
     pushStatus(true);
   }));
-  on(wave, 'dblclick', e => { const w = waveTime(e); if (w) addCue(w.t, w.at); });
+  on(wave, 'dblclick', e => { if (cueAt(e)) return; const w = waveTime(e); if (w) addCue(w.t, w.at); });
 
   function drawMeters() {
     const m = E.meters();
@@ -1323,11 +1356,46 @@
     const tick = () => { if (outFeed.counting !== token) return; outFeed.frames++; v.requestVideoFrameCallback(tick); };
     v.requestVideoFrameCallback(tick);
   }
+  // Graphics for the video window. While streaming, it's the stream's own picture, so the two match exactly.
+  // Otherwise the same card is drawn here (without the LIVE badge), only while it's needed.
+  const gfx = { canvas: null, g: null, timer: 0, streams: new WeakMap() };
+  function gfxStream() {
+    let c;
+    if (streamer.want && streamer.canvas) { c = streamer.canvas; clearInterval(gfx.timer); gfx.timer = 0; }
+    else {
+      if (!gfx.canvas) { gfx.canvas = document.createElement('canvas'); gfx.canvas.width = 1280; gfx.canvas.height = 720; gfx.g = gfx.canvas.getContext('2d'); }
+      c = gfx.canvas;
+      if (!gfx.timer) { const draw = () => { try { drawCard(gfx.g, 1280, 720, { live: false }); } catch (err) { if (!gfx.logged) { gfx.logged = true; log('graphics error', String(err)); } } }; draw(); gfx.timer = setInterval(draw, 33); }
+    }
+    let st = gfx.streams.get(c); if (!st) { st = c.captureStream(30); gfx.streams.set(c, st); }
+    gfx.source = c;
+    return st;
+  }
+  function gfxIdle() { clearInterval(gfx.timer); gfx.timer = 0; gfx.source = null; }
+  function renderGfxButton() {
+    const on = !!S.settings.outGraphics, b = $('bGfx');
+    b.setAttribute('aria-pressed', String(on));
+    b.textContent = on ? 'Graphics are live' : 'Take graphics live';
+    b.title = on ? 'The video output shows the title graphics when there is no video. Click to go back to black.' : 'Show the title graphics on the video output instead of black when there is no video';
+  }
+  on('bGfx', 'click', async () => {
+    S.settings.outGraphics = !S.settings.outGraphics; saveSettings(); renderGfxButton();
+    if (S.settings.outGraphics && !videoOpen()) { toast('Graphics will show on the video output. Choose its screen to open it.', 5000); await openVideoDialog(); }
+    showVideo();
+    log('graphics on video output', S.settings.outGraphics);
+  });
+  // small copy of what's going out, in the preview box
+  setInterval(safe(() => {
+    const p = $('gfxPrev'), showing = !!(gfx.source && videoOpen() && S.settings.outGraphics && !(active && active.track && active.track.type === 'video' && (S.live.state === 'playing' || S.live.state === 'paused')));
+    p.hidden = !showing;
+    if (showing) p.getContext('2d').drawImage(gfx.source, 0, 0, p.width, p.height);
+  }), 200);
   function showVideo(fresh) {
     const t = active && active.track;
     const isVid = !!(t && t.type === 'video');
     decks.forEach(d => d.el.classList.toggle('show', d === active && isVid));
     $('vprev').hidden = !(isVid || (outWin && !outWin.closed));
+    if (isVid || !S.settings.outGraphics || !(outWin && !outWin.closed)) gfxIdle();
     if (outWin && !outWin.closed) {
       try {
         const v = outWin.document.getElementById('v'), slate = outWin.document.getElementById('slate');
@@ -1341,6 +1409,12 @@
           outFeed.cap = cap;
           v.play().catch(() => {});
           countFrames(v);
+          slate.hidden = true;
+        } else if (S.settings.outGraphics) {
+          // "Take graphics live": the same title card the stream shows, instead of black.
+          const st = gfxStream();
+          if (v.srcObject !== st) v.srcObject = st;
+          outFeed.cap = null; v.play().catch(() => {});
           slate.hidden = true;
         } else { v.srcObject = null; outFeed.cap = null; slate.hidden = false; slate.textContent = ''; }
       } catch (err) { log('video output error', String(err)); }
@@ -2027,6 +2101,7 @@
     rec.ondataavailable = e => { if (e.data && e.data.size && streamer.rec === rec) e.data.arrayBuffer().then(b => { if (streamer.rec === rec) desk.streamData(b); }).catch(() => {}); };
     rec.onerror = e => { log('stream recorder error', String(e.error || e)); streamReconnect('The recording stopped.'); };
     streamer.rec = rec;
+    showVideo();
     await E.pcmTapStart(buf => { if (streamer.rec === rec) desk.streamPcm(buf); });
     rec.start(250);
     renderStream();
@@ -2053,6 +2128,7 @@
     streamTeardown();
     await desk.streamStop();
     unbanner('stream'); log('streaming off');
+    showVideo();
     renderStream();
   }
   desk.onStreamState(safe(st => {
@@ -2129,7 +2205,8 @@
     return size;
   }
   function roundRect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
-  function drawCard(g, W, H) {
+  function drawCard(g, W, H, opts) {
+    const liveBadge = !(opts && opts.live === false);
     const k = W / 1280, now = performance.now() / 1000, acc = accent(), info = cardInfo();
     g.save();
     // background: deep stage blue, sweeping light beams, drifting sparkles, vignette
@@ -2163,10 +2240,12 @@
       ['#F2C200', '#E8508A', '#19A7BC'].forEach((col, i) => { g.save(); g.translate(60 * k + i * 7 * k, 52 * k + i * 17 * k); g.rotate(-0.1); g.fillStyle = col; g.fillRect(0, 0, 72 * k, 12 * k); g.restore(); });
     }
     g.textBaseline = 'middle';
+    if (liveBadge) {
     roundRect(g, W - 190 * k, 44 * k, 134 * k, 38 * k, 19 * k); g.fillStyle = 'rgba(0,0,0,0.45)'; g.fill();
     g.fillStyle = '#E5484D'; g.beginPath(); g.arc(W - 166 * k, 63 * k, (6 + Math.sin(now * 4) * 1.2) * k, 0, 6.3); g.fill();
     g.fillStyle = '#FFF'; g.font = `800 ${Math.round(17 * k)}px Archivo, Arial, sans-serif`; g.textAlign = 'left'; g.fillText('LIVE', W - 150 * k, 64 * k);
     g.fillStyle = '#AEB6CC'; g.font = `600 ${Math.round(15 * k)}px Inter, Arial, sans-serif`; g.fillText(new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), W - 102 * k, 64 * k);
+    }
     // show title, letter-spaced, with an accent rule under it
     g.textAlign = 'center';
     g.letterSpacing = `${Math.round(6 * k)}px`;
@@ -2208,7 +2287,7 @@
       g.fillStyle = acc; g.fillRect(0, H - 6 * k, W * clamp(info.progress, 0, 1), 6 * k);
     }
     g.textAlign = 'center'; g.fillStyle = '#56607A'; g.font = `600 ${Math.round(14 * k)}px Inter, Arial, sans-serif`; g.letterSpacing = `${Math.round(1 * k)}px`;
-    if (S.settings.stCredit !== false) g.fillText('Streaming by StreamingIdiot', W / 2, H - 28 * k);
+    if (S.settings.stCredit !== false && liveBadge) g.fillText('Streaming by StreamingIdiot', W / 2, H - 28 * k);
     g.restore();
   }
   // "Now performing" over the start of a video number.
@@ -2281,7 +2360,7 @@
     try { const a = await desk.readAutosave(); if (a && a.show) { loadShow(a.show, a.filePath, a.dirty); opened = true; } } catch (err) { log('autosave unreadable', String(err)); }
     if (!opened) loadShow(newShow(), null, false);
     const pending = await desk.pendingShow(); if (pending) await openShow(pending);
-    applySettings(); configureWp(); applyTheme();
+    applySettings(); configureWp(); applyTheme(); renderGfxButton();
     desk.blockSleep(true).catch(() => {});
     await recover();
     renderTransport();
@@ -2293,7 +2372,7 @@
   window.addEventListener('beforeunload', () => { snapshot(); autosave(); });
 
   // for automated tests
-  window.SP = { S, decks, chat, etaTimes, health, sys, runHealth, sysLag: () => sys.lag, applyTheme, streamTarget, openSettings, drawCard, videoOut: () => outWin, outFeed, streamStart, streamStop, streamer, trimSilence, collectFiles, syncMaster, updateText, closeCuePop, restart, resetShow, applySettings, openVideoDialog, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
+  window.SP = { S, decks, gfx, chat, etaTimes, health, sys, runHealth, sysLag: () => sys.lag, applyTheme, streamTarget, openSettings, drawCard, videoOut: () => outWin, outFeed, streamStart, streamStop, streamer, trimSilence, collectFiles, syncMaster, updateText, closeCuePop, restart, resetShow, applySettings, openVideoDialog, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
     fillerPlay, fillerFadeOut, fillerState, buildStatus, buildProgram, showRemaining, gainFor, nextAfter, setHotFile, hotBuffers, E, queue: () => queue.length + (analysing ? 1 : 0) };
 
   boot().catch(err => { oops(err); requestAnimationFrame(frame); setInterval(updateText, 100); setInterval(safe(tick), 25); });

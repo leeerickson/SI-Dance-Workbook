@@ -75,14 +75,14 @@
           <div class="tm"><span class="label">Ends about</span><b class="mono" id="tEnds">–</b></div>
         </div>
       </div>
-      <div class="vprev" id="vprev" hidden><div class="vlabel">Video</div><div id="deckHost"></div></div>
+      <div class="vprev" id="vprev" hidden><div class="vlabel">Video output</div><div id="deckHost"><canvas id="gfxPrev" width="320" height="180" hidden></canvas></div><button class="btn small gfx-btn" id="bGfx" aria-pressed="false">Take graphics live</button></div>
     </div>
     <div class="cuebar">
       <div class="cuebox" id="cueNowBox"><span class="label">Cue now</span><div class="cuetext" id="cueNow">–</div></div>
       <div class="cuebox next" id="cueNextBox"><div class="cuehead"><span class="label">Next cue</span><b class="mono cuein" id="cueNextIn"></b></div><div class="cuetext" id="cueNext">–</div></div>
     </div>
 
-    <canvas class="wave" id="wave" height="120" title="Shift-click to jump. Double-click to add a cue there."></canvas>
+    <canvas class="wave" id="wave" height="120" title="Paused or stopped: drag to choose where to play from, or drag a cue to move it. Playing: Shift-click to jump. Double-click to add a cue."></canvas>
 
     <div class="transport">
       <button class="go" id="bGo" title="GO (Space)"><b>GO</b><span id="goSub">Space</span></button>
