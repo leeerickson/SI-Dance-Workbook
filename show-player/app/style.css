@@ -509,3 +509,13 @@ button.sys:hover{border-color:var(--line)}
 .vtest video{width:100%; aspect-ratio:16/9; background:#000; border-radius:8px; border:2px solid var(--line)}
 .vtest .yes{color:var(--ok); font-weight:650} .vtest .no{color:var(--warn); font-weight:650}
 .vtest video.yes{border-color:var(--ok)} .vtest video.no{border-color:var(--warn)}
+
+/* Stream health line, dress rehearsal test */
+.st-health{margin:4px 0 0; font-size:12.5px; padding:6px 10px; border-radius:8px; background:var(--panel-2, rgba(255,255,255,.04)); border:1px solid var(--line)}
+.st-health.ok{border-color:var(--ok)} .st-health.warn{border-color:var(--warn); color:var(--warn)}
+.rh-progress{display:grid; gap:6px; margin:10px 0}
+.rh-bar{height:10px; border-radius:6px; background:var(--line); overflow:hidden}
+.rh-bar i{display:block; height:100%; width:0; background:var(--accent); transition:width .3s}
+.rh-verdict{font-size:18px; font-weight:700; margin:10px 0 4px; padding:10px 14px; border-radius:10px; border:2px solid var(--line)}
+.rh-verdict.ok{border-color:var(--ok); color:var(--ok)} .rh-verdict.warn{border-color:var(--warn); color:var(--warn)} .rh-verdict.bad{border-color:var(--bad, #e5484d); color:var(--bad, #e5484d)}
+.pflist .pf .act{white-space:nowrap}

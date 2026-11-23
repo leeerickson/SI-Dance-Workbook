@@ -79,7 +79,8 @@
     fillerAuto: true, autoResume: true, duckDb: -12, hotDb: 0, wpCode: '', wpOn: false, micOffset: null, calTarget: 85,
     spatialOn: false, width: 1.4, bassCentre: true, videoDisplay: null, trimNew: true,
     stUrl: '', stKey: '', stQ: '720', stTitle: '', stLogo: '', stAccent: 'gold', stProgress: true,
-    stService: 'streamingidiot', stYtKey: '', stCredit: true, lcars: false, outGraphics: false
+    stService: 'streamingidiot', stYtKey: '', stCredit: true, lcars: false, outGraphics: false,
+    stEnc: 'auto', stAuto: true, outBackup: 'default', speed: null, lastRehearsal: null
   };
   // Recommended values, shown with a ▲ mark in Settings. Master, balance and the trims are marked but
   // "Use recommended" leaves them alone, because they're set for the room.
@@ -930,16 +931,56 @@
     sparkline($('sysGraph'), [{ arr: sys.cpu.slice(-60).concat(), color: col('--muted') }, { arr: sys.app.slice(-60), color: col('--accent') }]);
     setTxt('sysCpu', `CPU ${Math.round(s.cpu)}%${s.gpu != null ? ` · GPU ${Math.round(s.gpu)}%` : ` · app ${Math.round(s.appCpu)}%`}`);
     setTxt('sysMem', `RAM ${Math.round(ramUsedPct(s))}% · app ${mb(s.appMem)}`);
+    if (reh.running) rehSample();
     runHealth();
     if ($('dlgSys').open) renderSys();
   }));
   desk.onPower(safe(p => {
     if (p.what === 'on-battery') banner('power', 'The computer is running on battery. Plug the charger back in.', 'warn');
     if (p.what === 'on-ac') { unbanner('power'); toast('Back on mains power.'); }
-    if (p.what === 'resume') { log('computer woke from sleep'); E.ctx.resume().catch(() => {}); checkOutput(); }
+    if (p.what === 'resume') { glitchQuiet(5000); log('computer woke from sleep'); E.ctx.resume().catch(() => {}); checkOutput(); }
     runHealth();
   }));
   if (navigator.getBattery) navigator.getBattery().then(b => { sys.battery = b; }).catch(() => {});
+
+  /* ---------- audio dropouts ----------
+     Counts the times the sound card ran dry (a click or gap in the room). Chromium reports this directly where it
+     can (playoutStats). Otherwise it is measured: the sound clock and the computer clock move together, and a
+     dropout makes the sound clock fall behind by the length of the gap. Measured four times a second. */
+  const glitch = { count: 0, ms: 0, last: 0, base: null, quietUntil: 0, events: [], src: '', ps: null };
+  function glitchQuiet(ms = 3000) { glitch.quietUntil = performance.now() + ms; glitch.base = null; glitch.ps = null; }
+  function recordGlitch(n, ms) {
+    glitch.count += n; glitch.ms += ms; glitch.last = Date.now();
+    const where = active && active.track && S.live.state === 'playing' ? `during “${label(active.track)}” at ${fmt(active.time)}` : 'between songs';
+    glitch.events.push({ t: Date.now(), ms: Math.round(ms), where }); if (glitch.events.length > 50) glitch.events.shift();
+    log('audio dropout', Math.round(ms) + ' ms', where);
+  }
+  function glitchStep(ctxTime, perfMs, nowMs) { // one measurement; returns ms lost (0 if none). Kept separate so it can be tested.
+    if (!ctxTime || !perfMs) return 0;
+    const off = ctxTime - perfMs / 1000;
+    if (glitch.base == null || nowMs < glitch.quietUntil) { glitch.base = off; return 0; }
+    const lost = glitch.base - off;
+    if (lost > 0.015) { glitch.base = off; return lost * 1000; }
+    glitch.base = off > glitch.base ? off : glitch.base * 0.9 + off * 0.1; // follows the two clocks' slow drift
+    return 0;
+  }
+  setInterval(safe(() => {
+    const ctx = E.ctx; if (ctx.state !== 'running') { glitch.base = null; glitch.ps = null; return; }
+    if (performance.now() < glitch.quietUntil) { glitch.base = null; glitch.ps = null; return; }
+    const ps = ctx.playoutStats;
+    if (ps && typeof ps.fallbackFramesEvents === 'number') {
+      glitch.src = 'reported by the sound system';
+      const ev = ps.fallbackFramesEvents, dur = +ps.fallbackFramesDuration || 0;
+      if (glitch.ps && ev > glitch.ps.ev) recordGlitch(ev - glitch.ps.ev, Math.max(0, dur - glitch.ps.dur));
+      glitch.ps = { ev, dur };
+      return;
+    }
+    if (typeof ctx.getOutputTimestamp !== 'function') return;
+    glitch.src = 'measured from the sound clock';
+    const ts = ctx.getOutputTimestamp();
+    const lost = glitchStep(ts.contextTime, ts.performanceTime, performance.now());
+    if (lost) recordGlitch(1, lost);
+  }), 250);
 
   /* ---------- live health checks ----------
      Every second, from numbers already collected (nothing here does heavy work). A file check for the
@@ -962,12 +1003,16 @@
     if (Date.now() - health.fileAt > 5000) { health.fileAt = Date.now(); checkFiles().catch(err => log('file check failed', String(err))); }
     // sound
     if (E.ctx.state !== 'running') add('bad', 'audio', `The sound engine is ${E.ctx.state}.`, 'It restarts by itself; if not, use Restart the app in the banner.');
-    if (checkOutput.lost) add('warn', 'output', 'The chosen sound output is disconnected (using the system default).', 'Reconnect it.');
+    if (checkOutput.lost) add('warn', 'output', `The main sound output isn't working; playing through the backup (${checkOutput.backup || 'system default'}).`, 'Reconnect the main output.');
     if (audioDog.stuck >= 3) add('bad', 'audiodog', 'The sound card stopped responding.', 'Check the cable or USB audio box.');
     // files
     for (const t of [byId(L.currentId), byId(L.standbyId), byId(L.currentId) ? nextAfter(L.currentId) : null]) if (t && cantShow(t) && !items.some(i => i.id === 'codec-' + t.id)) add('bad', 'codec-' + t.id, `“${label(t)}” is ${CODEC_NAMES[t.vcodec] || t.vcodec} video, which this computer can't play.`, 'Convert it to H.264 in Preflight.');
     for (const t of health.missing.values()) add('bad', 'file-' + t.id, `The file for “${label(t)}” can't be found${t.id === L.currentId ? ' (it is playing from memory and may stop)' : ''}.`, 'Reconnect the drive, or use Preflight → Find missing files.');
     // computer
+    if (glitch.last && Date.now() - glitch.last < 20000) { const e = glitch.events[glitch.events.length - 1]; add('warn', 'dropout', `The sound dropped out for ${e ? e.ms : '?'} ms ${e ? e.where : ''} (${glitch.count} time${glitch.count === 1 ? '' : 's'} since the app started).`, 'Close other programs, plug in the charger and set Power mode to Best performance. Run Preflight to check.'); }
+    // the processor slowed down under load (heat or a power-saving setting)
+    health.hot.perf = s.cpuPerf != null && s.cpuPerf < 75 && s.cpu > 40 ? (health.hot.perf || 0) + 1 : 0;
+    if (health.hot.perf >= 15) add('warn', 'cpuperf', `The processor has slowed to ${s.cpuPerf}% of its normal speed while busy.`, 'It may be too hot or on a power-saving setting: give it air, plug it in, set Power mode to Best performance.');
     health.hot.cpu = s.cpu > 90 ? health.hot.cpu + 1 : 0;
     if (health.hot.cpu >= 10) add('warn', 'cpu', `The computer has been at ${Math.round(avg(sys.cpu, 10))}% CPU for 10 seconds.`, 'Close other programs.');
     health.hot.gpu = s.gpu != null && s.gpu > 95 ? health.hot.gpu + 1 : 0;
@@ -986,6 +1031,7 @@
     if ((cur && cur.type === 'video' || nxt && nxt.type === 'video') && !videoOpen()) add('warn', 'video', `${cur && cur.type === 'video' ? 'This' : 'The next'} number has video, but the video output window is closed.`, 'Click Video output.');
     if (S.settings.wpOn && parseWpCode(S.settings.wpCode) && wpState.fails >= 3) add('warn', 'phones', "Phones aren't getting updates (the website can't be reached).", 'Check the internet. The show is not affected.');
     if (streamer.want && !(streamer.state.live && streamer.state.gen === streamer.gen)) add('warn', 'stream', 'The live stream is reconnecting.', 'Check the internet. The show is not affected.');
+    else if (streamer.want && streamer.slowSince && Date.now() - streamer.slowSince > 8000) add('warn', 'streamslow', `The live stream is falling behind (${streamer.state.health && streamer.state.health.speed != null ? streamer.state.health.speed.toFixed(2) + '×' : 'slow'}).`, S.settings.stAuto !== false ? 'It lowers the quality by itself if this goes on. The show is not affected.' : 'Lower the stream quality in Settings → Streaming. The show is not affected.');
     health.items = items;
     // top bar
     const bad = items.filter(i => i.level === 'bad').length, warn = items.length - bad;
@@ -1018,14 +1064,15 @@
     const up = s.uptime, upTxt = up >= 3600 ? `${Math.floor(up / 3600)} h ${Math.floor(up % 3600 / 60)} min` : `${Math.floor(up / 60)} min`;
     const rows = [
       ['Sound engine', `${E.ctx.state}, ${E.ctx.sampleRate} Hz, about ${Math.round((E.ctx.baseLatency + (E.ctx.outputLatency || 0)) * 1000)} ms delay`],
-      ['Sound glitches', ps ? `${Math.round(ps.fallbackFramesDuration || 0)} ms lost in ${ps.fallbackFramesEvents || 0} dropouts since start` : 'not reported by this system'],
+      ['Sound dropouts', glitch.src ? `${glitch.count} since start (${Math.round(glitch.ms)} ms lost) · ${glitch.src}${glitch.events.length ? ` · last ${glitch.events[glitch.events.length - 1].where}` : ''}` : (ps ? 'measuring…' : 'not measurable on this system')],
+      ['Processor speed', s.cpuPerf != null ? `${s.cpuPerf}% of normal${s.cpuPerf > 100 ? ' (turbo)' : ''}` : 'not reported by this system'],
       ['Screen pauses', `now ${Math.round(sys.lagNow)} ms · worst in 2 min ${Math.round(Math.max(0, ...sys.lag))} ms`],
       ['Page memory', heap ? mb(heap) : '–'],
       ['Disk space free', s.disk != null ? gb(s.disk) : '–'],
       ['Power', s.onBattery ? `battery${sys.battery ? ` ${Math.round(sys.battery.level * 100)}%` : ''}` : 'mains' + (s.thermal ? ` · ${s.thermal}` : '')],
       ['Running for', upTxt],
       ['Phones', !S.settings.wpOn ? 'off' : wpState.fails ? `retrying (${wpState.error || 'no answer'})` : `live, ${wpState.latency || 0} ms`],
-      ['Stream', !streamer.want ? 'off' : streamer.state.live ? `live on ${streamTarget().name} · ${streamer.state.stats || ''}` : 'reconnecting']
+      ['Stream', !streamer.want ? 'off' : streamer.state.live ? `${streamer.dry ? 'practice stream (not online)' : 'live on ' + streamTarget().name} · ${streamHealthText() || streamer.state.stats || ''}` : 'reconnecting']
     ];
     $('syFacts').replaceChildren(...rows.map(([k, v]) => h('tr', null, h('td', null, k), h('td', null, v))));
   }
@@ -1559,9 +1606,16 @@
     if (!outs.length) s.append(h('option', { value: '' }, 'System default'));
     if (S.settings.outputId && !outs.some(o => o.id === S.settings.outputId)) s.prepend(h('option', { value: S.settings.outputId, selected: true }, '(not connected) previous output'));
     s.onchange = safe(async () => { await chooseOutput(s.value); });
+    if (selectId === 'sOut') {
+      const b = $('sOutBackup');
+      b.replaceChildren(h('option', { value: 'default' }, 'System default'), ...outs.filter(o => o.id !== 'default').map(o => h('option', { value: o.id }, o.label)));
+      if (S.settings.outBackup && S.settings.outBackup !== 'default' && !outs.some(o => o.id === S.settings.outBackup)) b.append(h('option', { value: S.settings.outBackup }, '(not connected) previous backup'));
+      b.value = S.settings.outBackup || 'default';
+      b.onchange = safe(() => { S.settings.outBackup = b.value; saveSettings(); $('sOutMsg').textContent = b.value === S.settings.outputId ? 'The backup is the same as the main output; pick a different one.' : 'Backup output saved.'; });
+    }
   }
   async function chooseOutput(id) {
-    try { await E.setOutput(id); S.settings.outputId = id; saveSettings(); $('sOutMsg').textContent = 'Sound is going to the chosen output.'; unbanner('output'); }
+    try { glitchQuiet(); await E.setOutput(id); S.settings.outputId = id; checkOutput.lost = false; saveSettings(); $('sOutMsg').textContent = 'Sound is going to the chosen output.'; unbanner('output'); }
     catch (err) { $('sOutMsg').textContent = `Couldn't switch: ${err.message}`; log('setSinkId failed', err.message); }
   }
   // Settings sections (list on the left). Remembers the last one opened.
@@ -1710,7 +1764,7 @@
   }
   let lastStatus = 0;
   function pushStatus(force) {
-    if (!S.settings.wpOn) return;
+    if (!S.settings.wpOn || reh.running) return; // the dress rehearsal test is not the show
     if (!force && Date.now() - lastStatus < 1900) return;
     lastStatus = Date.now();
     try { desk.wpStatus(buildStatus()); } catch (err) { log('status build failed', String(err)); }
@@ -1726,6 +1780,7 @@
 
   /* ---------- crash recovery snapshot ---------- */
   function snapshot() {
+    if (reh.running) return; // after a crash mid-test, recovery goes back to before the test
     const L = S.live;
     try { desk.snapshot({ state: L.state, currentId: L.currentId, standbyId: L.standbyId, nextId: L.nextId, pos: active ? active.time : 0, t: Date.now(), played: [...L.played], showId: S.show.id, filler: fillerState.playing ? fillerState.id : null, streaming: streamer.want }); } catch (_) {}
   }
@@ -1760,19 +1815,42 @@
   }
 
   /* ---------- output device watch ---------- */
+  // If the main output disappears (or the sound card stops responding), sound switches to the backup chosen in
+  // Settings at once, so the music carries on. When the main one comes back it switches back by itself if
+  // nothing is playing; mid-song it asks, so the sound doesn't jump between speakers during a dance.
+  const outName = (outs, id) => { const o = outs.find(x => x.id === id); return o ? o.label : 'the system default output'; };
+  async function switchToBackup(why) {
+    if (checkOutput.lost) return;
+    checkOutput.lost = true; glitchQuiet();
+    const outs = await E.outputs().catch(() => []);
+    const b = S.settings.outBackup && S.settings.outBackup !== 'default' && S.settings.outBackup !== S.settings.outputId && outs.some(o => o.id === S.settings.outBackup) ? S.settings.outBackup : '';
+    checkOutput.backup = b ? outName(outs, b) : 'the system default output';
+    log('main output lost; switching to backup', why, b ? 'chosen backup' : 'system default');
+    try { await E.setOutput(b); } catch (err) { log('backup output failed', err.message); try { await E.setOutput(''); } catch (_) {} }
+    banner('output', `The main sound output ${why}. Sound switched to the backup: ${checkOutput.backup}. Reconnect the main output to switch back.`);
+    runHealth();
+  }
+  async function switchBack() {
+    try { await E.setOutput(S.settings.outputId); glitchQuiet(); checkOutput.lost = false; unbanner('output'); log('back on the main output'); toast('Sound is back on the main output.'); }
+    catch (err) { log('switch back failed', err.message); }
+    runHealth();
+  }
   async function checkOutput() {
     if (!S.settings.outputId || S.settings.outputId === 'default') return;
     const outs = await E.outputs();
     const present = outs.some(o => o.id === S.settings.outputId);
-    if (!present && !checkOutput.lost) {
-      checkOutput.lost = true; log('output device lost');
-      banner('output', 'The chosen sound output was disconnected. Sound has moved to the system default. Reconnect it and it switches back.');
-      try { await E.setOutput(''); } catch (_) {}
-    } else if (present && checkOutput.lost) {
-      checkOutput.lost = false; log('output device back');
-      try { await E.setOutput(S.settings.outputId); unbanner('output'); toast('Sound output reconnected.'); } catch (_) {}
+    if (!present && !checkOutput.lost) await switchToBackup('was disconnected');
+    else if (present && checkOutput.lost) {
+      const playing = S.live.state === 'playing' || S.live.state === 'paused';
+      if (!playing) await switchBack();
+      else if (!checkOutput.offered) { checkOutput.offered = true; log('main output back (still on backup while music plays)'); banner('output', `The main sound output is connected again. The music is still playing through the backup (${checkOutput.backup}).`, 'info', [{ label: 'Switch back now', fn: () => { checkOutput.offered = false; switchBack(); } }]); }
     }
+    if (!checkOutput.lost) checkOutput.offered = false;
   }
+  // Switch back automatically at the next pause between songs.
+  setInterval(safe(() => { if (checkOutput.lost && checkOutput.offered && !['playing', 'paused'].includes(S.live.state)) { checkOutput.offered = false; checkOutput().catch(() => {}); } }), 2000);
+  // Where the browser engine reports a sound-card error, treat it like a disconnect.
+  try { E.ctx.addEventListener('error', safe(() => { log('sound card error event'); if (S.settings.outputId && S.settings.outputId !== 'default') switchToBackup('stopped working'); })); } catch (_) {}
   navigator.mediaDevices.addEventListener('devicechange', safe(checkOutput));
 
   /* ---------- preflight ---------- */
@@ -1795,7 +1873,7 @@
   async function runPreflight() {
     const list = $('pfList'); list.replaceChildren(h('li', { class: 'muted' }, 'Checking…'));
     const items = [];
-    const add = (level, title, detail = '') => items.push({ level, title, detail });
+    const add = (level, title, detail = '', action = null) => items.push({ level, title, detail, action });
     const group = g => items.push({ group: g });
     // Sound
     group('Sound');
@@ -1803,6 +1881,13 @@
     const chosen = S.settings.outputId && S.settings.outputId !== 'default' ? outs.find(o => o.id === S.settings.outputId) : null;
     if (S.settings.outputId && S.settings.outputId !== 'default' && !chosen) add('bad', "The chosen sound output isn't connected", 'Connect it, or pick another output in Settings.');
     else add('ok', `Playing through ${chosen ? chosen.label : 'the system default output'}`, `${outs.length} output${outs.length === 1 ? '' : 's'} found`);
+    if (S.settings.outputId && S.settings.outputId !== 'default') {
+      const bk = S.settings.outBackup && S.settings.outBackup !== 'default' ? outs.find(o => o.id === S.settings.outBackup) : null;
+      if (S.settings.outBackup && S.settings.outBackup !== 'default' && !bk) add('warn', "The backup sound output isn't connected", 'If the main output fails, sound will go to the system default instead.', { label: 'Open Settings', fn: () => openSettings('output') });
+      else add('ok', `Backup output: ${bk ? bk.label : 'system default'}`, 'If the main output disconnects or stops, the music switches to it and keeps playing.');
+    }
+    if (checkOutput.lost) add('warn', `Playing through the backup output (${checkOutput.backup})`, 'The main output is disconnected or stopped working.');
+    add(glitch.count ? 'warn' : 'ok', glitch.count ? `The sound has dropped out ${glitch.count} time${glitch.count === 1 ? '' : 's'} since the app started` : 'No sound dropouts so far', glitch.count ? glitch.events.slice(-3).map(e => `${e.ms} ms ${e.where}`).join('; ') : (glitch.src || ''));
     add(E.ctx.state === 'running' ? 'ok' : 'bad', E.ctx.state === 'running' ? 'Audio engine is running' : `Audio engine is ${E.ctx.state}`, `${E.ctx.sampleRate} Hz, about ${Math.round((E.ctx.baseLatency + (E.ctx.outputLatency || 0)) * 1000)} ms output delay`);
     add(S.settings.limiterOn ? 'ok' : 'warn', S.settings.limiterOn ? `Safety limiter on (ceiling ${S.settings.ceiling} dBFS)` : 'Safety limiter is off', S.settings.limiterOn ? '' : 'Turn it on in Settings so a loud file can\'t blast the room.');
     add(S.settings.normalize ? 'ok' : 'warn', S.settings.normalize ? `Song volumes evened out to ${S.settings.targetLufs} LUFS` : 'Volume evening-out is off');
@@ -1878,13 +1963,58 @@
     add(freeMb < 500 ? 'warn' : 'ok', `${(info.freeMem / 1073741824).toFixed(1)} GB of ${(info.totalMem / 1073741824).toFixed(0)} GB memory free`, freeMb < 500 ? 'Close other apps.' : '');
     const avgCpu = sys.cpu.length ? sys.cpu.slice(-10).reduce((a, b) => a + b, 0) / Math.min(10, sys.cpu.length) : 0;
     add(avgCpu > 70 ? 'warn' : 'ok', `Computer load ${Math.round(avgCpu)}%`, avgCpu > 70 ? 'Close other apps, especially browsers and video calls.' : '');
+    // "Show mode": settings that can spoil a show
+    const sc = await desk.showCheck().catch(() => null);
+    const pwr = { label: 'Open power settings', fn: () => desk.openSettingsPage('power') };
+    if (sc && sc.platform === 'win32') {
+      const saving = sc.plan === 'Power saver' || sc.mode === 'Best power efficiency';
+      const fast = sc.mode === 'Best performance' || sc.plan === 'High performance' || sc.plan === 'Ultimate performance';
+      if (saving) add('bad', `Windows is set to save power (${sc.mode === 'Best power efficiency' ? 'Power mode: Best power efficiency' : 'Power plan: Power saver'})`, 'It slows the processor and can cause dropouts. Set Power mode to Best performance.', pwr);
+      else if (fast) add('ok', `Power mode: ${sc.mode || sc.plan}`);
+      else add('warn', `Power mode: ${sc.mode || sc.plan || 'not known'}`, 'For the show, set Power mode to Best performance (Settings → System → Power & battery).', pwr);
+      if (sc.updateRestart) add('warn', 'Windows is waiting to restart for an update', 'Restart the computer before the show (never during it), then pause updates for a week in Windows Update.', { label: 'Open Windows Update', fn: () => desk.openSettingsPage('update') });
+      else add('ok', 'No Windows Update restart waiting', 'To be safe, pause updates for a week before the show (Settings → Windows Update).');
+      if (sc.notifications === 'on') add('warn', 'Windows notifications are on', 'Turn on Do not disturb so pop-ups can\'t appear on the screen or projector during the show.', { label: 'Open notifications', fn: () => desk.openSettingsPage('notifications') });
+      else if (sc.notifications === 'off') add('ok', 'Windows notifications are off');
+    } else if (sc && sc.platform === 'darwin') {
+      if (sc.lowPower) add('bad', 'Low Power Mode is on', 'It slows the computer. Turn it off in System Settings → Battery.', pwr);
+      if (sc.speedLimit != null && sc.speedLimit < 100) add('warn', `The processor is limited to ${sc.speedLimit}% (too hot)`, 'Give the computer air and let it cool down.');
+      add('ok', 'Turn on Do Not Disturb (Focus) before the show', 'So notifications can\'t pop up on the screen or projector.');
+    }
+    if (sys.last && sys.last.cpuPerf != null) {
+      const p = sys.last.cpuPerf;
+      add(p < 60 && avgCpu > 30 ? 'warn' : 'ok', `Processor running at ${p}% of its normal speed`, p < 60 && avgCpu > 30 ? 'It is slowed down: plug in, give it air, set Power mode to Best performance.' : (p > 100 ? 'Turbo is working.' : 'It speeds up when the show needs it.'));
+    }
+    // How fast the drive with the show's files is (writes a short test file next to them). Not while music plays.
+    const playingNow = S.live.state === 'playing' || S.live.state === 'paused' || streamer.want;
+    const enTracks = S.show.tracks.filter(t => t.enabled && t.path);
+    if (enTracks.length && !playingNow) {
+      const dirs = [...new Set(enTracks.map(t => t.path.replace(/[\\/][^\\/]*$/, '')))];
+      const need = Math.max(0, ...enTracks.map(t => t.sig && t.sig.size && t.duration ? t.sig.size / t.duration / 1048576 : 0)); // MB per second the biggest file needs
+      const sp = await desk.driveSpeed(dirs).catch(() => []);
+      for (const r of sp) {
+        if (r.error) continue;
+        const slow = r.mbps < Math.max(15, need * 6);
+        add(slow ? 'warn' : 'ok', slow ? `The drive with the show files is slow (${r.mbps} MB/s)` : `Show files' drive: ${r.mbps} MB/s`, slow ? `${r.dir}. Copy the show to the computer's own drive (File → Copy all files into the show folder, with the show saved on the internal drive).` : (dirs.length > 1 ? r.dir : 'Fast enough for every file in the show.'));
+      }
+    } else if (enTracks.length) add('ok', 'Drive speed test skipped while music or the stream is running');
+    if (S.settings.lastRehearsal) { const lr = S.settings.lastRehearsal; add(lr.level === 'bad' ? 'warn' : 'ok', `Dress rehearsal test: ${lr.verdict}`, `${new Date(lr.at).toLocaleString()} · ${lr.summary || ''}`, { label: 'Run again', fn: openRehearsal }); }
+    else add('warn', 'The dress rehearsal test hasn\'t been run on this computer', 'It plays through the show as a stress test and says whether this computer can handle it.', { label: 'Run it', fn: openRehearsal });
     const maxLag = Math.max(0, ...sys.lag.slice(-30));
     add(maxLag > 200 ? 'warn' : 'ok', maxLag > 200 ? `The app paused for ${Math.round(maxLag)} ms recently` : 'App is responsive');
     // Phones + saved
     group('Phones, streaming and saving');
     if (streamTarget().ready) {
       const chk = await desk.streamCheck();
-      add(chk.ok ? 'ok' : 'bad', chk.ok ? (streamer.want ? `Live on ${streamTarget().name}` : `Live streaming to ${streamTarget().name} is set up (not started)`) : chk.error, chk.ok ? (streamer.want ? (streamer.state.stats || '') : 'Start it a few minutes before the show and check it on a phone.') : '');
+      add(chk.ok ? 'ok' : 'bad', chk.ok ? (streamer.want ? `Live on ${streamTarget().name}` : `Live streaming to ${streamTarget().name} is set up (not started)`) : chk.error, chk.ok ? (streamer.want ? (streamHealthText() || streamer.state.stats || '') : 'Start it a few minutes before the show and check it on a phone.') : '');
+      await loadEncoders();
+      const encId = chosenEncoder();
+      add('ok', `Stream video encoding: ${(enc.names || {})[encId] || encId}`, encId === 'libx264' ? (S.settings.stEnc === 'cpu' ? 'Set to the processor in Settings → Streaming.' : 'No graphics-chip encoder was found, so the processor does the work.') : 'The graphics chip does the heavy work, so the processor stays free for the show.');
+      const sr = S.settings.speed, needMbps = { 1080: 7, 720: 4, 480: 2.1 }[S.settings.stQ] || 4;
+      const speedAct = { label: 'Open Streaming settings', fn: () => openSettings('stream') };
+      if (!sr || !sr.up) add('warn', "The internet upload speed hasn't been tested", 'Test it at the venue: Settings → Streaming → Test internet speed.', speedAct);
+      else if (sr.up < needMbps) add('warn', `${S.settings.stQ}p needs about ${needMbps} Mbps upload; the last test measured ${sr.up} Mbps`, `${recommendQ(sr.up) ? `Use ${recommendQ(sr.up)}p.` : 'This connection is too slow to stream reliably.'} Tested ${new Date(sr.at).toLocaleString()}.`, speedAct);
+      else add('ok', `Upload speed ${sr.up} Mbps: enough for ${S.settings.stQ}p`, `Tested ${new Date(sr.at).toLocaleString()}${Date.now() - sr.at > 6 * 3600000 ? '. Test again at the venue if this was somewhere else.' : ''}`);
     }
     if (S.settings.wpOn) {
       const c = parseWpCode(S.settings.wpCode);
@@ -1898,9 +2028,139 @@
     $('pfSummary').textContent = bad ? `${bad} problem${bad > 1 ? 's' : ''} to fix and ${warn} warning${warn === 1 ? '' : 's'}.` : warn ? `Ready, with ${warn} warning${warn === 1 ? '' : 's'} to look at.` : 'All clear. Ready for the show.';
     $('pfDot').className = 'dot ' + (bad ? 'bad' : warn ? 'warn' : 'ok');
     $('bPreflight').title = `Last check ${new Date().toLocaleTimeString()}: ${$('pfSummary').textContent}`;
-    list.replaceChildren(...items.map(i => i.group ? h('li', { class: 'pf group' }, i.group) : h('li', { class: 'pf ' + i.level }, h('span', { class: 'ic' }, i.level === 'ok' ? '✓' : i.level === 'warn' ? '!' : '✕'), h('div', null, h('div', null, i.title), i.detail ? h('div', { class: 'd' }, i.detail) : null), h('span'))));
+    list.replaceChildren(...items.map(i => i.group ? h('li', { class: 'pf group' }, i.group) : h('li', { class: 'pf ' + i.level }, h('span', { class: 'ic' }, i.level === 'ok' ? '✓' : i.level === 'warn' ? '!' : '✕'), h('div', null, h('div', null, i.title), i.detail ? h('div', { class: 'd' }, i.detail) : null), i.action ? h('button', { class: 'btn small act', type: 'button', onclick: safe(i.action.fn) }, i.action.label) : h('span'))));
     log('preflight', { bad, warn });
     return { bad, warn, items };
+  }
+
+  /* ---------- dress rehearsal test ----------
+     Runs the show as a stress test: the first and last few seconds of every song and every real transition,
+     with the video output and (optionally) a practice stream that is encoded at full quality but sent nowhere.
+     Meanwhile it records the processor, memory, graphics, screen pauses, sound dropouts, dropped video frames
+     and whether the stream kept up, then says whether this computer is ready for this show. Phones aren't told,
+     and the show goes back exactly to where it was afterwards. */
+  const reh = { running: false, abort: false, R: null, report: null };
+  function openRehearsal() {
+    if ($('dlgPreflight').open) $('dlgPreflight').close();
+    if ($('dlgSys').open) $('dlgSys').close();
+    $('rhGo').textContent = reh.running ? 'Stop test' : 'Start test';
+    $('rhStream').disabled = !streamTarget().ready && false;
+    $('dlgReh').showModal();
+  }
+  on('pfReh', 'click', openRehearsal);
+  on('rhGo', 'click', () => { if (reh.running) { reh.abort = true; $('rhNow').textContent = 'Stopping…'; } else rehearse({ seg: +$('rhSeg').value, vol: +$('rhVol').value, stream: $('rhStream').checked }); });
+  on('dlgReh', 'close', () => { if (reh.running) { reh.abort = true; toast('Dress rehearsal test stopped.'); } });
+  on('rhCopy', 'click', () => { if (reh.report) { navigator.clipboard.writeText(reh.report).then(() => toast('Report copied.')).catch(() => toast("Couldn't copy.")); } });
+  const wait = (ms, stop) => new Promise(res => { const t0 = Date.now(); const iv = setInterval(() => { if (Date.now() - t0 >= ms || (stop && stop())) { clearInterval(iv); res(); } }, 100); });
+  function rehSample() { // once a second, from the numbers already collected
+    const R = reh.R, s = sys.last; if (!R || !s) return;
+    const x = { cpu: s.cpu, app: s.appCpu, mem: s.appMem, free: s.freeMem, gpu: s.gpu, lag: sys.lagNow, perf: s.cpuPerf };
+    const hs = streamer.state && streamer.state.health;
+    if (streamer.want && streamer.state.live && hs && hs.speed != null && Date.now() - streamer.openedAt > 8000) { x.speed = hs.speed; x.fps = hs.fps; R.streamDrop = hs.drop || 0; }
+    for (const d of decks) { // dropped video frames on the players
+      const q = d.el.getVideoPlaybackQuality ? d.el.getVideoPlaybackQuality() : null; if (!q) continue;
+      const k = d.el.currentSrc, prev = R.vq.get(d) || { src: k, dropped: 0, total: 0 };
+      if (prev.src !== k || q.totalVideoFrames < prev.total) { prev.src = k; prev.dropped = 0; prev.total = 0; }
+      R.vDropped += Math.max(0, q.droppedVideoFrames - prev.dropped); R.vTotal += Math.max(0, q.totalVideoFrames - prev.total);
+      R.vq.set(d, { src: k, dropped: q.droppedVideoFrames, total: q.totalVideoFrames });
+    }
+    R.samples.push(x);
+  }
+  async function rehearse({ seg = 8, vol = -20, stream = true } = {}) {
+    const L = S.live;
+    if (reh.running) return;
+    if (L.state === 'playing' || L.state === 'paused' || L.busy) { toast('Stop the music first. The test plays the show itself.'); return; }
+    if (streamer.want && !streamer.dry) { toast('Stop the live stream first. The test makes its own practice stream, which doesn\'t go online.', 6000); return; }
+    if (fillerState.playing) fillerFadeOut(1.5);
+    const list = tracks().filter(t => t.enabled && t.path && !t.missing);
+    if (!list.length) { toast('Add songs to the show first.'); return; }
+    const saved = { played: new Set(L.played), lastId: L.lastId, standbyId: L.standbyId, nextId: L.nextId, state: L.state };
+    const R = reh.R = { t0: Date.now(), samples: [], vq: new Map(), vDropped: 0, vTotal: 0, started: 0, transitions: 0, fails: [], glitch0: glitch.count, glitchMs0: glitch.ms,
+      out0: outFeed.reconnects.length, enc: '', q: '', stream, streamDrop: 0, seg, songs: list.length, videoOpen: videoOpen() };
+    reh.running = true; reh.abort = false; reh.report = null;
+    $('rhGo').textContent = 'Stop test'; $('rhOpts').hidden = true; $('rhProg').hidden = false; $('rhVerdict').hidden = true; $('rhCopy').hidden = true;
+    $('rhList').replaceChildren(); $('rhBar').style.width = '0%';
+    log('dress rehearsal test start', { songs: list.length, seg, stream });
+    E.setMasterDb((+S.settings.masterDb || 0) + vol);
+    try {
+      if (stream) { await streamStart({ dry: true }); R.enc = (enc.names || {})[chosenEncoder()] || chosenEncoder(); R.q = streamQ(); }
+      for (let i = 0; i < list.length && !reh.abort; i++) {
+        const t = list[i], next = list[i + 1];
+        const step = (what, frac) => { $('rhNow').textContent = `Song ${i + 1} of ${list.length}: “${label(t)}” (${what})`; $('rhBar').style.width = `${Math.round((i + frac) / list.length * 100)}%`; };
+        step('start', 0);
+        if (L.currentId !== t.id) { // not already playing after an automatic transition from the last song
+          if (L.state === 'playing' || L.state === 'paused') stopNow(false);
+          L.standbyId = t.id; L.cueFrom = null;
+          await startTrack(t);
+          if (L.currentId !== t.id) { R.fails.push(`“${label(t)}” didn't start`); unbanner('play-' + t.id); continue; }
+        }
+        R.started++;
+        await wait(seg * 1000, () => reh.abort || L.currentId !== t.id);
+        if (reh.abort || L.currentId !== t.id || !active) continue;
+        step('end', 0.5);
+        const xf = t.transition === 'crossfade' && next ? clamp(+t.xfade || 5, 0.5, Math.max(0.5, effLen(next) / 2)) : 0;
+        const to = effEnd(t) - seg - xf;
+        if (to > active.time + 1) { active.el.currentTime = to; L.lastPos = to; stall.t = to; stall.at = performance.now(); }
+        await wait((seg + xf + 10) * 1000, () => reh.abort || L.currentId !== t.id);
+        if (reh.abort) break;
+        if (L.currentId === t.id) { R.fails.push(`“${label(t)}” didn't finish on time`); stopNow(false); }
+        else if (next && L.currentId === next.id) R.transitions++; // a straight-on or crossfade transition ran by itself
+      }
+    } catch (err) { log('dress rehearsal error', String(err)); R.fails.push(`The test stopped: ${err.message || err}`); }
+    finally {
+      const aborted = reh.abort;
+      if (L.state === 'playing' || L.state === 'paused') stopNow(false);
+      await wait(400);
+      if (stream && streamer.dry) await streamStop();
+      E.setMasterDb(+S.settings.masterDb || 0);
+      L.played = saved.played; L.lastId = saved.lastId; L.nextId = saved.nextId; L.cueFrom = null; L.lastCue = null; L.failed = null;
+      L.standbyId = saved.standbyId; reh.running = false;
+      setState(saved.state === 'idle' ? 'idle' : saved.standbyId ? 'standby' : saved.state);
+      list.forEach(t => unbanner('play-' + t.id));
+      renderLists(); pushStatus(true); snapshot();
+      $('rhGo').textContent = 'Start test'; $('rhOpts').hidden = false; $('rhProg').hidden = true;
+      rehReport(R, aborted);
+    }
+  }
+  function rehReport(R, aborted) {
+    const rows = [], add = (level, title, detail = '') => rows.push({ level, title, detail });
+    const vals = k => R.samples.map(x => x[k]).filter(v => v != null && isFinite(v));
+    const pct = (arr, p) => { if (!arr.length) return null; const a = [...arr].sort((x, y) => x - y); return a[Math.min(a.length - 1, Math.floor(p * (a.length - 1)))]; };
+    const mins = Math.max(1, Math.round((Date.now() - R.t0) / 60000));
+    if (aborted) add('warn', 'The test was stopped before the end', `${R.started} of ${R.songs} songs were played.`);
+    add(R.fails.length ? 'bad' : 'ok', R.fails.length ? `${R.fails.length} song${R.fails.length > 1 ? 's' : ''} had a problem` : `All ${R.started} songs started and finished`, R.fails.length ? R.fails.join('; ') : `${R.transitions} automatic transition${R.transitions === 1 ? '' : 's'} tested; ${R.seg} s from the start and end of each song.`);
+    const cpu = vals('cpu'), c95 = pct(cpu, 0.95), cMax = cpu.length ? Math.max(...cpu) : null;
+    if (c95 != null) add(c95 >= 95 ? 'bad' : c95 >= 80 ? 'warn' : 'ok', `Processor: ${Math.round(c95)}% most of the time, ${Math.round(cMax)}% at the busiest`, c95 >= 80 ? 'Close other programs, plug in, set Power mode to Best performance, or lower the stream quality.' : 'Plenty of room to spare.');
+    const perf = R.samples.filter(x => x.perf != null && x.cpu > 30).map(x => x.perf);
+    if (perf.length) { const pMin = Math.min(...perf); add(pMin < 70 ? 'bad' : pMin < 90 ? 'warn' : 'ok', `Processor speed under load: never below ${pMin}% of normal`, pMin < 90 ? 'It slowed down: heat or a power-saving setting. Give it air and set Power mode to Best performance.' : 'No slowing down.'); }
+    const free = vals('free'), memApp = vals('mem');
+    if (free.length) { const fMin = Math.min(...free); add(fMin < 400 * 1048576 ? 'bad' : fMin < 1073741824 ? 'warn' : 'ok', `Memory: at least ${gb(fMin)} free; this app used up to ${mb(Math.max(...memApp))}`, fMin < 1073741824 ? 'Close other programs, especially web browsers.' : ''); }
+    const gpu = vals('gpu');
+    if (gpu.length) { const g95 = pct(gpu, 0.95); add(g95 >= 95 ? 'bad' : g95 >= 85 ? 'warn' : 'ok', `Graphics: ${Math.round(g95)}% most of the time`, g95 >= 85 ? 'Lower the stream quality or close other programs that show video.' : ''); }
+    else add('ok', 'Graphics load is not reported on this computer');
+    const lag = vals('lag'), lMax = lag.length ? Math.max(...lag) : 0;
+    add(lMax >= 400 ? 'warn' : 'ok', `Screen pauses: at most ${Math.round(lMax)} ms`, lMax >= 400 ? 'The screen paused noticeably (the music itself plays separately and isn\'t affected by short pauses). Close other programs.' : 'The controls stayed responsive.');
+    const dn = glitch.count - R.glitch0, dms = Math.round(glitch.ms - R.glitchMs0);
+    add(dn > 2 ? 'bad' : dn ? 'warn' : 'ok', dn ? `${dn} sound dropout${dn > 1 ? 's' : ''} (${dms} ms lost)` : 'No sound dropouts', dn ? glitch.events.slice(-Math.min(dn, 3)).map(e => `${e.ms} ms ${e.where}`).join('; ') : (glitch.src ? `Sound ${glitch.src}.` : 'This system can\'t measure dropouts.'));
+    if (R.vTotal > 0) { const dp = R.vDropped / R.vTotal * 100; add(dp >= 3 ? 'bad' : dp >= 0.5 ? 'warn' : 'ok', `Video: ${R.vDropped} of ${R.vTotal} frames dropped (${dp.toFixed(1)}%)`, dp >= 0.5 ? 'Convert large or HEVC videos to H.264, close other programs, or lower the stream quality.' : 'Video played smoothly.'); }
+    const outN = outFeed.reconnects.length - R.out0;
+    if (R.videoOpen || videoOpen()) add(outN ? 'warn' : 'ok', outN ? `The video output lost the picture ${outN} time${outN > 1 ? 's' : ''} (reconnected by itself)` : 'Video output kept its picture');
+    else if (S.show.tracks.some(t => t.enabled && t.type === 'video')) add('warn', 'The video output was closed during the test', 'Open Video output and run the test again to check the projector too.');
+    if (R.stream) {
+      const sp = vals('speed');
+      if (!sp.length) add('bad', 'The practice stream didn\'t get going', 'See Settings → Streaming.');
+      else { const sMin = pct(sp, 0.05); add(sMin < 0.9 ? 'bad' : sMin < 0.97 ? 'warn' : 'ok', `Stream (${R.q}p, ${R.enc}): kept up at ${sMin.toFixed(2)}× or better${R.streamDrop ? `, ${R.streamDrop} frames dropped` : ''}`, sMin < 0.97 ? 'It struggled: choose a lower stream quality, or set Video encoding to Automatic so the graphics chip helps.' : 'The computer can encode the stream comfortably. (Upload speed is tested separately: Settings → Streaming.)'); }
+    }
+    const bad = rows.filter(r => r.level === 'bad').length, warn = rows.filter(r => r.level === 'warn').length;
+    const level = bad ? 'bad' : warn ? 'warn' : 'ok';
+    const verdict = aborted ? 'Stopped before the end' : bad ? 'Not ready: fix the problems below' : warn ? 'Ready, with things to look at' : 'Ready for the show';
+    const v = $('rhVerdict'); v.hidden = false; v.className = 'rh-verdict ' + (aborted ? 'warn' : level); v.textContent = `${verdict} (${mins} min test)`;
+    $('rhList').replaceChildren(...rows.map(i => h('li', { class: 'pf ' + i.level }, h('span', { class: 'ic' }, i.level === 'ok' ? '✓' : i.level === 'warn' ? '!' : '✕'), h('div', null, h('div', null, i.title), i.detail ? h('div', { class: 'd' }, i.detail) : null), h('span'))));
+    reh.report = [`Dress rehearsal test, ${new Date().toLocaleString()}: ${verdict}`, ...rows.map(r => `${r.level === 'ok' ? '✓' : r.level === 'warn' ? '!' : '✕'} ${r.title}${r.detail ? ' (' + r.detail + ')' : ''}`)].join('\n');
+    $('rhCopy').hidden = false;
+    if (!aborted) { S.settings.lastRehearsal = { at: Date.now(), verdict, level, summary: rows.filter(r => r.level !== 'ok').map(r => r.title).slice(0, 3).join('; ') || 'everything passed' }; saveSettings(); }
+    log('dress rehearsal test result', reh.report);
+    return { verdict, level, rows };
   }
 
   /* ---------- test & calibrate ---------- */
@@ -2128,7 +2388,67 @@
   on('iTrimReset', 'click', () => { const t = sel(); if (!t) return; t.startAt = 0; t.endAt = 0; changed(); renderInspector(); renderListsSoon(); toast('Playing the whole file.'); });
 
   /* ---------- live streaming (Streaming by StreamingIdiot) ---------- */
-  const streamer = { want: false, rec: null, canvas: null, g: null, drawTimer: 0, retryTimer: 0, retries: 0, gen: 0, state: {}, startedAt: 0 };
+  const streamer = { want: false, rec: null, canvas: null, g: null, drawTimer: 0, retryTimer: 0, retries: 0, gen: 0, state: {}, startedAt: 0, dry: false, qOverride: null, encOverride: null, slowSince: 0, openedAt: 0 };
+  const Q_SIZE = { 1080: [1920, 1080], 720: [1280, 720], 480: [854, 480] };
+  const streamQ = () => streamer.qOverride || (Q_SIZE[S.settings.stQ] ? S.settings.stQ : '720');
+  const recommendQ = up => up >= 7 ? '1080' : up >= 4 ? '720' : up >= 2.1 ? '480' : null;
+  // Which video encoder the stream uses: the graphics chip's own (checked with a test encode when the app starts),
+  // unless it failed this session or Settings says processor only.
+  const enc = { list: null, names: null, failed: new Set(), loading: null };
+  function loadEncoders(force) {
+    if (enc.list && !force) return Promise.resolve(enc);
+    if (enc.loading && !force) return enc.loading;
+    return (enc.loading = desk.streamEncoders(!!force).then(r => { enc.list = r.list; enc.names = r.names; return enc; }).catch(err => { log('encoder check failed', String(err)); enc.list = [{ id: 'libx264', name: 'Processor (x264)' }]; return enc; }).finally(() => { enc.loading = null; renderEncoders(); }));
+  }
+  function chosenEncoder() {
+    if (S.settings.stEnc === 'cpu') return 'libx264';
+    if (streamer.encOverride) return streamer.encOverride;
+    const ok = (enc.list || []).map(e => e.id).filter(id => !enc.failed.has(id));
+    return ok[0] || 'libx264';
+  }
+  function renderEncoders() {
+    const el = $('sStEncMsg'); if (!el) return;
+    if (!enc.list) { el.textContent = 'Checking which video encoders this computer has…'; return; }
+    const hw = enc.list.filter(e => e.id !== 'libx264' && !enc.failed.has(e.id));
+    el.textContent = hw.length ? `This computer can encode video on: ${hw.map(e => e.name).join(', ')}. ${S.settings.stEnc === 'cpu' ? 'Set to the processor only.' : `The stream uses ${hw[0].name}, which leaves the processor free for the show.`}`
+      : 'No graphics-chip video encoder was found on this computer, so the processor does the work (at low priority).';
+  }
+  function streamHealthText() {
+    const st = streamer.state || {}, hs = st.health;
+    if (!streamer.want || !st.live || !hs || hs.speed == null) return '';
+    const behind = streamer.slowSince && Date.now() - streamer.slowSince > 3000;
+    return `${behind ? 'Falling behind' : 'Keeping up'} ${hs.speed.toFixed(2)}× · ${Math.round(hs.fps || 0)} fps · ${hs.kbps != null ? Math.round(hs.kbps).toLocaleString() + ' kb/s' : '–'} · ${hs.drop || 0} frames dropped · ${st.quality || streamQ()}p · ${st.encoderName || ''}`;
+  }
+  // The stream can't keep up: step down a quality level and carry on (the show itself is never touched).
+  async function lowerQuality(why) {
+    const q = streamQ(), next = { 1080: '720', 720: '480' }[q];
+    if (!next || !streamer.want) return false;
+    streamer.qOverride = next; streamer.slowSince = 0;
+    log('stream quality lowered', q, '→', next, why);
+    banner('streamq', `The stream couldn't keep up (${why}), so it switched from ${q}p to ${next}p. The show is not affected.`, 'info', [{ label: 'Streaming settings', fn: () => openSettings('stream') }]);
+    streamTeardown(); await desk.streamStop(); await streamOpen();
+    return true;
+  }
+  async function runSpeedTest() {
+    const btn = $('sSpeedGo'), msg = $('sSpeedMsg'), use = $('sSpeedUse');
+    btn.disabled = true; use.hidden = true; msg.textContent = 'Testing upload speed (about 8 seconds)…';
+    try {
+      const t = streamTarget();
+      const r = await desk.speedTest(t.ready || t.url ? t.url : '');
+      const parts = [];
+      if (r.upMbps != null) parts.push(`Upload ${r.upMbps} Mbps`);
+      if (r.reach) parts.push(r.reach.ok ? `reached ${t.name}'s server in ${r.reach.ms} ms` : r.reach.error);
+      if (r.error) parts.push(r.error);
+      const rec = r.upMbps != null ? recommendQ(r.upMbps) : null;
+      if (r.upMbps != null) { S.settings.speed = { at: Date.now(), up: r.upMbps, reach: r.reach && r.reach.ok ? r.reach.ms : null }; saveSettings(); }
+      msg.textContent = parts.join(' · ') + (r.upMbps == null ? '' : rec ? `. Recommended: ${rec}p.` : '. Too slow to stream reliably: use a wired connection or a different network.');
+      if (rec && rec !== S.settings.stQ) { use.hidden = false; use.textContent = `Use ${rec}p`; use.onclick = safe(() => { S.settings.stQ = rec; $('sStQ').value = rec; saveSettings(); use.hidden = true; toast(`Stream quality set to ${rec}p.`); }); }
+      return r;
+    } finally { btn.disabled = false; }
+  }
+  on('sSpeedGo', 'click', runSpeedTest);
+  // Back online: reconnect the stream now instead of waiting out the retry timer.
+  window.addEventListener('online', safe(() => { if (streamer.want && streamer.retryTimer && !(streamer.state.live && streamer.state.gen === streamer.gen)) { clearTimeout(streamer.retryTimer); streamer.retryTimer = 0; log('internet back; reconnecting stream now'); desk.streamStop().then(streamOpen); } }));
   function openStreamSettings() {
     const showSvc = () => {
       const svc = S.settings.stService || 'streamingidiot';
@@ -2144,7 +2464,11 @@
     $('sStUrl').value = S.settings.stUrl; $('sStKey').value = S.settings.stKey; $('sStQ').value = S.settings.stQ; $('sStTitle').value = S.settings.stTitle;
     $('sStUrl').onchange = safe(() => { S.settings.stUrl = $('sStUrl').value.trim(); saveSettings(); });
     $('sStKey').onchange = safe(() => { S.settings.stKey = $('sStKey').value.trim(); saveSettings(); });
-    $('sStQ').onchange = safe(() => { S.settings.stQ = $('sStQ').value; saveSettings(); });
+    $('sStQ').onchange = safe(() => { S.settings.stQ = $('sStQ').value; saveSettings(); if (streamer.want) toast('The new quality is used the next time the stream starts.'); });
+    $('sStEnc').value = S.settings.stEnc === 'cpu' ? 'cpu' : 'auto'; $('sStEnc').onchange = safe(() => { S.settings.stEnc = $('sStEnc').value; saveSettings(); renderEncoders(); if (streamer.want) toast('The new setting is used the next time the stream starts.'); });
+    $('sStAuto').checked = S.settings.stAuto !== false; $('sStAuto').onchange = safe(() => { S.settings.stAuto = $('sStAuto').checked; saveSettings(); });
+    const sr = S.settings.speed; if (sr && sr.up) $('sSpeedMsg').textContent = `Last test: upload ${sr.up} Mbps (${new Date(sr.at).toLocaleString()}). Recommended: ${recommendQ(sr.up) ? recommendQ(sr.up) + 'p' : 'too slow to stream'}.`;
+    loadEncoders(); renderEncoders();
     $('sStTitle').oninput = safe(() => { S.settings.stTitle = $('sStTitle').value; saveSettings(); });
     $('sStAccent').value = S.settings.stAccent; $('sStAccent').onchange = safe(() => { S.settings.stAccent = $('sStAccent').value; saveSettings(); });
     $('sStProgress').checked = S.settings.stProgress !== false; $('sStProgress').onchange = safe(() => { S.settings.stProgress = $('sStProgress').checked; saveSettings(); });
@@ -2159,21 +2483,24 @@
     return { svc, name: svc === 'streamingidiot' ? 'StreamingIdiot' : 'your stream service', url: S.settings.stUrl, key: S.settings.stKey, ready: !!S.settings.stUrl,
       missing: svc === 'streamingidiot' ? 'Paste the stream address from your StreamingIdiot account first (Settings → Streaming).' : 'Paste the stream address first (Settings → Streaming).' };
   }
-  async function streamStart() {
+  async function streamStart(opts = {}) {
     if (streamer.want) return;
+    const dry = !!(opts && opts.dry);
     const target = streamTarget();
-    if (!target.ready) { toast(target.missing, 5000); openSettings('stream'); return; }
+    if (!dry && !target.ready) { toast(target.missing, 5000); openSettings('stream'); return; }
     const chk = await desk.streamCheck();
     if (!chk.ok) { $('sStMsg').textContent = chk.error; toast(chk.error); return; }
-    streamer.want = true; streamer.retries = 0; streamer.startedAt = Date.now();
-    log('streaming on');
+    await loadEncoders();
+    streamer.want = true; streamer.dry = dry; streamer.retries = 0; streamer.startedAt = Date.now(); streamer.slowSince = 0;
+    log(dry ? 'practice stream on' : 'streaming on');
     await streamOpen();
   }
   async function streamOpen() {
     if (!streamer.want) return;
-    const q = S.settings.stQ === '480' ? [854, 480] : [1280, 720];
+    const qName = streamQ(), q = Q_SIZE[qName];
     const target = streamTarget();
-    const r = await desk.streamStart({ url: target.url, key: target.key, quality: S.settings.stQ, audioRate: E.ctx.sampleRate });
+    const r = await desk.streamStart({ url: target.url, key: target.key, quality: qName, encoder: chosenEncoder(), dry: streamer.dry, audioRate: E.ctx.sampleRate });
+    streamer.openedAt = Date.now(); streamer.slowSince = 0;
     if (!r.ok) { streamer.want = false; $('sStMsg').textContent = r.error; toast(`Couldn't start the stream: ${r.error}`, 6000); renderStream(); return; }
     streamer.gen = r.gen;
     if (!streamer.canvas || streamer.canvas.width !== q[0]) { streamer.canvas = document.createElement('canvas'); streamer.canvas.width = q[0]; streamer.canvas.height = q[1]; streamer.g = streamer.canvas.getContext('2d'); }
@@ -2182,7 +2509,7 @@
     drawStreamFrame();
     // Picture only here; the sound goes separately as exact samples (E.pcmTapStart below).
     const mime = ['video/webm;codecs=vp8', 'video/webm'].find(m => MediaRecorder.isTypeSupported(m));
-    const rec = new MediaRecorder(new MediaStream(streamer.canvas.captureStream(30).getVideoTracks()), { mimeType: mime, videoBitsPerSecond: q[0] > 1000 ? 6000000 : 3000000 });
+    const rec = new MediaRecorder(new MediaStream(streamer.canvas.captureStream(30).getVideoTracks()), { mimeType: mime, videoBitsPerSecond: q[0] > 1500 ? 9000000 : q[0] > 1000 ? 6000000 : 3000000 });
     rec.ondataavailable = e => { if (e.data && e.data.size && streamer.rec === rec) e.data.arrayBuffer().then(b => { if (streamer.rec === rec) desk.streamData(b); }).catch(() => {}); };
     rec.onerror = e => { log('stream recorder error', String(e.error || e)); streamReconnect('The recording stopped.'); };
     streamer.rec = rec;
@@ -2209,7 +2536,7 @@
     renderStream();
   }
   async function streamStop() {
-    streamer.want = false; clearTimeout(streamer.retryTimer);
+    streamer.want = false; streamer.dry = false; streamer.qOverride = null; streamer.slowSince = 0; clearTimeout(streamer.retryTimer); unbanner('streamq');
     streamTeardown();
     await desk.streamStop();
     unbanner('stream'); log('streaming off');
@@ -2218,6 +2545,22 @@
   }
   desk.onStreamState(safe(st => {
     streamer.state = st;
+    // A graphics-chip encoder that fails at the start: switch to the next one (in the end, the processor) at once.
+    if (st.ended && st.gen === streamer.gen && streamer.want && st.encoderFailed) {
+      enc.failed.add(st.encoderFailed); streamer.encOverride = null;
+      log('stream encoder failed; trying the next', st.encoderFailed, '→', chosenEncoder());
+      toast(`${(enc.names || {})[st.encoderFailed] || st.encoderFailed} couldn't encode the stream, so it uses ${(enc.names || {})[chosenEncoder()] || chosenEncoder()} instead.`, 6000);
+      streamTeardown(); desk.streamStop().then(streamOpen); renderEncoders(); return;
+    }
+    // The connection couldn't carry this quality: step down rather than keep failing.
+    if (st.ended && st.gen === streamer.gen && streamer.want && /too slow/.test(st.error || '') && S.settings.stAuto !== false && streamQ() !== '480') { lowerQuality('the connection was too slow'); return; }
+    // Keeping up? ffmpeg's speed should stay at 1.00×. Ignore the first seconds while it settles.
+    const hs = st.health;
+    if (st.live && st.gen === streamer.gen && hs && hs.speed != null && Date.now() - streamer.openedAt > 10000) {
+      if (hs.speed < 0.95) { if (!streamer.slowSince) { streamer.slowSince = Date.now(); log('stream falling behind', hs.speed); } }
+      else streamer.slowSince = 0;
+      if (streamer.slowSince && Date.now() - streamer.slowSince > 20000 && S.settings.stAuto !== false && streamQ() !== '480') { lowerQuality(`it was running at ${hs.speed.toFixed(2)}× speed`); return; }
+    }
     if (st.ended && st.gen === streamer.gen && streamer.want) streamReconnect(st.error || 'the stream service closed the connection');
     else if (st.live && streamer.retries && st.bytes > 200000) { streamer.retries = 0; unbanner('stream'); }
     renderStream();
@@ -2226,17 +2569,20 @@
     const st = streamer.state || {}, dot = $('stDot'), txt = $('stText');
     const live = streamer.want && st.live && st.gen === streamer.gen;
     if (!streamer.want) { dot.className = 'dot'; txt.textContent = 'Stream'; }
+    else if (streamer.dry) { dot.className = 'dot warn'; txt.textContent = 'Stream test'; }
     else if (live) { dot.className = 'dot live'; txt.textContent = `LIVE ${fmt((Date.now() - streamer.startedAt) / 1000)}`; }
     else { dot.className = 'dot warn'; txt.textContent = 'Stream: reconnecting'; }
     $('bStream').title = live ? `Live on ${streamTarget().name} · ${st.stats || ''}` : `Live stream to ${streamTarget().name}`;
     if ($('sStGo')) {
       $('sStGo').textContent = streamer.want ? 'Stop streaming' : 'Start streaming';
       $('sStGo').classList.toggle('danger', streamer.want);
-      $('sStMsg').textContent = live ? `Live on ${streamTarget().name} for ${fmt((Date.now() - streamer.startedAt) / 1000)} · ${st.stats || 'starting…'}` : streamer.want ? `Connecting to ${streamTarget().name}…` : (st.error || '');
+      const ht = streamHealthText(), he = $('sStHealth');
+      he.hidden = !ht; he.textContent = ht; he.className = 'st-health ' + (streamer.slowSince ? 'warn' : 'ok');
+      $('sStMsg').textContent = streamer.dry ? 'A practice stream for the dress rehearsal test is running (not online).' : live ? `Live on ${streamTarget().name} for ${fmt((Date.now() - streamer.startedAt) / 1000)} · ${st.stats || 'starting…'}` : streamer.want ? `Connecting to ${streamTarget().name}…` : (st.error || '');
     }
   }
   setInterval(safe(renderStream), 1000);
-  on('sStGo', 'click', async () => { if (!streamer.want) return streamStart(); if (await ask('Stop the live stream?', 'Stop streaming', 'Keep streaming')) await streamStop(); });
+  on('sStGo', 'click', async () => { if (reh.running) { toast('The dress rehearsal test is using the stream. Stop the test first.'); return; } if (!streamer.want) return streamStart(); if (await ask('Stop the live stream?', 'Stop streaming', 'Keep streaming')) await streamStop(); });
   on('bStream', 'click', () => openSettings('stream'));
   // The picture: the video when a number has one (with the dance name over the start), otherwise the title card.
   function drawStreamFrame() {
@@ -2432,6 +2778,7 @@
       banner('audio', 'The sound card stopped responding. Trying to wake it…', 'warn', [{ label: 'Restart the app', fn: () => { snapshot(); desk.relaunch(); } }]);
       if (!audioDog.tried) { audioDog.tried = true; try { await E.setOutput(S.settings.outputId || ''); await E.ctx.resume(); } catch (err) { log('wake sound card failed', String(err)); } }
     }
+    if (audioDog.stuck === 6 && S.settings.outputId && S.settings.outputId !== 'default' && !checkOutput.lost) { switchToBackup('stopped responding'); }
     if (audioDog.stuck === 8) banner('audio', "The sound card still isn't responding. Check the cable or USB audio box, or restart the app (it picks up the show where it was).", 'warn', [{ label: 'Restart the app', fn: () => { snapshot(); desk.relaunch(); } }]);
   }), 1000);
   let gpuCrashes = 0;
@@ -2453,12 +2800,13 @@
     setInterval(updateText, 100);
     setInterval(safe(tick), 25);
     setTimeout(safe(() => testVideoCaps(false)), 1500); // which kinds of video can this computer show?
+    setTimeout(safe(() => loadEncoders()), 6000); // which video encoders can the stream use? (a few short test encodes, at low priority)
     log('ready', S.show.name, S.show.tracks.length + ' songs');
   }
   window.addEventListener('beforeunload', () => { snapshot(); autosave(); });
 
   // for automated tests
-  window.SP = { S, decks, videoCaps, testVideoCaps, cantShow, findCodec, gfx, chat, etaTimes, health, sys, runHealth, sysLag: () => sys.lag, applyTheme, streamTarget, openSettings, drawCard, videoOut: () => outWin, outFeed, streamStart, streamStop, streamer, trimSilence, collectFiles, syncMaster, updateText, closeCuePop, restart, resetShow, applySettings, openVideoDialog, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
+  window.SP = { S, E, reh, rehearse, glitch, glitchStep, glitchQuiet, enc, loadEncoders, chosenEncoder, streamer, lowerQuality, runSpeedTest, recommendQ, checkOutput, switchToBackup, decks, videoCaps, testVideoCaps, cantShow, findCodec, gfx, chat, etaTimes, health, sys, runHealth, sysLag: () => sys.lag, applyTheme, streamTarget, openSettings, drawCard, videoOut: () => outWin, outFeed, streamStart, streamStop, streamer, trimSilence, collectFiles, syncMaster, updateText, closeCuePop, restart, resetShow, applySettings, openVideoDialog, get active() { return active; }, go, fadeToNext, fadeOut, stopNow, pause, cueNext, fireHot, addFiles, runPreflight, save, openShow, loadShow,
     fillerPlay, fillerFadeOut, fillerState, buildStatus, buildProgram, showRemaining, gainFor, nextAfter, setHotFile, hotBuffers, E, queue: () => queue.length + (analysing ? 1 : 0) };
 
   boot().catch(err => { oops(err); requestAnimationFrame(frame); setInterval(updateText, 100); setInterval(safe(tick), 25); });

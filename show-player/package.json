@@ -1,7 +1,7 @@
 {
   "name": "recital-show-player",
   "productName": "Recital Show Player",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Run a dance recital's music and video: playlist with GO, crossfades and fades, cues, props, hot sounds, filler music, preflight checks and live status for phones.",
   "main": "main.js",
   "author": "Choreography Workbook",

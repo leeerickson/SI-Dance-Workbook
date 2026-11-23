@@ -45,6 +45,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const wp = http.createServer((req, res) => {
     let body = ''; req.on('data', c => { body += c; }); req.on('end', () => {
       const send = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+      if (req.url === '/speedtest') { got.speed = (got.speed || 0) + body.length; return send(200, { ok: true }); }
       if (req.url.endsWith('/ping')) return send(200, { ok: true, plugin: 'recital-live', version: '0.1.0', server_now: Date.now() });
       const m = /\/shows\/([^/]+)\/(program|status)$/.exec(req.url);
       if (m && req.method === 'POST') {
@@ -60,7 +61,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const app = await electron.launch({
     executablePath: require('electron'),
     args: [path.join(__dirname, '..'), '--no-sandbox', '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', `--user-data-dir=${path.join(tmp, 'profile')}`],
-    env: { ...process.env, SHOW_PLAYER_DATA: path.join(tmp, 'data'), SHOW_PLAYER_MAXIMIZE: '1', SHOW_PLAYER_STREAM_OUT: streamOut, SHOW_PLAYER_SELFTEST_GPU: '1' }
+    env: { ...process.env, SHOW_PLAYER_DATA: path.join(tmp, 'data'), SHOW_PLAYER_MAXIMIZE: '1', SHOW_PLAYER_STREAM_OUT: streamOut, SHOW_PLAYER_SELFTEST_GPU: '1', SHOW_PLAYER_SPEEDTEST_URL: `${wpUrl}/speedtest` }
   });
   let win = await app.firstWindow();
   const errors = []; const watch = w => w.on('pageerror', e => errors.push(e.message));
@@ -576,6 +577,97 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   ok(!pf.items.some(i => /can't play/.test(i.title || '')), 'after converting, preflight no longer complains');
   await win.keyboard.press('Escape');
   await sp(() => { const i = SP.S.show.tracks.findIndex(t => / \(H\.264\)\.mp4$/.test(t.path)); if (i >= 0) SP.S.show.tracks.splice(i, 1); document.querySelectorAll('.banner').forEach(b => b.remove()); });
+
+  // ---------- performance and show-day checks ----------
+  // Stream encoders: the graphics-chip encoders are tried; the processor (x264) is always there as the fallback
+  const encs = await sp(async () => { await SP.loadEncoders(); return SP.enc.list.map(e => e.id); });
+  ok(encs[encs.length - 1] === 'libx264', `the stream's video encoders are checked with a test encode (${encs.join(', ')})`);
+  // A graphics-chip encoder that fails: the stream falls back to the processor by itself and keeps going
+  await sp(() => { SP.enc.list = [{ id: 'h264_nvenc', name: 'NVIDIA graphics (NVENC)' }, { id: 'libx264', name: 'Processor (x264)' }]; SP.enc.failed.clear(); SP.S.settings.stEnc = 'auto'; SP.S.settings.stQ = '720'; });
+  await sp(() => { const t = SP.S.show.tracks.find(t => t.dance === 'Finale'); SP.stopNow(false); SP.cueNext(t.id); });
+  await sleep(400); await sp(() => SP.go());
+  await sp(() => SP.streamStart());
+  await waitFor(() => SP.streamer.state.live && SP.streamer.state.encoder === 'libx264' && SP.streamer.state.health && SP.streamer.state.health.fps > 0 && SP.streamer.state.health.speed > 0, null, 25000).catch(() => {});
+  const fb = await sp(() => ({ failed: [...SP.enc.failed], enc: SP.streamer.state.encoder, live: SP.streamer.state.live, h: SP.streamer.state.health, q: SP.streamer.state.quality }));
+  ok(fb.failed.includes('h264_nvenc') && fb.enc === 'libx264' && fb.live, `when the graphics-chip encoder fails, the stream switches to the processor and carries on (${JSON.stringify({ failed: fb.failed, enc: fb.enc })})`);
+  ok(fb.h && fb.h.fps > 0 && fb.q === '720', `the stream reports whether it's keeping up (${fb.h ? `${fb.h.speed}× · ${fb.h.fps} fps · ${fb.h.kbps} kb/s` : 'nothing'})`);
+  await sp(() => SP.openSettings('stream')); await sleep(1300);
+  ok(/Keeping up|Falling behind/.test(await win.textContent('#sStHealth')) && /x264|Processor/.test(await win.textContent('#sStHealth')), `Settings → Streaming shows the stream's health (${(await win.textContent('#sStHealth')).slice(0, 90)})`);
+  await win.keyboard.press('Escape');
+  // Can't keep up: it steps down a quality level and carries on
+  await sp(() => SP.lowerQuality('test'));
+  await waitFor(() => SP.streamer.state.live && SP.streamer.state.quality === '480', null, 15000).catch(() => {});
+  ok(await sp(() => SP.streamer.state.live && SP.streamer.state.quality === '480' && !!document.querySelector('.banner[data-id=streamq]')), 'if the stream falls behind, it switches down to 480p by itself and says so');
+  await sp(() => SP.streamStop());
+  ok(await sp(() => SP.streamer.qOverride === null && SP.S.settings.stQ === '720'), 'the lower quality only lasts until the stream is stopped');
+  await sp(() => SP.stopNow(false));
+  await sleep(1500);
+  // Internet speed test
+  const spd = await sp(() => SP.runSpeedTest());
+  ok(spd.upMbps > 0 && (got.speed || 0) > 2e6 && /Upload [\d.]+ Mbps/.test(await win.textContent('#sSpeedMsg')), `the internet speed test measures upload speed (${spd.upMbps} Mbps to the test server; ${(await win.textContent('#sSpeedMsg')).slice(0, 80)})`);
+  ok(await sp(() => SP.recommendQ(10) === '1080' && SP.recommendQ(5) === '720' && SP.recommendQ(2.5) === '480' && SP.recommendQ(1) === null), 'it recommends a quality the connection can carry');
+  // Sound dropouts: measured from the sound clock against the computer clock
+  const gl = await sp(() => {
+    const save = { base: SP.glitch.base, q: SP.glitch.quietUntil }; SP.glitch.base = null; SP.glitch.quietUntil = 0;
+    const r = [SP.glitchStep(10.000, 5000, 1e9), SP.glitchStep(10.250, 5250, 1e9), SP.glitchStep(10.5, 5500.4, 1e9), SP.glitchStep(10.71, 5750, 1e9), SP.glitchStep(10.96, 6000, 1e9)];
+    SP.glitch.base = null; SP.glitch.quietUntil = save.q;
+    return { r, src: SP.glitch.src, count: SP.glitch.count };
+  });
+  ok(gl.r[0] === 0 && gl.r[1] === 0 && gl.r[2] === 0 && Math.abs(gl.r[3] - 40) < 1 && gl.r[4] === 0, `a 40 ms sound dropout is detected, and normal clock jitter isn't (${gl.r.map(x => Math.round(x)).join(', ')})`);
+  ok(!!gl.src, `sound dropouts are being counted (${gl.src}; ${gl.count} so far in this test run)`);
+  // Backup sound output: main output disappears → backup at once; back → switches back between songs
+  await sp(() => {
+    window.__real = { outputs: SP.E.outputs, setOutput: SP.E.setOutput }; window.__sink = null; window.__devs = ['default', 'usb', 'hp'];
+    const names = { default: 'Default', usb: 'USB audio box', hp: 'Headphones' };
+    SP.E.outputs = async () => window.__devs.map(id => ({ id, label: names[id] }));
+    SP.E.setOutput = async id => { window.__sink = id; return true; };
+    SP.S.settings.outputId = 'usb'; SP.S.settings.outBackup = 'hp'; SP.checkOutput.lost = false;
+  });
+  await sp(() => { window.__devs = ['default', 'hp']; return SP.checkOutput(); });
+  ok(await sp(() => window.__sink === 'hp' && SP.checkOutput.lost && /backup: Headphones/.test((document.querySelector('.banner[data-id=output]') || {}).textContent || '')), 'when the main sound output disconnects, sound switches to the chosen backup and says so');
+  await sp(() => SP.runHealth());
+  ok(await sp(() => SP.health.items.some(i => i.id === 'output' && /backup/.test(i.text))), 'the health checks show it is on the backup');
+  await sp(() => { window.__devs = ['default', 'usb', 'hp']; return SP.checkOutput(); });
+  ok(await sp(() => window.__sink === 'usb' && !SP.checkOutput.lost), 'when it comes back between songs, it switches back by itself');
+  await sp(() => { const t = SP.S.show.tracks.find(t => t.dance === 'Finale'); SP.stopNow(false); SP.cueNext(t.id); });
+  await sleep(400); await sp(() => SP.go()); await waitFor(() => SP.S.live.state === 'playing');
+  await sp(() => { window.__devs = ['default', 'hp']; return SP.checkOutput(); });
+  await sp(() => { window.__devs = ['default', 'usb', 'hp']; return SP.checkOutput(); });
+  ok(await sp(() => window.__sink === 'hp' && /Switch back now/.test((document.querySelector('.banner[data-id=output]') || {}).textContent || '')), 'mid-song it stays on the backup and offers to switch back');
+  await sp(() => SP.stopNow(false));
+  await waitFor(() => window.__sink === 'usb', null, 6000).catch(() => {});
+  ok(await sp(() => window.__sink === 'usb' && !SP.checkOutput.lost), 'and switches back at the next pause between songs');
+  // Preflight: backup, show-mode checks, drive speed, stream encoder and upload speed
+  pf = await sp(() => SP.runPreflight());
+  const pt = pf.items.map(i => i.title || '').join(' | ');
+  ok(/Backup output: Headphones/.test(pt), 'preflight shows the backup output');
+  ok(/Show files' drive: \d+ MB\/s|drive with the show files is slow/.test(pt), `preflight measures the speed of the drive with the show files (${(pt.match(/[^|]*drive[^|]*/) || [''])[0].trim()})`);
+  ok(/Stream video encoding: /.test(pt) && /Upload speed [\d.]+ Mbps|needs about/.test(pt), 'preflight shows the stream encoder and the last upload speed test');
+  ok(/dress rehearsal test hasn't been run/i.test(pt) && pf.items.some(i => i.action), 'preflight suggests the dress rehearsal test, with buttons to fix things');
+  await win.keyboard.press('Escape');
+  await sp(() => { SP.E.outputs = window.__real.outputs; SP.E.setOutput = window.__real.setOutput; SP.S.settings.outputId = ''; SP.S.settings.outBackup = 'default'; document.querySelectorAll('.banner').forEach(b => b.remove()); });
+  // Dress rehearsal test: plays the start and end of every song with a practice stream, then reports
+  await sp(() => { SP.S.show.tracks.forEach(t => { if (t.vcodec === 'hevc' || t.missing) t.enabled = false; }); SP.S.settings.stQ = '480'; SP.enc.failed.clear(); SP.enc.list = [{ id: 'libx264', name: 'Processor (x264)' }]; });
+  const rBefore = await sp(() => ({ state: SP.S.live.state, standby: SP.S.live.standbyId, played: [...SP.S.live.played].sort().join(), n: SP.S.show.tracks.filter(t => t.enabled).length }));
+  const statusBefore = got.status.length;
+  await sp(() => { document.getElementById('pfReh').click(); });
+  await sp(() => { document.getElementById('rhSeg').innerHTML += '<option value="2">2</option>'; document.getElementById('rhSeg').value = '2'; document.getElementById('rhVol').value = '-80'; document.getElementById('rhGo').click(); });
+  await waitFor(() => SP.reh.running, null, 5000).catch(() => {});
+  ok(await sp(() => SP.reh.running && SP.streamer.dry), 'the dress rehearsal test starts, with a practice stream that does not go online');
+  await waitFor(() => !SP.reh.running, null, 240000).catch(() => {});
+  const rh = await sp(() => ({ running: SP.reh.running, verdict: document.getElementById('rhVerdict').textContent, rows: [...document.querySelectorAll('#rhList li')].map(li => li.textContent), last: SP.S.settings.lastRehearsal, stream: SP.streamer.want }));
+  console.log('INFO dress rehearsal:', rh.verdict, '\n  ' + rh.rows.join('\n  '));
+  ok(!rh.running && /Ready|Not ready/.test(rh.verdict) && rh.last && rh.last.at > 0, `the test finishes with a verdict (${rh.verdict})`);
+  ok(rh.rows.some(r => new RegExp(`All ${rBefore.n} songs started and finished`).test(r)), `every song in the show was started and finished (${(rh.rows[0] || '').slice(0, 90)})`);
+  ok(rh.rows.some(r => /^.Processor: \d+%/.test(r)) && rh.rows.some(r => /Memory: at least/.test(r)) && rh.rows.some(r => /sound dropout|No sound dropouts/.test(r)) && rh.rows.some(r => /Screen pauses/.test(r)), 'the report covers processor, memory, screen pauses and sound dropouts');
+  ok(rh.rows.some(r => /Video: \d+ of \d+ frames dropped/.test(r)) && rh.rows.some(r => /Stream \(480p, Processor \(x264\)\): kept up at [\d.]+×/.test(r)), 'it measures dropped video frames and whether the stream kept up');
+  const rAfter = await sp(() => ({ state: SP.S.live.state, standby: SP.S.live.standbyId, played: [...SP.S.live.played].sort().join(), banners: [...document.querySelectorAll('.banner')].map(b => b.dataset.id) }));
+  ok(rAfter.state === rBefore.state && rAfter.standby === rBefore.standby && rAfter.played === rBefore.played && !rh.stream && !rAfter.banners.some(b => /^play-/.test(b)), `afterwards the show is back exactly where it was (${rAfter.state}, practice stream off)`);
+  ok(got.status.length === statusBefore || got.status.slice(statusBefore).length <= 1, `phones were not told about the test songs (${got.status.length - statusBefore} status update${got.status.length - statusBefore === 1 ? '' : 's'}, from the reset at the end)`);
+  await win.keyboard.press('Escape');
+  pf = await sp(() => SP.runPreflight());
+  ok(pf.items.some(i => /^Dress rehearsal test: /.test(i.title || '')), 'preflight remembers the last dress rehearsal result');
+  await win.keyboard.press('Escape');
 
   // Crash the page during a song: it reloads and carries on
   await sp(() => { const t = SP.S.show.tracks.find(t => t.dance === 'Hip Hop Crew'); t.endAt = 0; SP.S.live.state = 'standby'; SP.stopNow(false); SP.cueNext(t.id); });

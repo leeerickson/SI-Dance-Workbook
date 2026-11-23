@@ -30,6 +30,8 @@ app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 // On Windows, a window it thinks is covered (e.g. by full-screen video on a duplicated screen) stops updating. Not for a show controller.
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+// Lets the page read how many times the sound card ran dry (AudioContext.playoutStats), where Chromium supports it.
+app.commandLine.appendSwitch('enable-blink-features', 'AudioContextPlayoutStats');
 
 // "Software drawing" (Settings): turns off the graphics card for drawing, for computers whose graphics
 // driver flickers, goes black or freezes. Read from a small file before start-up, because it can't change later.
@@ -478,6 +480,9 @@ ipcMain.handle('startup:set', async (_e, prefs) => { Object.assign(startupPrefs,
 // Restarts the whole app (used when the sound card stops answering). The page stands by on the song it was on.
 ipcMain.handle('app:relaunch', () => { log('relaunch requested'); app.forceQuit = true; app.relaunch(); app.exit(0); });
 ipcMain.handle('open:external', (_e, url) => { if (/^https:\/\//.test(url)) shell.openExternal(url); });
+// System settings pages that preflight's fix buttons open (power mode, Windows Update, notifications).
+const SETTINGS_PAGES = { power: { win32: 'ms-settings:powersleep', darwin: 'x-apple.systempreferences:com.apple.preference.battery' }, update: { win32: 'ms-settings:windowsupdate' }, notifications: { win32: 'ms-settings:notifications', darwin: 'x-apple.systempreferences:com.apple.preference.notifications' } };
+ipcMain.handle('open:settings', (_e, page) => { const u = SETTINGS_PAGES[page] && SETTINGS_PAGES[page][process.platform]; if (u) shell.openExternal(u).catch(() => {}); return !!u; });
 
 // Copies every music, video and sound file into a folder next to the show file, so the show no longer
 // depends on a USB stick, a network drive or someone's Downloads folder. Returns { oldPath: newPath }.
@@ -558,6 +563,32 @@ function startGpuSampler() {
   gpu.timer = setInterval(() => { try { if (gpu.proc) gpu.proc.kill(); } catch (_) {} launch(); }, 120000);
   app.on('before-quit', () => { clearInterval(gpu.timer); try { if (gpu.proc) gpu.proc.kill(); } catch (_) {} });
 }
+// How fast the processor is running compared with its normal speed (Windows: "% Processor Performance"; over 100
+// means turbo). Under load, a low number means it's slowed down by heat or a power-saving setting.
+const cpuPerf = { v: null, at: 0, proc: null };
+function startCpuPerfSampler() {
+  if (process.platform !== 'win32' || process.env.SHOW_PLAYER_NO_GPU_SAMPLER) return;
+  const launch = () => {
+    try {
+      const proc = spawn('typeperf', ['\\Processor Information(_Total)\\% Processor Performance', '-si', '2'], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+      try { os.setPriority(proc.pid, os.constants.priority.PRIORITY_LOW); } catch (_) {}
+      cpuPerf.proc = proc; let buf = '';
+      proc.stdout.on('data', d => {
+        buf += d.toString(); let i;
+        while ((i = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+          const m = /^"[^"]*","([\d.]+)"$/.exec(line);
+          if (m) { cpuPerf.v = Math.round(parseFloat(m[1])); cpuPerf.at = Date.now(); }
+        }
+        if (buf.length > 1e5) buf = '';
+      });
+      proc.on('error', () => { cpuPerf.proc = null; });
+      proc.on('exit', () => { if (cpuPerf.proc === proc) { cpuPerf.proc = null; setTimeout(launch, 30000); } });
+    } catch (_) { cpuPerf.proc = null; }
+  };
+  launch();
+  app.on('before-quit', () => { try { const p = cpuPerf.proc; cpuPerf.proc = null; if (p) p.kill(); } catch (_) {} });
+}
 const power = { onBattery: null, thermal: '', lastResume: 0 };
 function startPowerWatch() {
   const tell = what => { log('power', what); if (win && !win.isDestroyed()) win.webContents.send('power', { what, onBattery: power.onBattery, thermal: power.thermal }); };
@@ -574,7 +605,7 @@ setInterval(() => { const n = Date.now(); const late = n - lagMark - 250; lagMar
 const PROC_NAMES = { Browser: 'Main', Tab: 'Screen', GPU: 'Graphics', Utility: 'Helpers' };
 function startStats() {
   const cores = os.cpus().length || 1;
-  startGpuSampler(); startPowerWatch();
+  startGpuSampler(); startPowerWatch(); startCpuPerfSampler();
   setInterval(() => {
     try {
       if (!win || win.isDestroyed()) return;
@@ -592,6 +623,7 @@ function startStats() {
       const gpuFresh = gpu.util != null && Date.now() - (gpu.at || 0) < 10000;
       win.webContents.send('stats', { t: Date.now(), cpu: c.all, cores: c.cores, coreCount: cores, appCpu: Math.min(100, appCpuCores / cores), appCpuCores, appMem, procs,
         freeMem: os.freemem(), totalMem: os.totalmem(), gpu: gpuFresh ? gpu.util : null, gpuSource: gpuFresh ? gpu.source : '', mainLag, disk: diskFree,
+        cpuPerf: cpuPerf.v != null && Date.now() - cpuPerf.at < 10000 ? cpuPerf.v : null,
         onBattery: power.onBattery, thermal: power.thermal, uptime: Math.round(process.uptime()), platform: process.platform });
       mainLag = 0;
     } catch (err) { log('stats error', friendly(err)); }
@@ -684,7 +716,54 @@ function ffmpegPath() {
   } catch (_) { /* not bundled */ }
   return process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
 }
-const stream = { proc: null, gen: 0, startedAt: 0, bytes: 0, lastStats: '', queued: 0, wanted: false, error: '', audio: null };
+const stream = { proc: null, gen: 0, startedAt: 0, bytes: 0, lastStats: '', queued: 0, wanted: false, error: '', audio: null, encoder: 'libx264', health: null, quality: '720' };
+// Video encoders. The graphics chip's own encoder (Intel Quick Sync, NVIDIA NVENC, AMD AMF, Apple VideoToolbox)
+// takes the heavy work of compressing the stream off the processor. Each is tried with a one-second test
+// encode before it is offered; the processor (x264) always works and is the fallback.
+const ENCODERS = { h264_nvenc: 'NVIDIA graphics (NVENC)', h264_qsv: 'Intel Quick Sync', h264_amf: 'AMD graphics (AMF)', h264_videotoolbox: 'Apple VideoToolbox', libx264: 'Processor (x264)' };
+const QUALITY = { 1080: { size: '1920:1080', kbps: 4500 }, 720: { size: '1280:720', kbps: 2500 }, 480: { size: '854:480', kbps: 1200 } };
+function encoderArgs(enc, kbps) {
+  const rate = ['-b:v', `${kbps}k`, '-maxrate', `${kbps}k`, '-bufsize', `${kbps * 2}k`, '-g', '60'];
+  switch (enc) {
+    case 'h264_nvenc': return ['-c:v', 'h264_nvenc', '-preset', 'p4', '-tune', 'll', '-rc', 'cbr', '-bf', '0', '-pix_fmt', 'yuv420p', ...rate];
+    case 'h264_qsv': return ['-c:v', 'h264_qsv', '-preset', 'veryfast', '-look_ahead', '0', '-pix_fmt', 'nv12', ...rate];
+    case 'h264_amf': return ['-c:v', 'h264_amf', '-usage', 'lowlatency', '-rc', 'cbr', '-pix_fmt', 'nv12', ...rate];
+    case 'h264_videotoolbox': return ['-c:v', 'h264_videotoolbox', '-realtime', '1', '-allow_sw', '0', '-pix_fmt', 'nv12', ...rate];
+    default: return ['-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency', '-pix_fmt', 'yuv420p', '-keyint_min', '60', '-sc_threshold', '0', ...rate];
+  }
+}
+const CANDIDATES = { win32: ['h264_nvenc', 'h264_qsv', 'h264_amf'], darwin: ['h264_videotoolbox'], linux: ['h264_nvenc', 'h264_qsv'] };
+let encoderProbe = null;
+function probeEncoder(enc) {
+  return new Promise(resolve => {
+    let p, err = '';
+    const args = ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30', '-frames:v', '30', ...encoderArgs(enc, 2500), '-f', 'null', '-'];
+    try { p = spawn(ffmpegPath(), args, { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] }); } catch (_) { return resolve(false); }
+    try { os.setPriority(p.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch (_) {}
+    const timer = setTimeout(() => { try { p.kill('SIGKILL'); } catch (_) {} }, 15000);
+    p.stderr.on('data', d => { if (err.length < 4000) err += d; });
+    p.on('error', () => { clearTimeout(timer); resolve(false); });
+    p.on('close', code => { clearTimeout(timer); if (code !== 0) log('encoder not available', enc, err.trim().split('\n').pop()); resolve(code === 0); });
+  });
+}
+function probeEncoders(force) {
+  if (encoderProbe && !force) return encoderProbe;
+  return (encoderProbe = (async () => {
+    const found = [];
+    for (const enc of CANDIDATES[process.platform] || []) if (await probeEncoder(enc)) found.push(enc);
+    found.push('libx264');
+    log('stream encoders', found.join(', '));
+    return { list: found.map(id => ({ id, name: ENCODERS[id] })), best: found[0], names: ENCODERS };
+  })());
+}
+ipcMain.handle('stream:encoders', (_e, force) => probeEncoders(!!force));
+// Reads ffmpeg's progress line: frames per second, bitrate, dropped frames and speed (1.00x = keeping up).
+function parseStreamStats(txt) {
+  const num = re => { const m = re.exec(txt); return m ? parseFloat(m[1]) : null; };
+  const speed = num(/speed=\s*([\d.]+)x/), frame = num(/frame=\s*(\d+)/);
+  if (speed == null && frame == null) return null;
+  return { frame, fps: num(/fps=\s*([\d.]+)/), kbps: num(/bitrate=\s*([\d.]+)kbits/), drop: num(/drop=\s*(\d+)/) || 0, dup: num(/dup=\s*(\d+)/) || 0, speed };
+}
 // Sound goes to ffmpeg over its own local connection as raw samples, separate from the picture (which comes on stdin),
 // so a busy moment drawing or compressing the picture can never drop or click the sound.
 function audioPipe() {
@@ -701,7 +780,7 @@ function audioPipe() {
 }
 function closeAudioPipe(a) { if (!a) return; try { a.sock && a.sock.end(); } catch (_) {} try { a.server.close(); } catch (_) {} }
 function streamReport(extra = {}) {
-  if (win && !win.isDestroyed()) win.webContents.send('stream:state', { gen: stream.gen, live: !!stream.proc, startedAt: stream.startedAt, bytes: stream.bytes, stats: stream.lastStats, error: stream.error, queued: stream.queued, ...extra });
+  if (win && !win.isDestroyed()) win.webContents.send('stream:state', { gen: stream.gen, live: !!stream.proc, startedAt: stream.startedAt, bytes: stream.bytes, stats: stream.lastStats, error: stream.error, queued: stream.queued, encoder: stream.encoder, encoderName: ENCODERS[stream.encoder] || stream.encoder, health: stream.health, quality: stream.quality, dry: !!stream.dry, ...extra });
 }
 // What kind of video is in a file (h264, hevc, vp9, av1 …), read from the file's header with the bundled ffmpeg.
 function videoCodecOf(file) {
@@ -752,29 +831,35 @@ ipcMain.handle('stream:check', () => {
 });
 ipcMain.handle('stream:start', async (_e, cfg) => {
   if (stream.proc) return { ok: true, gen: stream.gen };
-  const target = process.env.SHOW_PLAYER_STREAM_OUT || (String(cfg.url || '').replace(/\/+$/, '') + (cfg.key ? '/' + cfg.key : ''));
-  if (!process.env.SHOW_PLAYER_STREAM_OUT && !/^rtmps?:\/\//i.test(target)) return { ok: false, error: 'The stream address must start with rtmp:// or rtmps://' };
-  const kbps = cfg.quality === '480' ? 1200 : 2500, size = cfg.quality === '480' ? '854:480' : '1280:720';
+  // A dry run (the dress rehearsal test) does all the work of streaming but sends the result nowhere.
+  const dry = !!cfg.dry;
+  const target = dry ? '' : process.env.SHOW_PLAYER_STREAM_OUT || (String(cfg.url || '').replace(/\/+$/, '') + (cfg.key ? '/' + cfg.key : ''));
+  if (!dry && !process.env.SHOW_PLAYER_STREAM_OUT && !/^rtmps?:\/\//i.test(target)) return { ok: false, error: 'The stream address must start with rtmp:// or rtmps://' };
+  const quality = QUALITY[cfg.quality] ? String(cfg.quality) : '720';
+  const { kbps, size } = QUALITY[quality];
+  const encoder = ENCODERS[cfg.encoder] ? cfg.encoder : 'libx264';
   const rate = Math.round(+cfg.audioRate || 48000);
   const audio = await audioPipe();
-  const args = ['-hide_banner', '-loglevel', 'error', '-stats',
+  const args = ['-hide_banner', '-loglevel', 'error', '-stats', '-y',
     '-thread_queue_size', '512', '-fflags', '+genpts', '-i', 'pipe:0',
     '-thread_queue_size', '4096', '-f', 's16le', '-ar', String(rate), '-ac', '2', '-i', `tcp://127.0.0.1:${audio.port}`,
     '-map', '0:v:0', '-map', '1:a:0', '-af', 'aresample=async=1000:first_pts=0',
     '-vf', `scale=${size}:force_original_aspect_ratio=decrease,pad=${size}:(ow-iw)/2:(oh-ih)/2,fps=30`,
-    '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency', '-pix_fmt', 'yuv420p', '-g', '60', '-keyint_min', '60', '-sc_threshold', '0',
-    '-b:v', `${kbps}k`, '-maxrate', `${kbps}k`, '-bufsize', `${kbps * 2}k`,
-    '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-ac', '2', '-f', 'flv', target];
+    ...encoderArgs(encoder, kbps),
+    '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-ac', '2', ...(dry ? ['-f', 'null', '-'] : ['-f', 'flv', target])];
   try {
     const proc = spawn(ffmpegPath(), args, { stdio: ['pipe', 'ignore', 'pipe'], windowsHide: true });
     try { os.setPriority(proc.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch (_) {}
     const gen = ++stream.gen;
     closeAudioPipe(stream.audio); stream.audio = audio;
     stream.proc = proc; stream.startedAt = Date.now(); stream.bytes = 0; stream.queued = 0; stream.error = ''; stream.wanted = true;
+    stream.encoder = encoder; stream.quality = quality; stream.dry = dry; stream.health = null; stream.lastStats = '';
     proc.stdin.on('error', err => log('stream input error', friendly(err)));
     proc.stderr.on('data', d => {
       const txt = d.toString();
       const m = /frame=\s*\d+.*?bitrate=\s*([\d.]+\S*).*?speed=\s*([\d.]+x)/.exec(txt);
+      const hs = parseStreamStats(txt);
+      if (hs) stream.health = hs;
       if (m) stream.lastStats = `${m[1]} · ${m[2]}`;
       else if (txt.trim()) { stream.error = txt.trim().split('\n').pop().slice(0, 200); log('stream', stream.error); }
     });
@@ -782,9 +867,11 @@ ipcMain.handle('stream:start', async (_e, cfg) => {
     proc.on('exit', (code, signal) => {
       log('stream ended', { code, signal });
       if (stream.proc === proc) { stream.proc = null; closeAudioPipe(stream.audio); stream.audio = null; }
-      if (gen === stream.gen) streamReport({ ended: true, code, gen });
+      // A graphics-chip encoder that fails in its first seconds is reported, so the page can fall back to the processor.
+      const early = Date.now() - stream.startedAt < 8000 && !(stream.health && stream.health.frame > 30);
+      if (gen === stream.gen) streamReport({ ended: true, code, gen, encoderFailed: early && encoder !== 'libx264' && code !== 0 ? encoder : '' });
     });
-    log('stream started', process.env.SHOW_PLAYER_STREAM_OUT ? 'test file' : target.replace(/\/[^/]*$/, '/•••'), `${cfg.quality || '720'}p`);
+    log('stream started', dry ? 'dry run' : process.env.SHOW_PLAYER_STREAM_OUT ? 'test file' : target.replace(/\/[^/]*$/, '/•••'), `${quality}p`, encoder);
     streamReport();
     return { ok: true, gen };
   } catch (err) { return { ok: false, error: friendly(err) }; }
@@ -819,3 +906,89 @@ ipcMain.handle('stream:stop', () => {
 });
 setInterval(() => { if (stream.proc) streamReport(); }, 1000);
 app.on('before-quit', () => { if (stream.proc) { try { stream.proc.kill('SIGKILL'); } catch (_) {} } });
+
+/* ---------- internet check for streaming ----------
+   Upload speed: a few seconds of random data posted to a speed-test server (nothing about the show or the
+   computer is sent). Reach: how long it takes to open a connection to the stream service's own server. */
+const SPEEDTEST_URL = process.env.SHOW_PLAYER_SPEEDTEST_URL || 'https://speed.cloudflare.com/__up';
+function reachHost(url) {
+  return new Promise(resolve => {
+    let host, port;
+    try { const u = new URL(url); host = u.hostname; port = +u.port || (/^rtmps:/i.test(url) ? 443 : 1935); } catch (_) { return resolve({ ok: false, error: 'The stream address is not valid.' }); }
+    const t0 = Date.now();
+    const sock = nodeNet.connect({ host, port });
+    const done = r => { try { sock.destroy(); } catch (_) {} resolve(r); };
+    sock.setTimeout(5000, () => done({ ok: false, host, error: `No answer from ${host}.` }));
+    sock.on('connect', () => done({ ok: true, host, ms: Date.now() - t0 }));
+    sock.on('error', err => done({ ok: false, host, error: /ENOTFOUND|EAI_AGAIN/.test(err.code) ? `${host} can't be found (is the internet connected?).` : `Can't connect to ${host} (${err.code || friendly(err)}).` }));
+  });
+}
+ipcMain.handle('net:speedtest', async (_e, { url } = {}) => {
+  const out = { reach: url ? await reachHost(url) : null, upMbps: null, error: '' };
+  try {
+    const chunk = require('crypto').randomBytes(2 * 1024 * 1024);
+    const post = async b => { const r = await net.fetch(SPEEDTEST_URL, { method: 'POST', body: b, headers: { 'Content-Type': 'application/octet-stream' } }); await r.arrayBuffer().catch(() => {}); if (!r.ok) throw new Error(`HTTP ${r.status}`); };
+    await post(chunk.subarray(0, 256 * 1024)); // opens the connection
+    let bytes = 0; const t0 = Date.now();
+    while (Date.now() - t0 < 6000 && bytes < 40 * 1024 * 1024) { await post(chunk); bytes += chunk.length; }
+    const sec = (Date.now() - t0) / 1000;
+    out.upMbps = Math.round(bytes * 8 / sec / 1e5) / 10;
+  } catch (err) { out.error = `The speed test server couldn't be reached (${friendly(err)}).`; }
+  log('speed test', { up: out.upMbps, reach: out.reach && (out.reach.ok ? out.reach.ms + ' ms' : out.reach.error), error: out.error });
+  return out;
+});
+
+/* ---------- "show mode" computer checks ----------
+   Settings that can spoil a show: a power-saving mode, Windows waiting to restart for an update, notifications
+   popping up. Read from the system's own settings (quick, nothing is changed). */
+const run = (cmd, args, timeout = 6000) => new Promise(resolve => {
+  try { require('child_process').execFile(cmd, args, { timeout, windowsHide: true }, (err, stdout) => resolve(err && !stdout ? { code: err.code || 1, out: '' } : { code: 0, out: String(stdout) })); }
+  catch (_) { resolve({ code: 1, out: '' }); }
+});
+const PLANS = { 'a1841308-3541-4fab-bc81-f71556f20b4a': 'Power saver', '381b4222-f694-41f0-9685-ff5bb260df2e': 'Balanced', '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c': 'High performance', 'e9a42b02-d5df-448d-aa00-03f14749eb61': 'Ultimate performance' };
+const MODES = { '961cc777-2547-4f9d-8174-7d86181b8a7a': 'Best power efficiency', '00000000-0000-0000-0000-000000000000': 'Balanced', '3af9b8d9-7c97-431d-ad78-34a8bfea439f': 'Better performance', 'ded574b5-45a0-4f42-8737-46345c09c238': 'Best performance' };
+ipcMain.handle('system:showcheck', async () => {
+  const r = { platform: process.platform, plan: null, mode: null, updateRestart: null, notifications: null, lowPower: null, speedLimit: null, cpuPerf: cpuPerf.v };
+  if (process.platform === 'win32') {
+    const reg = (key, value) => run('reg', ['query', key, ...(value ? ['/v', value] : [])]);
+    const plan = await run('powercfg', ['/getactivescheme']);
+    const pg = /([0-9a-f]{8}-[0-9a-f-]{27})/i.exec(plan.out);
+    if (pg) r.plan = PLANS[pg[1].toLowerCase()] || ((/\(([^)]+)\)/.exec(plan.out) || [])[1] || 'Custom');
+    const onBat = power.onBattery;
+    const mode = await reg('HKLM\\SYSTEM\\CurrentControlSet\\Control\\Power\\User\\PowerSchemes', onBat ? 'ActiveOverlayDcPowerScheme' : 'ActiveOverlayAcPowerScheme');
+    const mg = /([0-9a-f]{8}-[0-9a-f-]{27})/i.exec(mode.out);
+    r.mode = mg ? (MODES[mg[1].toLowerCase()] || null) : (mode.code === 0 ? 'Balanced' : null);
+    const k1 = await reg('HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update\\RebootRequired');
+    const k2 = await reg('HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Component Based Servicing\\RebootPending');
+    r.updateRestart = k1.code === 0 || k2.code === 0;
+    const toast = await reg('HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Notifications\\Settings', 'NOC_GLOBAL_SETTING_TOASTS_ENABLED');
+    const tv = /REG_DWORD\s+0x([0-9a-f]+)/i.exec(toast.out);
+    r.notifications = tv ? (parseInt(tv[1], 16) === 0 ? 'off' : 'on') : 'on';
+  } else if (process.platform === 'darwin') {
+    const pm = await run('pmset', ['-g']);
+    const lp = /lowpowermode\s+(\d)/.exec(pm.out); if (lp) r.lowPower = lp[1] === '1';
+    const th = await run('pmset', ['-g', 'therm']);
+    const sl = /CPU_Speed_Limit\s*=\s*(\d+)/.exec(th.out); if (sl) r.speedLimit = +sl[1];
+  }
+  return r;
+});
+// How fast the drive holding the show's files is: writes 32 MB next to the media (forced onto the disk), then
+// deletes it. Only run from preflight, never while music plays.
+ipcMain.handle('drive:speed', async (_e, folders) => {
+  const out = [];
+  for (const dir of [...new Set(folders || [])].slice(0, 3)) {
+    const file = path.join(dir, `.showplayer-speedtest-${process.pid}.tmp`);
+    let fh = null;
+    try {
+      const block = Buffer.alloc(1024 * 1024, 7), total = 32;
+      fh = await fs.promises.open(file, 'w');
+      const t0 = process.hrtime.bigint();
+      for (let i = 0; i < total; i++) await fh.write(block, 0, block.length);
+      await fh.sync();
+      const sec = Number(process.hrtime.bigint() - t0) / 1e9;
+      out.push({ dir, mbps: Math.round(total / Math.max(sec, 0.001)) });
+    } catch (err) { out.push({ dir, error: friendly(err) }); }
+    finally { if (fh) await fh.close().catch(() => {}); fs.promises.unlink(file).catch(() => {}); }
+  }
+  return out;
+});

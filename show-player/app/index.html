@@ -216,7 +216,9 @@
       <section class="set-pane dlg-grid" data-pane="output" role="tabpanel">
       <fieldset><legend>Sound output</legend>
         <label>Play through<select id="sOut"></select></label>
+        <label>If it disconnects or stops, switch to<select id="sOutBackup"></select></label>
         <p class="muted" id="sOutMsg"></p>
+        <p class="muted">The backup takes over by itself, and the music keeps playing. A USB audio box as the main output, with the computer's own headphone socket as the backup, is a good setup.</p>
       </fieldset>
       <fieldset><legend>Master and balance</legend>
         <label>Master level <span class="mono" id="sMasterTxt"></span><input type="range" id="sMaster" min="-30" max="12" step="0.5"></label>
@@ -300,8 +302,15 @@
             <label class="wide">Stream key<input type="password" id="sStKey" class="mono" spellcheck="false" autocomplete="off" placeholder="Kept on this computer only"></label>
           </div>
         </div>
-        <div class="fields"><label>Quality<select id="sStQ"><option value="720">720p (2.5 Mbps upload, recommended)</option><option value="480">480p (1.2 Mbps upload, slower internet)</option></select></label></div>
+        <div class="fields">
+          <label>Quality<select id="sStQ"><option value="1080">1080p (4.5 Mbps upload, needs 7 Mbps)</option><option value="720">720p (2.5 Mbps upload, needs 4 Mbps, recommended)</option><option value="480">480p (1.2 Mbps upload, needs 2 Mbps)</option></select></label>
+          <label>Video encoding<select id="sStEnc"><option value="auto">Automatic: graphics chip if it can (recommended)</option><option value="cpu">Processor only</option></select></label>
+          <label class="chk wide"><input type="checkbox" id="sStAuto"> Lower the quality by itself if the stream can't keep up</label>
+        </div>
+        <p class="muted" id="sStEncMsg"></p>
+        <div class="inline"><button class="btn small" type="button" id="sSpeedGo">Test internet speed</button><span class="muted" id="sSpeedMsg">Run this at the venue, on the connection you'll stream from.</span><button class="btn small" type="button" id="sSpeedUse" hidden></button></div>
         <div class="inline"><button class="btn small primary" type="button" id="sStGo">Start streaming</button><span class="muted" id="sStMsg"></span></div>
+        <p class="st-health" id="sStHealth" hidden></p>
         <p class="muted">Streaming uses some of the computer's power, at low priority so the show always comes first. Start it a few minutes early and check it on a phone. If the internet drops, it reconnects by itself.</p>
       </fieldset>
       <fieldset class="span2" id="streamPicBox"><legend>Stream picture</legend>
@@ -409,9 +418,25 @@
 <!-- Preflight -->
 <dialog id="dlgPreflight" class="dlg">
   <form method="dialog" class="dlg-in">
-    <div class="dlg-head"><h2>Preflight check</h2><div class="inline"><button class="btn small" type="button" id="pfRun">Run again</button><button class="btn small primary" type="button" id="pfConvert" hidden>Convert HEVC videos to H.264</button><button class="btn small" type="button" id="pfFind">Find missing files…</button><button class="btn small" value="close">Done</button></div></div>
+    <div class="dlg-head"><h2>Preflight check</h2><div class="inline"><button class="btn small" type="button" id="pfRun">Run again</button><button class="btn small primary" type="button" id="pfConvert" hidden>Convert HEVC videos to H.264</button><button class="btn small" type="button" id="pfFind">Find missing files…</button><button class="btn small" type="button" id="pfReh">Dress rehearsal test…</button><button class="btn small" value="close">Done</button></div></div>
     <p class="muted" id="pfSummary"></p>
     <ul class="pflist" id="pfList"></ul>
+  </form>
+</dialog>
+
+<!-- Dress rehearsal test -->
+<dialog id="dlgReh" class="dlg">
+  <form method="dialog" class="dlg-in">
+    <div class="dlg-head"><h2>Dress rehearsal test</h2><div class="inline"><button class="btn small primary" type="button" id="rhGo">Start test</button><button class="btn small" type="button" id="rhCopy" hidden>Copy report</button><button class="btn small" value="close">Done</button></div></div>
+    <p class="muted">Runs the show as a stress test: the start and end of every song, every transition, the video output and a practice stream that doesn't go online, while it measures the computer. Run it on the show computer, in the venue, plugged in, with the projector and sound connected and anything else you'll use open.</p>
+    <div class="fields" id="rhOpts">
+      <label>Each song: play the first and last<select id="rhSeg"><option value="5">5 seconds</option><option value="8" selected>8 seconds</option><option value="15">15 seconds</option></select></label>
+      <label>Sound during the test<select id="rhVol"><option value="0">Normal level</option><option value="-20" selected>Quiet (−20 dB)</option><option value="-80">Silent</option></select></label>
+      <label class="chk wide"><input type="checkbox" id="rhStream" checked> Include a practice stream at your stream quality (nothing goes online)</label>
+    </div>
+    <div class="rh-progress" id="rhProg" hidden><div class="rh-bar"><i id="rhBar"></i></div><span id="rhNow" class="muted"></span></div>
+    <p id="rhVerdict" class="rh-verdict" hidden></p>
+    <ul class="pflist" id="rhList"></ul>
   </form>
 </dialog>
 
