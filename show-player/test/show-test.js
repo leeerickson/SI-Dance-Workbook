@@ -11,13 +11,19 @@ const AdmZip = require('adm-zip');
 const os = require('os');
 const http = require('http');
 
+// ffmpeg makes the test's songs. Use the one on this computer if there is one, otherwise the one bundled with the app.
+const FFMPEG = (() => {
+  try { execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' }); return 'ffmpeg'; } catch (_) { /* not installed */ }
+  try { const p = require('ffmpeg-static'); if (p && fs.existsSync(p)) return p; } catch (_) { /* not installed either */ }
+  throw new Error('ffmpeg is needed to run this test: install it, or run npm install in show-player.');
+})();
 const ok = (cond, msg) => { console.log((cond ? 'PASS ' : 'FAIL ') + msg); if (!cond) process.exitCode = 1; };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 (async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'showplayer-'));
   const media = path.join(tmp, 'media'); fs.mkdirSync(media);
-  const ff = (name, args) => { const out = path.join(media, name); execFileSync('ffmpeg', ['-v', 'error', '-y', ...args, out]); return out; };
+  const ff = (name, args) => { const out = path.join(media, name); execFileSync(FFMPEG, ['-v', 'error', '-y', ...args, out]); return out; };
   const tone = (name, freq, db, sec) => ff(name, ['-f', 'lavfi', '-i', `sine=frequency=${freq}:duration=${sec}:sample_rate=48000`, '-af', `volume=${db}dB,aformat=channel_layouts=stereo`]);
   const files = [
     tone('01 Quiet Song.wav', 440, -4, 8),    // ffmpeg's sine is -18 dBFS, so this is about -26 LUFS
@@ -31,7 +37,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const quietEnds = ff('Quiet Ends.wav', ['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo:d=2', '-f', 'lavfi', '-i', 'sine=frequency=500:duration=4:sample_rate=48000', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo:d=2',
     '-filter_complex', '[1]volume=10dB,aformat=channel_layouts=stereo[t];[0][t][2]concat=n=3:v=0:a=1']);
   const streamOut = path.join(tmp, 'stream-test.flv');
-  const logoPng = path.join(media, 'Studio Logo.png'); execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=#E8508A:s=400x160:d=1', '-frames:v', '1', logoPng]);
+  const logoPng = path.join(media, 'Studio Logo.png'); execFileSync(FFMPEG, ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=#E8508A:s=400x160:d=1', '-frames:v', '1', logoPng]);
   const longVideo = ff('Long Video.mp4', ['-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=25:duration=20', '-f', 'lavfi', '-i', 'sine=frequency=700:duration=20', '-shortest', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac']);
 
   // Stand-in WordPress site: records what the desk sends.
@@ -455,12 +461,13 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await sp(() => SP.streamStop());
   await sleep(4500);
   let probe = '';
-  try { probe = execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_name,width', '-of', 'csv=p=0', streamOut]).toString().trim().replace(/\s+/g, ' '); } catch (err) { probe = 'ffprobe failed: ' + err.message.slice(0, 120); }
-  ok(/h264/.test(probe) && /aac/.test(probe) && /854/.test(probe), `the stream has H.264 video at 480p and AAC sound (${probe})`);
+  // ffmpeg prints what's in the file (to its error output, then stops because no output was asked for)
+  { const r = require('child_process').spawnSync(FFMPEG, ['-hide_banner', '-i', streamOut]); probe = ((String(r.stderr).match(/Stream #.*/g) || []).join(' ').match(/h264|aac|\b854x480\b/g) || []).join(' ') || 'could not read the stream file'; }
+  ok(/h264/.test(probe) && /aac/.test(probe) && /854x480/.test(probe), `the stream has H.264 video at 480p and AAC sound (${probe})`);
   // the tone in the stream must be smooth: a clean sine never jumps, so every jump is a click or a gap
   const clicks = (() => {
     try {
-      const raw = execFileSync('ffmpeg', ['-v', 'error', '-ss', '1.5', '-t', '3', '-i', streamOut, '-vn', '-ac', '1', '-ar', '48000', '-f', 'f32le', 'pipe:1'], { maxBuffer: 1 << 26 });
+      const raw = execFileSync(FFMPEG, ['-v', 'error', '-ss', '1.5', '-t', '3', '-i', streamOut, '-vn', '-ac', '1', '-ar', '48000', '-f', 'f32le', 'pipe:1'], { maxBuffer: 1 << 26 });
       const x = new Float32Array(raw.buffer, raw.byteOffset, raw.length / 4);
       let peak = 0; for (const v of x) peak = Math.max(peak, Math.abs(v));
       const d2 = []; for (let i = 1; i < x.length - 1; i++) d2.push(Math.abs(x[i + 1] - 2 * x[i] + x[i - 1]));

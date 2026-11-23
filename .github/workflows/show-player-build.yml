@@ -23,8 +23,6 @@ jobs:
       - run: npm ci
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
-      - run: choco install ffmpeg -y --no-progress
-        working-directory: .
       - name: Test the app (plays a generated show, crashes the page and checks it carries on)
         run: npm test
         timeout-minutes: 10
@@ -49,7 +47,6 @@ jobs:
           cache: npm
           cache-dependency-path: show-player/package-lock.json
       - run: npm ci
-      - run: brew install ffmpeg
       - name: Test the app on macOS
         run: npm test
         timeout-minutes: 10
