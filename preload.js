@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('workbook', {
   saveShare: payload => ipcRenderer.invoke('share:save', payload),
   openShare: () => ipcRenderer.invoke('share:open'),
   pendingShare: () => ipcRenderer.invoke('share:pending'),
+  saveBackup: payload => ipcRenderer.invoke('backup:save', payload),
+  openBackup: () => ipcRenderer.invoke('backup:open'),
   print: () => ipcRenderer.invoke('print'),
   savePdf: title => ipcRenderer.invoke('pdf:save', { title }),
   reveal: p => ipcRenderer.invoke('reveal', p),

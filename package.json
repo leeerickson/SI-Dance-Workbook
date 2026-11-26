@@ -1,7 +1,7 @@
 {
   "name": "choreography-workbook",
   "productName": "Choreography Workbook",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Build, rehearse, print and share dance choreography. No login; everything stays on your PC.",
   "main": "main.js",
   "author": "Choreography Workbook",
@@ -12,6 +12,7 @@
     "pack:win": "electron-builder --win --x64 --dir --publish never",
     "dist": "npm run pack:win && node build/stamp-exe.js && electron-builder --win --x64 --prepackaged dist/win-unpacked --publish never",
     "test": "node test/smoke.js",
+    "sync-core": "node -e \"require('fs').copyFileSync('app/stagecore.js','mobile/www/stagecore.js')\"",
     "dist:portable": "npm run pack:win && node build/stamp-exe.js && electron-builder --win portable zip --x64 --prepackaged dist/win-unpacked --publish never",
     "dist:mac": "electron-builder --mac --publish never"
   },

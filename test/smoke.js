@@ -53,6 +53,40 @@ const AdmZip = require('adm-zip');
   await win.click('[data-tab="share"]'); await win.waitForTimeout(300);
   ok((await win.textContent('#paper')).includes('Bring Chair A on from stage right'), 'printout lists who moves which prop');
 
+  // 0.4: shared stage engine is the same file in both apps
+  ok(fs.readFileSync(path.join(__dirname, '..', 'app', 'stagecore.js'), 'utf8') === fs.readFileSync(path.join(__dirname, '..', 'mobile', 'www', 'stagecore.js'), 'utf8'), 'app/stagecore.js and mobile/www/stagecore.js are identical (npm run sync-core)');
+  // sections suggested from the music
+  await win.click('[data-tab="counts"]'); await win.click('#suggestBtn');
+  await win.waitForFunction(() => !document.getElementById('secSuggest').textContent.includes('Listening'), null, { timeout: 30000 });
+  const sug = (await win.textContent('#secSuggest')).replace(/\s+/g, ' ');
+  ok(['Intro from 8-count 1', 'Verse from 8-count 3', 'Chorus from 8-count 7', 'Bridge from 8-count 11', 'Final chorus from 8-count 13'].every(t => sug.includes(t)), `sections suggested from the demo music match its real sections (${sug.slice(0, 160)})`);
+  await win.click('#sugNo');
+  // curve a path, turn a dancer, stagger the move
+  await win.click('[data-tab="forms"]'); await win.click('.fchip:has-text("Two lines")'); await win.waitForTimeout(300);
+  await win.click('#fStage [data-id="d0"]'); await win.waitForTimeout(200);
+  const hb = await (await win.$('#fStage [data-handle]')).boundingBox();
+  await win.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2); await win.mouse.down(); await win.mouse.move(hb.x + 70, hb.y - 40, { steps: 6 }); await win.mouse.up(); await win.waitForTimeout(200);
+  ok(!!(await win.$('#straightBtn')), 'dragging the path handle curves the path');
+  await win.click('#faceR'); await win.click('#faceR'); await win.waitForTimeout(150);
+  ok((await win.textContent('.face-txt')) === 'Facing stage left', 'turning a dancer twice to the right faces stage left');
+  await win.selectOption('#stagOrder', 'front'); await win.waitForTimeout(200);
+  ok((await win.textContent('#fPanel')).includes('Staggered:'), 'front row first staggers the move');
+  // stage settings
+  await win.selectOption('#stPreset', 'studio'); await win.selectOption('#stSpike', '2'); await win.selectOption('#stLabels', 'ones'); await win.waitForTimeout(200);
+  const marks = await win.$$eval('#fStage .st-static text', t => t.map(x => x.textContent));
+  ok(marks.includes('7') && !marks.includes('8') && (await win.textContent('#stSizeTxt')) === '30 × 20 ft', 'a 30 × 20 ft studio with marks every 2 ft is numbered 1 to 7');
+  ok((await win.textContent('#wlist')).includes('off the stage'), 'dancers outside a smaller stage are flagged');
+  await win.selectOption('#stPreset', 'standard'); await win.selectOption('#stSpike', '4'); await win.selectOption('#stLabels', 'pairs'); await win.waitForTimeout(200);
+  // 3D view
+  await win.click('#tab-forms [data-view="3d"]'); await win.waitForTimeout(400);
+  const lit = await win.$eval('#tab-forms canvas.stage3d', c => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 0; i < d.length; i += 400) if (d[i] + d[i+1] + d[i+2] > 60) n++; return n; });
+  ok(lit > 50 && !(await win.isVisible('#fStage')), '3D view draws the stage from the audience');
+  await win.click('#tab-forms [data-view="aud"]');
+  // saved class
+  await win.selectOption('#rosterSel', 'save'); await win.fill('#rosterName', 'Jazz Tuesday'); await win.click('#rosterOk'); await win.waitForTimeout(300);
+  ok((await win.$$eval('#rosterSel option', o => o.map(x => x.textContent))).includes('Add Jazz Tuesday (8)'), 'dancers can be saved as a class');
+  await win.click('[data-tab="share"]'); await win.waitForTimeout(300);
+
   await app.evaluate(({ dialog }, p) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: p }); }, sharePath);
   await win.click('[data-tab="share"]');
   await win.click('#makeShare');
@@ -61,6 +95,8 @@ const AdmZip = require('adm-zip');
   ok(data.app === 'choreo-workbook' && data.format === 1, '.dance file is a zip with project.json');
   ok(data.project.formations.length === 8 && Object.keys(data.project.notes).length === 16, '.dance file holds 8 formations and 16 notes');
   ok(Array.isArray(data.project.props) && data.project.props.length === 2, '.dance file holds the props');
+  const tl = data.project.formations.find(f => f.name === 'Two lines');
+  ok(tl.paths && tl.paths.d0 && tl.face && tl.face.d0 === 90 && tl.timing && data.project.stage && data.project.stage.w === 36, '.dance file holds curved paths, facing, timing and the stage');
 
   await app.evaluate(({ dialog }, p) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: p }); }, pdfPath);
   await win.click('#pdfBtn');
@@ -85,6 +121,22 @@ const AdmZip = require('adm-zip');
   await win.click('#importBtn');
   await win.waitForFunction(() => document.querySelectorAll('.card').length === 2, null, { timeout: 10000 });
   ok((await win.textContent('#cards')).includes('Received from a share file'), 'opening the .dance file adds it to the library');
+
+  // library backup and restore
+  const libPath = path.join(tmp, 'library.dancelib');
+  await app.evaluate(({ dialog }, p) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: p }); dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [p] }); }, libPath);
+  await win.click('#backupBtn');
+  await win.waitForFunction(() => document.getElementById('toast').textContent.startsWith('Backed up'), null, { timeout: 20000 });
+  const lib = JSON.parse(new AdmZip(libPath).readAsText('library.json'));
+  ok(lib.kind === 'library' && lib.projects.length === 2 && lib.rosters.length === 1, 'Back up library saves every song and saved class');
+  const del = await win.$('.card:has-text("Received from a share file") [data-a="del"]'); await del.click(); await del.click();
+  await win.waitForFunction(() => document.querySelectorAll('.card').length === 1);
+  await win.click('#restoreBtn');
+  await win.waitForFunction(() => document.querySelectorAll('.card').length === 2, null, { timeout: 10000 });
+  ok((await win.textContent('#toast')).includes('1 new'), 'Restore brings back a deleted song');
+  await win.selectOption('#libSort', 'az'); await win.waitForTimeout(300);
+  const titles = await win.$$eval('.card h3', x => x.map(e => e.textContent));
+  ok(titles.join('|') === [...titles].sort((a, b) => a.localeCompare(b)).join('|'), 'the library can be sorted A to Z');
 
   await win.screenshot({ path: path.join(tmp, 'library.png') });
   ok(errors.length === 0, 'no page errors' + (errors.length ? ': ' + errors.join(' | ') : ''));

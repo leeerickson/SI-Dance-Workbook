@@ -73,6 +73,11 @@ select{min-height:40px; padding:6px 10px; border:1px solid var(--line); border-r
 .stage{position:relative; aspect-ratio:4/3; max-width:100%; background:var(--stage); color:var(--stage-ink); border-radius:16px; overflow:hidden; container-type:inline-size; display:grid; place-items:center; margin-bottom:8px}
 .stage video{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000}
 .stage video.mirror{transform:scaleX(-1)}
+.stage.split #vid{inset:0 50% 0 0; width:50%; object-fit:cover}
+.stage.split #takeVid{inset:0 0 0 50%; width:50%; object-fit:cover}
+.badge.rec{background:#D92D20; color:#fff}
+.take{display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:8px; align-items:center; padding:10px 0; border-top:1px solid var(--line); font-size:14px}
+.take:first-child{margin-top:10px}
 .cd{position:relative; display:grid; justify-items:center; gap:1.4cqw; text-align:center; z-index:1}
 .cd-section{display:flex; align-items:center; gap:2cqw; font-family:var(--f-display); font-stretch:118%; font-weight:750; font-size:5cqw; letter-spacing:.08em; text-transform:uppercase}
 .tape{display:inline-block; width:6cqw; height:2.2cqw; border-radius:1px; transform:rotate(-6deg); background:var(--tape-1)}
@@ -100,6 +105,7 @@ select{min-height:40px; padding:6px 10px; border:1px solid var(--line); border-r
 #stageFloorSlot:empty,#cardFloorSlot:empty{display:none}
 #stageFloorSlot,#cardFloorSlot,#floorBox{width:100%; min-width:0}
 #stageSvg{width:100%; height:auto; aspect-ratio:400/310}
+#stage3d{display:block; width:100%; aspect-ratio:400/310; border-radius:10px; touch-action:pan-y}
 .badges{position:absolute; top:3cqw; right:3cqw; display:flex; gap:6px; z-index:2}
 .badge{font-family:var(--f-mono); font-size:12px; padding:3px 9px; border-radius:999px; background:rgba(255,255,255,.14); color:var(--stage-ink)}
 .badge.loop{background:var(--accent); color:var(--accent-ink)}
@@ -141,11 +147,12 @@ select{min-height:40px; padding:6px 10px; border:1px solid var(--line); border-r
 .floor-title{white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-family:var(--f-display); font-stretch:115%; font-weight:700; font-size:13px; letter-spacing:.06em; text-transform:uppercase}
 .floor-sub{font-family:var(--f-mono); font-size:12px; color:var(--floor-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 .view-toggle{display:inline-flex; flex:0 0 auto; border:1px solid var(--floor-line); border-radius:8px; overflow:hidden}
-.view-toggle button{border:none; background:transparent; color:var(--floor-muted); padding:6px 10px; font-size:12.5px; cursor:pointer}
+.view-toggle button{border:none; background:transparent; color:var(--floor-muted); padding:6px 9px; font-size:12.5px; cursor:pointer}
 .view-toggle button[aria-pressed="true"]{background:var(--floor-ink); color:var(--stage)}
 #cardFloorSlot:not(:empty) + #followRow{margin-top:10px}
 .cue{margin-top:10px; font-size:14.5px}
 .cue b{font-weight:600}
+.fnote{margin-top:8px; padding:6px 9px; border-left:3px solid var(--accent); background:var(--surface-2); border-radius:4px; font-size:13.5px}
 .banner{display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:12px 14px; border-radius:12px; background:var(--warn-bg); margin-bottom:12px; font-size:14px}
 .foot{color:var(--muted); font-size:12.5px; margin-top:8px}
 </style>
@@ -185,7 +192,8 @@ select{min-height:40px; padding:6px 10px; border:1px solid var(--line); border-r
 
   <div class="stage" id="stage">
     <video id="vid" playsinline muted hidden></video>
-    <div class="badges"><span class="badge" id="speedBadge" hidden></span><span class="badge loop" id="loopBadge" hidden>REPEAT</span></div>
+    <video id="takeVid" playsinline muted hidden></video>
+    <div class="badges"><span class="badge" id="speedBadge" hidden></span><span class="badge loop" id="loopBadge" hidden>REPEAT</span><span class="badge rec" id="recBadge" hidden>● REC</span></div>
     <div class="cd" id="cd">
       <div class="cd-section"><span class="tape" id="cdTape"></span><span id="cdSection"></span></div>
       <div class="cd-count" id="cdCount">1</div>
@@ -246,18 +254,26 @@ select{min-height:40px; padding:6px 10px; border:1px solid var(--line); border-r
     <div id="cardFloorSlot"><div class="floor" id="floorBox">
       <div class="floor-bar">
         <div><div class="floor-title">Formation</div><div class="floor-sub" id="formName"></div></div>
-        <div class="view-toggle" role="group" aria-label="Stage view"><button type="button" data-view="aud" aria-pressed="true">Audience</button><button type="button" data-view="dan" aria-pressed="false">Dancer</button></div>
+        <div class="view-toggle" role="group" aria-label="Stage view"><button type="button" data-view="aud" aria-pressed="true">Audience</button><button type="button" data-view="dan" aria-pressed="false">Dancer</button><button type="button" data-view="3d" aria-pressed="false">3D</button></div>
       </div>
       <svg id="stageSvg" viewBox="0 0 400 310" aria-label="Where everyone is on stage right now"><g class="st-static"></g><g class="st-dyn"></g></svg>
+      <canvas id="stage3d" style="display:none" aria-label="The stage in 3D from the audience. Swipe sideways to move around."></canvas>
     </div></div>
     <div class="row" id="followRow"><span class="label">Follow</span><select id="followSel" aria-label="Dancer to follow" style="flex:1"></select></div>
     <div class="cue" id="cue"></div>
+  </div>
+  <div class="card" id="recCard">
+    <div class="card-head"><h2>Film yourself</h2><span class="rep-status" id="recStatus"></span></div>
+    <p class="muted" style="margin:0 0 10px">Prop up your phone facing you and tap Record. Filming starts with the music and stops when you pause. Then watch your run next to the <span id="recRef">formation</span>, in time with the counts. Videos stay on this phone.</p>
+    <button class="btn primary" id="recBtn" type="button" style="width:100%">Record a run</button>
+    <div id="takes"></div>
   </div>
   <p class="foot">Tap the timeline to jump. The screen stays on while this song is open.</p>
 </section>
 <div class="toast" id="toast" hidden></div>
 
 <script src="vendor/jszip.min.js"></script>
+<script src="stagecore.js"></script>
 <script>
 (() => {
 const $ = id => document.getElementById(id);
@@ -265,7 +281,7 @@ const aud = new Audio(); aud.preload = 'auto';
 const vid = $('vid');
 const TAPES = ['--tape-1','--tape-2','--tape-3','--tape-4','--tape-5','--tape-6'];
 const DCOL = ['#D9480F','#1971C2','#2F9E44','#9C36B5','#C2255C','#0C8599','#E67700','#5F3DC4','#364FC7','#A61E4D','#087F5B','#862E9C'];
-const STAGE_W = 36, STAGE_D = 24;
+const SC = window.StageCore, stg = () => SC.stageOf(cur);
 const MIME = {mp3:'audio/mpeg', m4a:'audio/mp4', aac:'audio/aac', wav:'audio/wav', ogg:'audio/ogg', flac:'audio/flac', mp4:'video/mp4', mov:'video/quicktime', webm:'video/webm', m4v:'video/mp4'};
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
@@ -350,7 +366,7 @@ async function openDance(file, opts){
   if (opts.id){ await delMedia(id + ':audio'); await delMedia(id + ':video'); }
   const p = {id, title:s.title || file.name.replace(/\.dance$/i,'') || 'Number', style:s.style || '', added:Date.now(), bpm:+s.bpm||120, offset:+s.offset||0, phrase:+s.phrase||8,
     sections:Array.isArray(s.sections) && s.sections.length ? s.sections : [{name:'Song', start:1}], notes:s.notes||{}, dancers:s.dancers||[], formations:s.formations||[], props:Array.isArray(s.props) ? s.props : [],
-    peaks:s.peaks||null, audio:s.audio||null, hasAudio:!!(s.audio && s.audio.demo), video:null};
+    stage:s.stage && typeof s.stage === 'object' ? s.stage : undefined, peaks:s.peaks||null, audio:s.audio||null, hasAudio:!!(s.audio && s.audio.demo), video:null};
   p.formations.forEach(f => { f.props = f.props || {}; });
   for (const e of Object.values(zip.files)){
     const m = /^media\/(audio|video)\.([a-z0-9]+)$/i.exec(e.name); if (!m) continue;
@@ -380,7 +396,7 @@ async function renderLib(){
     const del = c.querySelector('[data-a="del"]');
     del.addEventListener('click', async e => { e.stopPropagation();
       if (del.dataset.armed !== '1'){ del.dataset.armed = '1'; del.textContent = 'Tap again to remove'; setTimeout(() => { del.dataset.armed = ''; del.textContent = 'Remove'; }, 3000); return; }
-      await delProject(p.id); await delMedia(p.id+':audio'); await delMedia(p.id+':video'); toast(`Removed "${p.title}".`); renderLib(); });
+      await delProject(p.id); await delMedia(p.id+':audio'); await delMedia(p.id+':video'); for (const t of p.takes || []) await delMedia(`${p.id}:take:${t.id}`); toast(`Removed "${p.title}".`); renderLib(); });
     box.appendChild(c);
   });
 }
@@ -402,37 +418,14 @@ function phraseLabel(p){ const i = sectionFor(p); return i < 0 ? `${word()} ${p}
 function beatLabel(b){ const ph = Math.floor(b/cur.phrase)+1, ct = ((b % cur.phrase)+cur.phrase)%cur.phrase + 1; return `${phraseLabel(ph)}, count ${ct}`; }
 
 /* ---------- formations + props (read-only) ---------- */
-const ease = k => 0.5 - 0.5*Math.cos(Math.PI*Math.max(0, Math.min(1, k)));
-function travelStart(i){ const F = cur.formations; return i === 0 ? F[0].at : Math.max(F[i-1].at, F[i].at - F[i].travel); }
-function stateAt(b){
-  const F = cur.formations; if (!F.length) return {pos:{}, idx:-1, moving:false, b};
-  let i = 0; while (i+1 < F.length && F[i+1].at <= b) i++;
-  const c = F[i], n = F[i+1];
-  if (!n || b < c.at) return {pos:c.pos, idx:i, moving:false, b};
-  const ts = travelStart(i+1); if (b <= ts) return {pos:c.pos, idx:i, moving:false, b};
-  const k = ease((b-ts)/(n.at-ts)), pos = {};
-  cur.dancers.forEach(d => { const a = c.pos[d.id] || n.pos[d.id], z = n.pos[d.id] || a; if (a) pos[d.id] = [a[0]+(z[0]-a[0])*k, a[1]+(z[1]-a[1])*k]; });
-  return {pos, idx:i, next:i+1, moving:true, ts, b};
-}
-const isOn = s => !!(s && s.on);
-function propMoved(a, z){ const A = isOn(a), Z = isOn(z); if (!A && !Z) return false; if (A !== Z) return true; return Math.hypot(a.x-z.x, a.y-z.y) > 0.4 || (a.rot||0) !== (z.rot||0); }
-const wingOf = s => ({x: s.x < 0 ? -19.5 : 19.5, y: s.y, rot: s.rot||0});
-function propsAt(S){
-  const F = cur.formations, out = {}; if (S.idx < 0) return out;
-  const c = F[S.idx], n = S.moving ? F[S.next] : null, k = n ? ease((S.b - S.ts)/(n.at - S.ts)) : 0;
-  cur.props.forEach(pr => { const a = (c.props||{})[pr.id];
-    if (!n){ if (isOn(a)) out[pr.id] = {x:a.x, y:a.y, rot:a.rot||0}; return; }
-    const z = (n.props||{})[pr.id]; if (!isOn(a) && !isOn(z)) return;
-    if (!propMoved(a, z)){ out[pr.id] = {x:a.x, y:a.y, rot:a.rot||0}; return; }
-    const f = isOn(a) ? a : wingOf(z), t = isOn(z) ? z : wingOf(a);
-    out[pr.id] = {x:f.x+(t.x-f.x)*k, y:f.y+(t.y-f.y)*k, rot:(f.rot||0)+((t.rot||0)-(f.rot||0))*k, moving:true, mover:z ? z.mover : ''}; });
-  return out;
-}
-function spotText(x, y){
-  const depth = y < 8 ? 'Downstage' : y < 16 ? 'Centre' : 'Upstage', side = x > 0 ? 'stage left' : 'stage right', ax = Math.abs(x), near = Math.round(ax/4)*4, num = near/2;
-  let spot; if (Math.abs(ax-near) <= 1) spot = num === 0 ? 'on centre' : `on ${num} ${side}`; else { const lo = Math.floor(ax/4)*2; spot = lo === 0 ? `between centre and 2 ${side}` : `between ${lo} and ${lo+2} ${side}`; }
-  return `${depth}, ${spot}`;
-}
+// Motion, props and spot names come from stagecore.js (shared with the desktop app).
+const travelStart = i => SC.travelStart(cur, i);
+const moveWindow = (i, id) => SC.moveWindow(cur, i, id);
+const stateAt = b => SC.stateAt(cur, b);
+const isOn = SC.isOn, propMoved = SC.propMoved;
+const propsAt = S => SC.propsAt(cur, S);
+const spotText = (x, y) => SC.spotText(stg(), x, y);
+const faceOf = (f, id) => (f && f.face && f.face[id]) || 0;
 const lc = s => s.replace(/^./, c => c.toLowerCase());
 function propMoveText(pr, a, z){ const A = isOn(a), Z = isOn(z);
   if (!A && Z) return `bring ${pr.name} on from ${z.x < 0 ? 'stage right' : 'stage left'} to ${lc(spotText(z.x, z.y))}`;
@@ -444,30 +437,42 @@ function propJobsFor(who, i){ if (i <= 0) return []; const F = cur.formations, f
 function initials(d){ const f = (d.name.trim()[0]||'?').toUpperCase(); return cur.dancers.some(o => o !== d && (o.name.trim()[0]||'').toUpperCase() === f) ? (d.name.trim().slice(0,2)||'?').replace(/^./, c=>c.toUpperCase()) : f; }
 
 const svg = $('stageSvg'), sg = svg.querySelector('.st-static'), dg = svg.querySelector('.st-dyn');
-const toS = (x,y) => UI.view === 'aud' ? [200 + x*10, 275 - y*10] : [200 - x*10, 35 + y*10];
+const cv3 = $('stage3d'); let yaw = 0, pitch = 24;
+const geo = () => SC.geom(stg(), UI.view === 'dan' ? 'dan' : 'aud');
 function renderStatic(){
-  const [x0,y0] = toS(-STAGE_W/2, STAGE_D), [x1,y1] = toS(STAGE_W/2, 0);
-  let h = `<rect x="${Math.min(x0,x1)}" y="${Math.min(y0,y1)}" width="${Math.abs(x1-x0)}" height="${Math.abs(y1-y0)}" rx="3" fill="var(--floor)"/>`;
-  for (let y=4;y<STAGE_D;y+=4){ const [a,b]=toS(-STAGE_W/2,y), [c,d]=toS(STAGE_W/2,y), z=y===8||y===16; h += `<line x1="${a}" y1="${b}" x2="${c}" y2="${d}" stroke="var(--floor-line)" stroke-width="${z?1:.6}" ${z?'stroke-dasharray="4 3"':''}/>`; }
-  for (let x=-16;x<=16;x+=4){ const [a,b]=toS(x,0), [c,d]=toS(x,STAGE_D); h += `<line x1="${a}" y1="${b}" x2="${c}" y2="${d}" stroke="var(--floor-line)" stroke-width="${x===0?1:.7}"/>`; }
-  const fr = UI.view === 'aud' ? 1 : -1;
-  for (let x=-16;x<=16;x+=4){ const [a,b]=toS(x,0), n=Math.abs(x)/2; h += `<rect x="${a-3.5}" y="${b-1.6}" width="7" height="3.2" fill="var(--tape-1)" transform="rotate(-6 ${a} ${b})"/><text x="${a}" y="${b+fr*13+3}" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="var(--floor-ink)">${n===0?'C':n}</text>`; }
-  const lab = (x,y,t,r) => `<text x="${x}" y="${y}" text-anchor="middle" font-family="Archivo, sans-serif" font-weight="700" font-size="9" letter-spacing="1.6" fill="var(--floor-muted)" ${r?`transform="rotate(${r} ${x} ${y})"`:''}>${t}</text>`;
-  h += UI.view === 'aud' ? lab(200,24,'UPSTAGE')+lab(200,306,'AUDIENCE')+lab(391,155,'STAGE LEFT',90)+lab(9,155,'STAGE RIGHT',-90) : lab(200,12,'AUDIENCE')+lab(200,296,'UPSTAGE')+lab(391,155,'STAGE RIGHT',90)+lab(9,155,'STAGE LEFT',-90);
-  sg.innerHTML = h;
+  const is3 = UI.view === '3d'; svg.style.display = is3 ? 'none' : ''; cv3.style.display = is3 ? 'block' : 'none';
+  if (!is3) sg.innerHTML = SC.svgStatic(cur, {view:UI.view, big:true, markerId:'m'});
 }
+function trimEnd(pts, r){ if (pts.length < 2) return pts; const end = pts[pts.length-1], o = pts.slice(); while (o.length > 1 && Math.hypot(o[o.length-1][0]-end[0], o[o.length-1][1]-end[1]) < r) o.pop(); const a = o[o.length-1], L = Math.hypot(end[0]-a[0], end[1]-a[1]); if (L > r){ const k = (L-r)/L; o.push([a[0]+(end[0]-a[0])*k, a[1]+(end[1]-a[1])*k]); } return o; }
+const ptsD = pts => pts.length ? 'M' + pts.map(q => q[0].toFixed(1)+' '+q[1].toFixed(1)).join(' L') : '';
 function renderDyn(S){
-  const sel = UI.follow; let h = '';
+  const sel = UI.follow;
+  if (UI.view === '3d'){
+    const r = cv3.getBoundingClientRect(), dpr = window.devicePixelRatio || 1, W = Math.max(2, Math.round(r.width*dpr)), H = Math.max(2, Math.round(r.height*dpr));
+    if (cv3.width !== W || cv3.height !== H){ cv3.width = W; cv3.height = H; }
+    SC.render3D(cv3.getContext('2d'), {x:0, y:0, w:W, h:H}, cur, S, propsAt(S), {yaw, pitch, highlight: sel && sel !== 'crew' ? sel : null, dpr}); return;
+  }
+  const g = geo(), k = g.k, F = cur.formations, facing = SC.usesFacing(cur); let h = '';
+  // where you go next
+  const j = S.moving ? S.next : S.idx + 1, dd = sel && cur.dancers.find(x => x.id === sel), path = (i, id, r) => trimEnd(SC.pathPoints(cur, i, id, 24).map(q => g.toS(q[0], q[1])), r);
+  if (dd && F[j]){ const pts = path(j, dd.id, 13); if (pts.length > 1) h += `<path d="${ptsD(pts)}" fill="none" stroke="${dd.color}" stroke-width="2.2" stroke-dasharray="4 3" opacity=".9" marker-end="url(#arr-m)"/>`; }
+  else if (!sel && S.moving) cur.dancers.forEach(d => { const pts = path(S.next, d.id, 13); if (pts.length > 1) h += `<path d="${ptsD(pts)}" fill="none" stroke="${d.color}" stroke-width="1.3" stroke-dasharray="3 3" opacity=".45"/>`; });
   const PP = propsAt(S);
-  cur.props.forEach(pr => { const s = PP[pr.id]; if (!s) return; const [x,y] = toS(s.x, s.y), w = pr.w*10, d = pr.d*10, half = Math.max(w,d)/2;
+  cur.props.forEach(pr => { const s = PP[pr.id]; if (!s) return; const [x,y] = g.toS(s.x, s.y), w = pr.w*k, d = pr.d*k, half = Math.max(w,d)/2;
     const mover = s.moving && s.mover ? (s.mover === 'crew' ? {id:'crew', name:'Stage crew', color:'#8F97B3'} : cur.dancers.find(z => z.id === s.mover)) : null;
     const dim = sel && !(mover && mover.id === sel);
     h += `<g opacity="${dim?0.45:1}"><g transform="translate(${x} ${y}) rotate(${s.rot||0})">${pr.round ? `<ellipse rx="${w/2}" ry="${d/2}" fill="#B98B4E" stroke="#F1DFBE" stroke-width=".8"/>` : `<rect x="${-w/2}" y="${-d/2}" width="${w}" height="${d}" rx="2" fill="#B98B4E" stroke="#F1DFBE" stroke-width=".8" ${s.moving?'stroke-dasharray="2.5 1.5"':''}/>`}</g>`
       + `<text x="${x}" y="${y-half-3}" text-anchor="middle" font-family="Inter, sans-serif" font-size="7" font-weight="600" fill="#E9CFA0">${esc(pr.name)}</text>`
       + (mover ? `<text x="${x}" y="${y+half+9}" text-anchor="middle" font-family="Inter, sans-serif" font-size="7" fill="var(--floor-ink)">${esc(mover.name)} moves it</text>` : '') + `</g>`; });
-  cur.dancers.forEach(d => { const p = S.pos[d.id]; if (!p) return; const [x,y] = toS(p[0],p[1]), dim = sel && sel !== d.id;
-    h += `<g opacity="${dim?0.3:1}">${d.id === sel ? `<circle cx="${x}" cy="${y}" r="15" fill="none" stroke="var(--floor-ink)" stroke-width="1.6"/>` : ''}<circle cx="${x}" cy="${y}" r="11" fill="${d.color}" stroke="rgba(0,0,0,.35)" stroke-width=".8"/><text x="${x}" y="${y+3.6}" text-anchor="middle" font-family="Inter, sans-serif" font-weight="600" font-size="10" fill="#fff">${esc(initials(d))}</text><text x="${x}" y="${y+21}" text-anchor="middle" font-family="Inter, sans-serif" font-size="7.5" fill="var(--floor-ink)">${esc(d.name)}</text></g>`; });
+  cur.dancers.forEach(d => { const p = S.pos[d.id]; if (!p) return; const [x,y] = g.toS(p[0],p[1]), dim = sel && sel !== d.id;
+    h += `<g opacity="${dim?0.3:1}">${d.id === sel ? `<circle cx="${x}" cy="${y}" r="15" fill="none" stroke="var(--floor-ink)" stroke-width="1.6"/>` : ''}${facing ? SC.svgFacing(g, x, y, (S.face && S.face[d.id]) || 0, 11) : ''}<circle cx="${x}" cy="${y}" r="11" fill="${d.color}" stroke="rgba(0,0,0,.35)" stroke-width=".8"/><text x="${x}" y="${y+3.6}" text-anchor="middle" font-family="Inter, sans-serif" font-weight="600" font-size="10" fill="#fff">${esc(initials(d))}</text><text x="${x}" y="${y+21}" text-anchor="middle" font-family="Inter, sans-serif" font-size="7.5" fill="var(--floor-ink)">${esc(d.name)}</text></g>`; });
   dg.innerHTML = h;
+}
+// 3D: swipe sideways to walk around the audience (up and down still scrolls the page); double-tap for the centre seat
+{ let o = null, lastTap = 0;
+  cv3.addEventListener('pointerdown', e => { o = {x:e.clientX, y:e.clientY, yaw, pitch}; const now = Date.now(); if (now - lastTap < 320){ yaw = 0; pitch = 24; needDraw = true; } lastTap = now; });
+  cv3.addEventListener('pointermove', e => { if (!o) return; yaw = SC.clamp(o.yaw - (e.clientX - o.x)*0.4, -75, 75); if (e.pointerType === 'mouse') pitch = SC.clamp(o.pitch + (e.clientY - o.y)*0.25, 4, 75); needDraw = true; });
+  ['pointerup','pointercancel'].forEach(t => cv3.addEventListener(t, () => { o = null; }));
 }
 document.querySelectorAll('.view-toggle button').forEach(b => b.addEventListener('click', () => { UI.view = b.dataset.view; document.querySelectorAll('.view-toggle button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); renderStatic(); needDraw = true; }));
 function renderFollow(){
@@ -481,24 +486,92 @@ function updateCue(S){
   const job = (who, label) => { for (let j = start; j < F.length; j++){ const jobs = propJobsFor(who, j); if (jobs.length) return `<div style="margin-top:6px"><b>${label}</b> ${esc(jobs.join('; '))}, between ${esc(beatLabel(travelStart(j)))} and ${esc(beatLabel(F[j].at))}.</div>`; } return ''; };
   if (UI.follow === 'crew'){ box.innerHTML = job('crew', 'Next crew job:') || '<span class="muted">No more stage crew jobs in this number.</span>'; return; }
   const d = cur.dancers.find(x => x.id === UI.follow);
-  if (!d){ box.innerHTML = '<span class="muted">Choose yourself to see your spot, where you go next, and your prop jobs.</span>'; return; }
-  const p = S.pos[d.id]; let h = '';
-  if (S.moving){ const n = F[S.next], np = n.pos[d.id]; h += `<div><b>${esc(d.name)}</b>: travelling into <b>${esc(n.name)}</b>, arriving on ${esc(beatLabel(n.at))}.</div>${np ? `<div class="muted">Going to: ${esc(spotText(np[0], np[1]))}</div>` : ''}`; }
-  else if (p){ h += `<div><b>${esc(d.name)}</b>: ${esc(F[S.idx].name)}, ${esc(lc(spotText(p[0], p[1])))}.</div>`; const n = F[S.idx+1]; if (n && n.pos[d.id]) h += `<div class="muted">Next: start moving on ${esc(beatLabel(travelStart(S.idx+1)))} to ${esc(lc(spotText(n.pos[d.id][0], n.pos[d.id][1])))}.</div>`; }
-  box.innerHTML = h + job(d.id, 'Prop job:');
+  const fnote = f => f && f.note && f.note.trim() ? `<div class="fnote"><b>${esc(f.name)}:</b> ${esc(f.note)}</div>` : '';
+  if (!d){ box.innerHTML = '<span class="muted">Choose yourself to see your spot, where you go next, and your prop jobs.</span>' + fnote(S.moving ? F[S.next] : F[S.idx]); return; }
+  const p = S.pos[d.id], useFace = SC.usesFacing(cur), fb = f => useFace ? `, ${SC.faceText(faceOf(f, d.id))}` : ''; let h = '';
+  if (S.moving){ const n = F[S.next], np = n.pos[d.id], [ws, we] = moveWindow(S.next, d.id);
+    h += `<div><b>${esc(d.name)}</b>: ${S.b < ws ? `wait, then start moving on ${esc(beatLabel(ws))}` : S.b >= we ? "you're there" : 'travelling'} into <b>${esc(n.name)}</b>, arriving on ${esc(beatLabel(we))}.</div>${np ? `<div class="muted">Going to: ${esc(spotText(np[0], np[1]))}${fb(n)}${n.paths && n.paths[d.id] ? ' (curved path)' : ''}</div>` : ''}`; }
+  else if (p){ h += `<div><b>${esc(d.name)}</b>: ${esc(F[S.idx].name)}, ${esc(lc(spotText(p[0], p[1])))}${fb(F[S.idx])}.</div>`; const n = F[S.idx+1];
+    if (n && n.pos[d.id]){ const [ws, we] = moveWindow(S.idx+1, d.id); h += `<div class="muted">Next: start moving on ${esc(beatLabel(ws))}${n.paths && n.paths[d.id] ? ' on a curved path' : ''} to ${esc(lc(spotText(n.pos[d.id][0], n.pos[d.id][1])))}, arriving on ${esc(beatLabel(we))}.</div>`; } }
+  box.innerHTML = h + fnote(S.moving ? F[S.next] : F[S.idx]) + job(d.id, 'Prop job:');
 }
 
 /* Formation goes in the top area when there's no video showing; otherwise in its card. */
 function placeFloor(){
-  const has = cur && cur.formations.length > 0, inStage = has && !(UI.hasVideo && UI.vidOn);
+  const has = cur && cur.formations.length > 0, showRef = UI.hasVideo && UI.vidOn, showTake = !!(UI.compare || UI.rec), anyVid = showRef || showTake, inStage = has && !anyVid;
   (inStage ? $('stageFloorSlot') : $('cardFloorSlot')).appendChild($('floorBox'));
   $('stage').classList.toggle('has-floor', !!inStage);
-  $('stage').classList.toggle('has-video', !!(UI.hasVideo && UI.vidOn));
-  vid.hidden = !(UI.hasVideo && UI.vidOn);
+  $('stage').classList.toggle('has-video', !!anyVid);
+  $('stage').classList.toggle('split', !!(showRef && showTake));
+  vid.hidden = !showRef; takeVid.hidden = !showTake;
   $('vidBtn').textContent = UI.vidOn ? (has ? 'Show formation' : 'Hide video') : 'Show video';
   $('vidBtn').setAttribute('aria-pressed', String(!UI.vidOn));
-  $('mirrorBtn').hidden = !(UI.hasVideo && UI.vidOn);
+  $('mirrorBtn').hidden = !showRef;
   needDraw = true;
+}
+
+/* ---------- film yourself: record a run, then watch it next to the formation or the teacher's video ---------- */
+const takeVid = $('takeVid'); let takeUrl = null;
+const whereAt = t => { const p = posAt(t); return p.lead ? 'Lead-in' : phraseLabel(p.phrase); };
+function recUI(){
+  const r = UI.rec; $('recBadge').hidden = !(r && r.mr);
+  $('recBtn').textContent = r ? (r.mr ? 'Stop recording' : 'Cancel') : 'Record a run';
+  $('recBtn').classList.toggle('primary', !r); $('recBtn').classList.toggle('danger', !!r);
+  $('recStatus').textContent = r ? (r.mr ? '● Recording' : 'Get in place: filming starts with the music') : '';
+}
+async function startRec(){
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof MediaRecorder === 'undefined'){ toast("This phone can't film from Workbook Player here."); return; }
+  if (!UI.hasAudio){ toast('Add the music first, then film yourself.'); return; }
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user', width:{ideal:720}, height:{ideal:1280}}, audio:false}); }
+  catch(e){ toast(e && e.name === 'NotAllowedError' ? 'The camera is turned off for Workbook Player. Allow it in your phone settings to film yourself.' : "The camera couldn't start."); return; }
+  stopCompare();
+  UI.rec = {stream}; takeVid.srcObject = stream; takeVid.classList.add('mirror'); takeVid.play().catch(() => {});
+  placeFloor(); recUI(); window.scrollTo({top:0, behavior:'smooth'});
+  const mime = ['video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find(m => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) || '';
+  const begin = () => {
+    const r = UI.rec; if (!r || r.mr || r.stream !== stream) return;
+    let mr; try { mr = new MediaRecorder(stream, mime ? {mimeType:mime, videoBitsPerSecond:2500000} : undefined); } catch(e){ toast("This phone can't record video here."); stopRec(); return; }
+    r.mr = mr; r.chunks = []; r.start = aud.currentTime; r.rate = UI.rate; r.t0 = performance.now();
+    mr.ondataavailable = e => { if (e.data && e.data.size) r.chunks.push(e.data); }; mr.start(1000); recUI();
+  };
+  if (!aud.paused) begin(); else { aud.addEventListener('playing', begin, {once:true}); if (!UI.counting) play(); }
+}
+async function stopRec(){
+  const r = UI.rec, song = cur; if (!r) return; UI.rec = null;
+  const finish = async () => {
+    r.stream.getTracks().forEach(t => t.stop()); takeVid.pause(); takeVid.srcObject = null; recUI(); placeFloor();
+    const secs = r.t0 ? (performance.now() - r.t0)/1000 : 0;
+    if (!song || !r.chunks || !r.chunks.length || secs < 1.5) return;
+    const blob = new Blob(r.chunks, {type:(r.mr && r.mr.mimeType) || 'video/webm'}), take = {id:uid('t'), start:r.start, rate:r.rate, dur:Math.round(secs*10)/10, created:Date.now()};
+    await putMedia(`${song.id}:take:${take.id}`, blob);
+    song.takes = (song.takes || []).concat(take);
+    while (song.takes.length > 10){ const old = song.takes.shift(); await delMedia(`${song.id}:take:${old.id}`); }
+    await putProject(song); if (cur === song) renderTakes(); toast('Saved your run. Tap Watch to see it next to the ' + (UI.hasVideo ? "teacher's video." : 'formation.'));
+  };
+  return new Promise(res => { const done = () => finish().then(res, res); if (r.mr && r.mr.state !== 'inactive'){ r.mr.onstop = done; r.mr.stop(); } else done(); });
+}
+$('recBtn').addEventListener('click', () => { if (!UI.rec) startRec(); else if (UI.rec.mr && !aud.paused) aud.pause(); else { if (UI.counting) cancelCountoff(); stopRec(); } });
+aud.addEventListener('pause', () => { if (UI.rec && UI.rec.mr) stopRec(); });
+async function watchTake(t){
+  if (UI.compare && UI.compare.id === t.id){ stopCompare(); return; }
+  const blob = await getMedia(`${cur.id}:take:${t.id}`); if (!blob){ toast('That video is missing.'); return; }
+  stopCompare(); aud.pause();
+  UI.compare = t; takeUrl = URL.createObjectURL(blob); takeVid.srcObject = null; takeVid.src = takeUrl; takeVid.classList.add('mirror');
+  seek(t.start + 0.001); placeFloor(); renderTakes(); window.scrollTo({top:0, behavior:'smooth'});
+  toast(`Watching run from ${whereAt(t.start)}. Press play.`);
+}
+function stopCompare(){ if (!UI.compare) return; UI.compare = null; takeVid.pause(); takeVid.removeAttribute('src'); takeVid.load(); if (takeUrl){ URL.revokeObjectURL(takeUrl); takeUrl = null; } placeFloor(); renderTakes(); }
+function renderTakes(){
+  const box = $('takes'), T = (cur.takes || []).map((t, i) => [t, i + 1]).reverse();
+  $('recRef').textContent = UI.hasVideo ? "teacher's video" : 'formation';
+  box.innerHTML = T.length ? T.map(([t, n]) => { const on = UI.compare && UI.compare.id === t.id;
+    return `<div class="take"><div><b>Run ${n}</b> · ${esc(whereAt(t.start))} · ${fmt(t.dur)}${t.rate !== 1 ? ` · ${Math.round(t.rate*100)}%` : ''}<div class="muted">${esc(new Date(t.created).toLocaleString([], {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}))}</div></div><button class="btn small ${on ? '' : 'primary'}" type="button" data-w="${t.id}">${on ? 'Stop watching' : 'Watch'}</button><button class="btn small danger" type="button" data-d="${t.id}">Delete</button></div>`; }).join('') : '';
+  box.querySelectorAll('[data-w]').forEach(b => b.addEventListener('click', () => watchTake(cur.takes.find(t => t.id === b.dataset.w))));
+  box.querySelectorAll('[data-d]').forEach(b => b.addEventListener('click', async () => {
+    if (b.dataset.armed !== '1'){ b.dataset.armed = '1'; b.textContent = 'Tap again'; setTimeout(() => { b.dataset.armed = ''; b.textContent = 'Delete'; }, 3000); return; }
+    const id = b.dataset.d; if (UI.compare && UI.compare.id === id) stopCompare();
+    cur.takes = cur.takes.filter(t => t.id !== id); await delMedia(`${cur.id}:take:${id}`); await putProject(cur); renderTakes(); }));
 }
 
 /* ---------- open a song ---------- */
@@ -525,12 +598,13 @@ async function openSong(id){
   $('formCard').hidden = !cur.formations.length;
   const dots = $('cdBeats'); dots.innerHTML = ''; for (let i=0;i<cur.phrase;i++) dots.appendChild(document.createElement('i'));
   $('coBtn').textContent = `Count-off ${countoffNums().join(', ')}`; $('loopBtn').textContent = `Loop this ${word()}`;
-  renderRepeat(); renderFollow(); renderStatic(); updateLoopUI(); placeFloor();
+  UI.compare = null; UI.rec = null; recUI();
+  renderRepeat(); renderFollow(); renderStatic(); updateLoopUI(); placeFloor(); renderTakes();
   $('libView').hidden = true; $('playView').hidden = false; window.scrollTo(0,0);
   sizeCanvas(); lastBeat = lastPhrase = null; needDraw = true; keepAwake(true);
   if (!(history.state && history.state.v === 'song')) history.pushState({v:'song'}, '');
 }
-async function closeSong(){ cancelCountoff(); aud.pause(); vid.pause(); keepAwake(false); cur = null; $('playView').hidden = true; $('libView').hidden = false; await renderLib(); window.scrollTo(0,0); }
+async function closeSong(){ cancelCountoff(); await stopRec(); stopCompare(); aud.pause(); vid.pause(); keepAwake(false); cur = null; $('playView').hidden = true; $('libView').hidden = false; await renderLib(); window.scrollTo(0,0); }
 $('backBtn').addEventListener('click', () => { if (history.state && history.state.v === 'song') history.back(); else closeSong(); });
 $('musicFile').addEventListener('change', async e => {
   const f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return;
@@ -635,6 +709,9 @@ function frame(){
   if (cur.video && vid.src && !vid.hidden){ const target = t - (cur.video.offset||0);
     if (target < 0 || (vid.duration && target > vid.duration)){ if (!vid.paused) vid.pause(); }
     else { if (Math.abs(vid.currentTime - target) > 0.2) vid.currentTime = target; if (!aud.paused && vid.paused) vid.play().catch(() => {}); if (aud.paused && !vid.paused) vid.pause(); } }
+  if (UI.compare && !takeVid.hidden){ const T = UI.compare, target = (t - T.start)/T.rate, len = isFinite(takeVid.duration) && takeVid.duration > 0 ? takeVid.duration : T.dur;
+    if (target < 0 || target > len){ if (!takeVid.paused) takeVid.pause(); }
+    else { if (Math.abs(takeVid.currentTime - target) > 0.25) takeVid.currentTime = target; const pr = UI.rate/T.rate; if (takeVid.playbackRate !== pr) takeVid.playbackRate = pr; if (!aud.paused && takeVid.paused) takeVid.play().catch(() => {}); if (aud.paused && !takeVid.paused) takeVid.pause(); } }
   if (t === lastT && !needDraw) return;
   const pos = posAt(t), b = beatAt(t);
   if (pos.beat !== lastBeat){

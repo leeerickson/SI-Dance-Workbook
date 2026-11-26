@@ -175,6 +175,52 @@ ipcMain.handle('pdf:save', async (_e, { title }) => {
   } catch (err) { return { ok: false, error: friendly(err) }; }
 });
 
+/* ---------- library backup ----------
+   A .dancelib file is a zip of the whole library:
+     library.json                      {app, kind:'library', format, exported, projects:[...], rosters:[...]}
+     media/<projectId>/audio.<ext>     each song's music (not the built-in demo track)
+     media/<projectId>/video.<ext>     each song's choreography video */
+const LIB_EXT = 'dancelib';
+ipcMain.handle('backup:save', async (_e, { data, media }) => {
+  const day = new Date().toISOString().slice(0, 10);
+  const res = await dialog.showSaveDialog(win, {
+    title: 'Back up your library',
+    defaultPath: path.join(app.getPath('documents'), `Choreography Workbook backup ${day}.${LIB_EXT}`),
+    filters: [{ name: 'Choreography Workbook library backup', extensions: [LIB_EXT] }]
+  });
+  if (res.canceled || !res.filePath) return { ok: false, canceled: true };
+  try {
+    const zip = new AdmZip();
+    zip.addFile('library.json', Buffer.from(JSON.stringify({ ...data, app: 'choreo-workbook', kind: 'library', format: FORMAT }), 'utf8'));
+    for (const m of media || []) {
+      if (!m || !m.data || !/^[\w.-]+$/.test(m.project) || !['audio', 'video'].includes(m.kind)) continue;
+      zip.addFile(`media/${m.project}/${m.kind}.${extOf(m.name, m.kind === 'audio' ? 'mp3' : 'mp4')}`, Buffer.from(m.data));
+    }
+    zip.writeZip(res.filePath);
+    return { ok: true, path: res.filePath, size: fs.statSync(res.filePath).size };
+  } catch (err) { return { ok: false, error: friendly(err) }; }
+});
+ipcMain.handle('backup:open', async () => {
+  const res = await dialog.showOpenDialog(win, {
+    title: 'Restore a library backup', properties: ['openFile'],
+    filters: [{ name: 'Choreography Workbook library backup', extensions: [LIB_EXT] }, { name: 'All files', extensions: ['*'] }]
+  });
+  if (res.canceled || !res.filePaths.length) return { ok: false, canceled: true };
+  try {
+    const zip = new AdmZip(res.filePaths[0]), entry = zip.getEntry('library.json');
+    if (!entry) throw new Error("This isn't a Choreography Workbook library backup.");
+    const data = JSON.parse(entry.getData().toString('utf8'));
+    if (data.app !== 'choreo-workbook' || data.kind !== 'library' || !Array.isArray(data.projects)) throw new Error("This isn't a Choreography Workbook library backup.");
+    if ((data.format || 1) > FORMAT) throw new Error('This backup was made by a newer version of Choreography Workbook. Update the app to restore it.');
+    const media = [];
+    zip.getEntries().forEach(e => {
+      const m = /^media\/([\w.-]+)\/(audio|video)\.([a-z0-9]+)$/i.exec(e.entryName);
+      if (m) { const buf = e.getData(); media.push({ project: m[1], kind: m[2], ext: m[3].toLowerCase(), data: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) }); }
+    });
+    return { ok: true, fileName: path.basename(res.filePaths[0]), data, media };
+  } catch (err) { return { ok: false, error: friendly(err) }; }
+});
+
 ipcMain.handle('reveal', (_e, p) => { if (p && fs.existsSync(p)) shell.showItemInFolder(p); });
 
 /* ---------- video export ----------

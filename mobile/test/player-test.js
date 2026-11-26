@@ -20,8 +20,9 @@ const types = { '.html':'text/html', '.js':'text/javascript', '.woff2':'font/wof
     res.writeHead(200, { 'Content-Type': types[path.extname(f)] || 'application/octet-stream' }); fs.createReadStream(f).pipe(res);
   }).listen(0);
   const url = `http://127.0.0.1:${server.address().port}/`;
-  const browser = await playwright[ENGINE].launch();
-  const ctx = await browser.newContext({ ...devices[DEVICE] });
+  // Chromium gets a fake front camera so "Film yourself" can be tested.
+  const browser = await playwright[ENGINE].launch(ENGINE === 'chromium' ? { args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] } : {});
+  const ctx = await browser.newContext({ ...devices[DEVICE], ...(ENGINE === 'chromium' ? { permissions: ['camera'] } : {}) });
   console.log(`Testing with ${ENGINE} as ${DEVICE}`);
   const page = await ctx.newPage();
   const errors = []; page.on('pageerror', e => errors.push(e.message));
@@ -86,11 +87,59 @@ const types = { '.html':'text/html', '.js':'text/javascript', '.woff2':'font/wof
   await page.evaluate(() => window.scrollTo(0, 99999)); await page.waitForTimeout(150);
   if (shots) await page.screenshot({ path: path.join(shots, `player-bottom-${ENGINE}.png`), fullPage: false });
 
-  // Persistence and back navigation
   await page.goBack(); await page.waitForSelector('#libView:not([hidden])');
   ok(true, 'Back returns to the list');
+
+  // New in 0.2: stage size and spike numbers, facing, staggered timing, curved paths, formation notes, 3D view
+  await page.setInputFiles('#openFile', path.join(__dirname, 'fixtures', 'spotlight-features.dance'));
+  await page.waitForFunction(() => document.querySelectorAll('.song').length === 2);
+  await page.click('.song:has-text("new features") [data-a="open"]');
+  await page.waitForFunction(() => document.getElementById('tDur').textContent === '1:07', null, { timeout: 20000 });
+  await page.selectOption('#followSel', 'd0');
+  for (let i = 0; i < 3; i++) await page.click('#nextBtn');
+  await page.waitForTimeout(250);
+  const cue1 = (await page.textContent('#cue')).replace(/\s+/g, ' ');
+  ok(cue1.includes('start moving on Verse 2, count 7') && cue1.includes('curved path'), `staggered timing and curved path show in the cue (${cue1.slice(0, 160)})`);
+  const marks = await page.$$eval('#stageSvg .st-static text', t => t.map(x => x.textContent));
+  ok(marks.includes('7') && !marks.includes('8'), 'a 30 ft stage with marks every 2 ft is numbered 1 to 7');
+  ok((await page.$$('#stageSvg .st-dyn path[stroke-dasharray]')).length >= 1, "the dancer's next path is drawn");
+  await page.click('#nextBtn'); await page.click('#nextBtn'); await page.waitForTimeout(250);   // Verse 3: Two lines
+  const cue2 = await page.textContent('#cue');
+  ok(cue2.includes('facing stage left') && cue2.includes('Front row stays low'), `facing and the formation note show (${cue2.replace(/\s+/g, ' ').slice(0, 200)})`);
+  const top0 = await page.$eval('#playBtn', e => Math.round(e.getBoundingClientRect().top + window.scrollY));
+  await page.click('#floorBox [data-view="3d"]'); await page.waitForTimeout(400);
+  ok(await page.isVisible('#stage3d') && !(await page.isVisible('#stageSvg')), '3D view replaces the flat stage');
+  const painted = await page.$eval('#stage3d', c => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 0; i < d.length; i += 400) if (d[i] + d[i+1] + d[i+2] > 60) n++; return n; });
+  ok(painted > 50, '3D view draws the stage and dancers');
+  ok(top0 === await page.$eval('#playBtn', e => Math.round(e.getBoundingClientRect().top + window.scrollY)), 'switching to 3D does not move the controls');
+  await page.evaluate(() => window.scrollTo(0, 0)); await page.waitForTimeout(150);
+  if (shots) await page.screenshot({ path: path.join(shots, `player-3d-${ENGINE}.png`) });
+  await page.click('#floorBox [data-view="aud"]');
+
+  // Film yourself (Chromium's fake camera)
+  if (ENGINE === 'chromium'){
+    await page.click('#recBtn');
+    await page.waitForSelector('#recBadge:not([hidden])', { timeout: 15000 });
+    ok(await page.isVisible('#takeVid'), 'the camera shows in the top area while filming');
+    await page.waitForTimeout(3000);
+    await page.click('#recBtn');
+    await page.waitForSelector('.take', { timeout: 10000 });
+    ok((await page.textContent('#takes')).includes('Run 1'), 'the filmed run is saved');
+    await page.click('.take [data-w]'); await page.waitForTimeout(500);
+    ok(await page.isVisible('#takeVid') && (await page.textContent('.take [data-w]')) === 'Stop watching', 'Watch shows your run next to the counts');
+    await page.click('#playBtn'); await page.waitForTimeout(4200);
+    const vt = await page.$eval('#takeVid', v => v.currentTime);
+    ok(vt > 0.5, `your run plays in time with the music (${vt.toFixed(1)} s in)`);
+    await page.click('#playBtn'); await page.waitForTimeout(200);
+    await page.evaluate(() => window.scrollTo(0, 0)); await page.waitForTimeout(150);
+    if (shots) await page.screenshot({ path: path.join(shots, `player-compare-${ENGINE}.png`) });
+    await page.click('.take [data-w]');
+  }
+
+  // Persistence
+  await page.goBack(); await page.waitForSelector('#libView:not([hidden])');
   await page.reload(); await page.waitForSelector('.song');
-  ok((await page.$$('.song')).length === 1, 'the number is still there after restarting');
+  ok((await page.$$('.song')).length === 2, 'the numbers are still there after restarting');
   ok(errors.length === 0, 'no page errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
   await browser.close(); server.close();
 })().catch(e => { console.error(e); process.exit(1); });

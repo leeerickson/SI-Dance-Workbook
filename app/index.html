@@ -69,6 +69,11 @@ input[type="number"]{width:72px; font-family:var(--f-mono)}
 .toast{position:fixed; left:50%; bottom:calc(20px + env(safe-area-inset-bottom, 0px)); transform:translateX(-50%); background:var(--ink); color:var(--bg); padding:9px 14px; border-radius:10px; font-size:13px; z-index:50; max-width:calc(100% - 32px)}
 
 /* Library */
+.lib-tools{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:0 0 14px}
+.lib-tools .spacer{flex:1}
+.card.dragging{opacity:.4}
+.card.drop-before{box-shadow:-4px 0 0 var(--accent)}
+.card .move{padding:2px 8px}
 .lib-head{display:flex; flex-wrap:wrap; align-items:end; justify-content:space-between; gap:12px; margin:6px 0 16px}
 .lib-head h1{font-stretch:118%; font-weight:850; font-size:28px; line-height:1.1}
 .cards{display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:14px}
@@ -79,6 +84,7 @@ input[type="number"]{width:72px; font-family:var(--f-mono)}
 .card h3{margin:0; font-size:16px; font-weight:600; line-height:1.3; overflow-wrap:anywhere}
 .card-meta{display:flex; flex-wrap:wrap; gap:4px 12px; color:var(--muted); font-size:12.5px}
 .card-actions{display:flex; flex-wrap:wrap; gap:6px}
+.card-actions .spacer{flex:1}
 .chiptag{display:inline-block; padding:1px 8px; border-radius:999px; background:var(--surface-2); font-size:11.5px; color:var(--muted)}
 .chiptag.warn{background:var(--warn-bg); color:var(--warn)}
 .import-box{display:grid; gap:10px; margin-top:14px}
@@ -204,6 +210,10 @@ input[type="number"]{width:72px; font-family:var(--f-mono)}
 .field{display:grid; gap:4px}
 .fgrid{display:grid; gap:12px}
 .moving-note{padding:10px 12px; border-radius:8px; background:var(--surface-2); font-size:13px}
+.dbox{display:grid; gap:8px; padding:10px 12px; border-radius:10px; background:var(--surface-2)}
+.dbox-head{display:flex; align-items:center; gap:8px}
+.dot.sm{width:22px; height:22px; font-size:10.5px; cursor:default}
+.face-txt{min-width:9.5em; text-align:center; font-size:13px}
 .linked-note{padding:8px 10px; border-radius:8px; border:1px dashed var(--line); font-size:13px}
 .dlist{display:grid; gap:6px}
 .drow{display:grid; grid-template-columns:auto minmax(0,1fr) auto auto; gap:8px; align-items:center; padding:4px; border-radius:8px}
@@ -219,8 +229,14 @@ input[type="number"]{width:72px; font-family:var(--f-mono)}
 .cues{display:grid; margin-top:12px; border-top:1px solid var(--line)}
 .cue{display:grid; grid-template-columns:auto minmax(0,1fr); gap:10px; padding:9px 0; border-bottom:1px solid var(--line); cursor:pointer}
 .cue-n{width:22px; height:22px; border-radius:50%; background:var(--surface-2); display:grid; place-items:center; font-family:var(--f-mono); font-size:11px}
+.roster-row{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:0 0 10px; padding:8px 10px; border-radius:8px; background:var(--surface-2); font-size:13px}
+.suggest{margin:0 0 12px; padding:10px 12px; border-radius:10px; border:1px dashed var(--accent); display:grid; gap:8px; font-size:13px}
+.suggest ol{margin:0; padding-left:20px}
+.fnote{margin-top:6px; padding:6px 9px; border-left:3px solid var(--accent); background:var(--surface-2); border-radius:4px; font-size:13px}
 .cue-name{font-weight:600; font-size:13px} .cue-when{font-family:var(--f-mono); font-size:11.5px; color:var(--muted)} .cue-spot{font-size:13px}
 
+.stage3d{display:block; width:100%; aspect-ratio:400/310; border-radius:8px; touch-action:none; cursor:grab}
+.stage3d:active{cursor:grabbing}
 /* Props */
 .plist{display:grid; gap:8px}
 .prow{display:grid; gap:6px; padding:8px 10px; border:1px solid var(--line); border-radius:8px; cursor:pointer}
@@ -261,6 +277,7 @@ input[type="number"]{width:72px; font-family:var(--f-mono)}
 .pform b{display:block; font-size:12.5px; color:#15171C}
 .pform span{font-family:var(--f-mono); font-size:11px; color:#4A5060}
 .pform svg{display:block; width:100%; height:auto; margin-top:6px}
+.pform .pnote{margin:4px 0 0; font-size:11.5px; color:#15171C}
 #printRoot{display:none}
 @media print{
   html,body{background:#fff!important; padding:0}
@@ -295,9 +312,17 @@ input[type="number"]{width:72px; font-family:var(--f-mono)}
       <button class="btn" id="importBtn" type="button">Open a share file…</button>
     </div>
   </div>
+  <div class="lib-tools">
+    <label class="inline muted">Order <select id="libSort" aria-label="Order songs by"><option value="recent">Recently opened</option><option value="custom">My order (drag to arrange)</option><option value="az">A to Z</option></select></label>
+    <span class="spacer"></span>
+    <button class="btn small" id="backupBtn" type="button">Back up library…</button>
+    <button class="btn small" id="restoreBtn" type="button">Restore a backup…</button>
+  </div>
+  <div class="banner" id="backupBanner" hidden><span id="backupText"></span><button class="btn small primary" id="backupNow" type="button">Back up now</button><button class="btn small" id="backupLater" type="button">Remind me next week</button></div>
 
   <div class="cards" id="cards"></div>
   <p class="muted" id="storageNote" style="margin-top:14px"></p>
+  <label class="inline muted"><input type="checkbox" id="remindChk" checked> Remind me to back up my library every week</label>
 </section>
 
 <!-- PROJECT -->
@@ -389,9 +414,10 @@ input[type="number"]{width:72px; font-family:var(--f-mono)}
       <div class="floor-wrap">
         <div class="floor-bar">
           <div><div class="floor-title">Formation now</div><div class="floor-sub" id="rFormName"></div></div>
-          <div class="view-toggle" role="group" aria-label="Stage view"><button type="button" data-view="aud" aria-pressed="true">Audience</button><button type="button" data-view="dan" aria-pressed="false">Dancer</button></div>
+          <div class="view-toggle" role="group" aria-label="Stage view"><button type="button" data-view="aud" aria-pressed="true">Audience</button><button type="button" data-view="dan" aria-pressed="false">Dancer</button><button type="button" data-view="3d" aria-pressed="false" title="See the stage in 3D from the audience. Drag to move around.">3D</button></div>
         </div>
         <svg id="rStage" viewBox="0 0 400 310" aria-label="Stage showing where dancers are right now"><g class="st-static"></g><g class="st-dyn"></g></svg>
+        <canvas class="stage3d" style="display:none" aria-label="The stage in 3D from the audience. Drag to move around; double-click for the centre seat."></canvas>
         <div class="empty-floor" id="rEmpty" hidden><div>No formations yet for this song.</div><button class="btn small" type="button" data-goto="forms">Set formations</button></div>
       </div>
       <div class="panel">
@@ -419,7 +445,8 @@ input[type="number"]{width:72px; font-family:var(--f-mono)}
         <p class="status" id="status"></p>
       </div>
       <div class="panel">
-        <div class="panel-head"><h2>Sections</h2><button class="btn small" id="addSecBtn" type="button">Add section at current <span class="word">8-count</span></button></div>
+        <div class="panel-head"><h2>Sections</h2><div class="inline"><button class="btn small" id="suggestBtn" type="button">Suggest from the music</button><button class="btn small" id="addSecBtn" type="button">Add section at current <span class="word">8-count</span></button></div></div>
+        <div class="suggest" id="secSuggest" hidden></div>
         <div class="loopbar">
           <span class="loop-label" id="loopLabel">No loop set</span>
           <button class="btn small" id="loopPhraseBtn" type="button">Loop this <span class="word">8-count</span></button>
@@ -444,9 +471,10 @@ input[type="number"]{width:72px; font-family:var(--f-mono)}
       <div class="floor-wrap">
         <div class="floor-bar">
           <div><div class="floor-title" id="fNow">Formation</div><div class="floor-sub" id="fNowSub"></div></div>
-          <div class="view-toggle" role="group" aria-label="Stage view"><button type="button" data-view="aud" aria-pressed="true">Audience</button><button type="button" data-view="dan" aria-pressed="false">Dancer</button></div>
+          <div class="view-toggle" role="group" aria-label="Stage view"><button type="button" data-view="aud" aria-pressed="true">Audience</button><button type="button" data-view="dan" aria-pressed="false">Dancer</button><button type="button" data-view="3d" aria-pressed="false" title="See the stage in 3D from the audience. Drag to move around.">3D</button></div>
         </div>
         <svg id="fStage" viewBox="0 0 400 310" aria-label="Stage. Drag a dancer to move them."><g class="st-static"></g><g class="st-dyn"></g></svg>
+        <canvas class="stage3d" style="display:none" aria-label="The stage in 3D from the audience. Drag to move around; double-click for the centre seat."></canvas>
         <p class="floor-hint" id="fHint"></p>
       </div>
       <div class="fstrip" id="fstrip"></div>
@@ -456,6 +484,18 @@ input[type="number"]{width:72px; font-family:var(--f-mono)}
         <div class="panel-head"><h2 id="fTitle">Formation</h2>
           <div class="inline"><label class="inline muted"><input type="checkbox" id="snapChk" checked> Snap 1 ft</label><label class="inline muted"><input type="checkbox" id="ghostChk" checked> Paths</label></div></div>
         <div id="fPanel"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Stage</h2><span class="muted mono" id="stSizeTxt"></span></div>
+        <div class="vgrid">
+          <span class="label">Size</span>
+          <div class="inline"><select id="stPreset" aria-label="Stage size"></select><span class="inline muted" id="stCustom"><input type="number" id="stW" min="12" max="80" aria-label="Width in feet"> × <input type="number" id="stD" min="8" max="60" aria-label="Depth in feet"> ft</span></div>
+          <span class="label">Spike marks</span>
+          <div class="inline"><select id="stSpike" aria-label="Spike marks every"><option value="2">Every 2 ft</option><option value="3">Every 3 ft</option><option value="4">Every 4 ft</option><option value="5">Every 5 ft</option><option value="6">Every 6 ft</option></select><select id="stLabels" aria-label="Spike numbers"></select></div>
+          <span class="label">Floor</span>
+          <div class="inline"><select id="stFloor" aria-label="Floor"></select><label class="btn small" for="stBgFile" id="stBgLbl">Choose a picture…</label><input type="file" id="stBgFile" accept="image/*" hidden></div>
+        </div>
+        <p class="muted" style="margin:10px 0 0">The stage size, marks and floor travel with share files, printouts and videos, so everyone sees the same stage.</p>
       </div>
       <div class="panel">
         <div class="panel-head"><h2>Props</h2>
@@ -468,7 +508,8 @@ input[type="number"]{width:72px; font-family:var(--f-mono)}
         <ul class="wlist" id="wlist"></ul>
       </div>
       <div class="panel">
-        <div class="panel-head"><h2>Dancers</h2><button class="btn small" id="addDancer" type="button">Add dancer</button></div>
+        <div class="panel-head"><h2>Dancers</h2><div class="inline"><select id="rosterSel" aria-label="Add dancers from a saved class"></select><button class="btn small" id="addDancer" type="button">Add dancer</button></div></div>
+        <div class="roster-row" id="rosterRow" hidden></div>
         <div class="dlist" id="dlist"></div>
         <div id="cueBox"></div>
       </div>
@@ -506,7 +547,7 @@ input[type="number"]{width:72px; font-family:var(--f-mono)}
           <span class="label">Speed</span>
           <div class="inline"><select id="vSpeed" aria-label="Speed"><option value="1">100%</option><option value="0.9">90%</option><option value="0.75">75%</option><option value="0.5">50%</option></select><span class="muted">Slower videos keep the music's pitch.</span></div>
           <span class="label">Stage</span>
-          <div class="inline" id="vFormRow"><select id="vView" aria-label="Stage view"><option value="aud">Audience view</option><option value="dan">Dancer view</option></select>
+          <div class="inline" id="vFormRow"><select id="vView" aria-label="Stage view"><option value="aud">Audience view</option><option value="dan">Dancer view</option><option value="3d">3D from the audience</option></select>
             <select id="vDancer" aria-label="Highlight a dancer"></select></div>
           <span class="label">Video</span>
           <label class="inline" id="vIncVidLbl"><input type="checkbox" id="vIncVid" checked> Include the choreography video</label>
@@ -545,6 +586,7 @@ input[type="number"]{width:72px; font-family:var(--f-mono)}
 <div id="printRoot" aria-hidden="true"></div>
 
 <script src="vendor/mp4-muxer.js"></script>
+<script src="stagecore.js"></script>
 <script>
 (() => {
 const $ = id => document.getElementById(id);
@@ -552,7 +594,8 @@ const aud = new Audio(); aud.preload = 'auto';
 const vid = $('vid');
 const TAPES = ['--tape-1','--tape-2','--tape-3','--tape-4','--tape-5','--tape-6'];
 const DCOL = ['#D9480F','#1971C2','#2F9E44','#9C36B5','#C2255C','#0C8599','#E67700','#5F3DC4','#364FC7','#A61E4D','#087F5B','#862E9C'];
-const STAGE_W = 36, STAGE_D = 24, MIN_GAP = 2.0;
+const SC = window.StageCore, MIN_GAP = 2.0;
+const stg = () => SC.stageOf(cur);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
 function fmt(t, tenths){ t = Math.max(0, t||0); const m = Math.floor(t/60), s = t - m*60; return tenths ? `${m}:${s.toFixed(1).padStart(4,'0')}` : `${m}:${String(Math.floor(s)).padStart(2,'0')}`; }
@@ -560,13 +603,13 @@ let toastTimer;
 function toast(msg){ const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.hidden = true, 3200); }
 
 /* ================= storage ================= */
-const mem = {projects:new Map(), media:new Map()};
+const mem = {projects:new Map(), media:new Map(), meta:new Map()};
 let db = null;
 function openDB(){
   return new Promise(res => {
     try {
-      const r = indexedDB.open('choreo-workbook', 1);
-      r.onupgradeneeded = () => { const d = r.result; d.createObjectStore('projects', {keyPath:'id'}); d.createObjectStore('media'); };
+      const r = indexedDB.open('choreo-workbook', 2);
+      r.onupgradeneeded = () => { const d = r.result; ['projects','media','meta'].forEach(n => { if (!d.objectStoreNames.contains(n)) n === 'projects' ? d.createObjectStore(n, {keyPath:'id'}) : d.createObjectStore(n); }); };
       r.onsuccess = () => { db = r.result; res(true); };
       r.onerror = () => res(false); r.onblocked = () => res(false);
     } catch(e){ res(false); }
@@ -584,6 +627,8 @@ async function putProject(p){ const c = JSON.parse(JSON.stringify(p)); if (!db){
 async function delProject(id){ if (!db){ mem.projects.delete(id); return; } await tx('projects','readwrite', s => s.delete(id)); }
 async function putMedia(k, blob){ if (!db){ mem.media.set(k, blob); return; } await tx('media','readwrite', s => s.put(blob, k)); }
 async function getMedia(k){ if (!db) return mem.media.get(k); return tx('media','readonly', s => s.get(k)); }
+async function getMeta(k, dflt){ const v = db ? await tx('meta','readonly', s => s.get(k)) : mem.meta.get(k); return v === undefined ? dflt : v; }
+async function setMeta(k, v){ if (!db){ mem.meta.set(k, v); return; } await tx('meta','readwrite', s => s.put(JSON.parse(JSON.stringify(v)), k)); }
 async function delMedia(k){ if (!db){ mem.media.delete(k); return; } await tx('media','readwrite', s => s.delete(k)); }
 
 /* ================= audio helpers ================= */
@@ -641,6 +686,70 @@ function detectTempo(buf){
   const k = Math.max(0, Math.ceil((st-bP)/p - 0.3));
   return {bpm:Math.round(bB*10)/10, offset:Math.round((bP+k*p)/fps*1000)/1000};
 }
+/* Listens to the song beat by beat: finds which beat is "1" of the 8-count, then looks for places where the
+   music changes (loudness, bass, brightness) at 8-count boundaries and names the parts: Intro, Verse, Chorus… */
+function analyzeSong(buf, bpm, offset, P, keepOffset){
+  const sr = buf.sampleRate, d = buf.getChannelData(0), bl = 60/bpm, spb = Math.round(bl*sr), nb = Math.floor((d.length/sr - offset)/bl);
+  if (nb < P*3) return null;
+  const rms = new Float32Array(nb), low = new Float32Array(nb), hi = new Float32Array(nb), hit = new Float32Array(nb);
+  let lp = 0; const a = Math.exp(-2*Math.PI*160/sr);
+  for (let b = 0; b < nb; b++){
+    const s0 = Math.round((offset + b*bl)*sr); let e = 0, el = 0, eh = 0, head = 0, prev = d[s0-1] || 0;
+    for (let i = 0; i < spb; i += 2){ const x = d[s0+i] || 0; lp = a*lp + (1-a)*x; e += x*x; el += lp*lp; const df = x - prev; eh += df*df; prev = x; if (i < spb/8) head += x*x; }
+    rms[b] = Math.sqrt(e/(spb/2)); low[b] = el/(e || 1); hi[b] = eh/(e || 1); hit[b] = head/(spb/16);
+  }
+  const mx = Math.max(...rms) || 1, feat = b => [Math.log(1e-4 + rms[b]/mx), low[b], Math.log(1e-4 + hi[b])];
+  const win = (from, n) => { const o = [0,0,0]; let c = 0; for (let b = Math.max(0, from); b < Math.min(nb, from + n); b++){ const f = feat(b); o[0]+=f[0]; o[1]+=f[1]; o[2]+=f[2]; c++; } return c ? o.map(v => v/c) : null; };
+  // which beat is 1: strong hits and changes in the music should land on phrase starts
+  const hm = Math.max(...hit) || 1, sd = [0.6, 0.15, 0.5];
+  const change = b => { const A = win(b-4, 4), B = win(b, 4); return A && B ? Math.hypot((A[0]-B[0])/sd[0], (A[1]-B[1])/sd[1], (A[2]-B[2])/sd[2]) : 0; };
+  let shift = 0;
+  if (!keepOffset){
+    const score = k => { let s = 0, c = 0; for (let b = k; b < nb; b += P){ s += hit[b]/hm + 0.6*change(b); c++; } return c ? s/c : 0; };
+    const sc = Array.from({length:P}, (_, k) => score(k)), best = sc.indexOf(Math.max(...sc));
+    if (best > 0 && sc[best] > sc[0]*1.25) shift = best;
+  }
+  // step back whole 8-counts while there's already music playing before count 1
+  while (shift >= P) shift -= P;
+  if (shift > 0){ let pk = 0; for (let i = 0; i < d.length; i += 4) pk = Math.max(pk, Math.abs(d[i])); let i0 = 0; while (i0 < d.length && Math.abs(d[i0]) < 0.05*pk) i0++;
+    const back = shift - P; if (offset + back*bl >= i0/sr - 0.1) shift = back; }
+  const off = Math.max(0, offset + shift*bl), np = Math.floor((nb - Math.max(0, shift))/P);
+  if (np < 3) return {offset:off, shift, sections:null};
+  // one feature vector per 8-count, normalised across the song
+  const V = []; for (let p = 0; p < np; p++) V.push(win(shift + p*P, P));   // shift can be negative: win() clips
+  // normalise each feature by its median spread, so one very different part (a quiet intro) doesn't hide the rest
+  const med = arr => { const o = arr.slice().sort((x, y) => x - y); return o[Math.floor(o.length/2)]; };
+  const mid = [0,1,2].map(i => med(V.map(v => v[i]))), spread = [0,1,2].map(i => (med(V.map(v => Math.abs(v[i] - mid[i]))) || 0) * 1.4826 || Math.max(1e-3, Math.abs(mid[i])*0.05));
+  const Z = V.map(v => v.map((x, i) => Math.max(-6, Math.min(6, (x - mid[i])/spread[i])))), dist = (u, v) => Math.hypot(u[0]-v[0], u[1]-v[1], u[2]-v[2]);
+  const avg = (a, b) => { const o = [0,0,0]; let c = 0; for (let p = Math.max(0, a); p < Math.min(np, b); p++){ o[0]+=Z[p][0]; o[1]+=Z[p][1]; o[2]+=Z[p][2]; c++; } return c ? o.map(v => v/c) : null; };
+  // change at each 8-count boundary: the 8-counts either side, and the pairs either side
+  const nov = []; for (let p = 1; p < np; p++){ const A = avg(p-2, p), B = avg(p, p+2); nov.push({p, v: 0.5*dist(Z[p-1], Z[p]) + 0.5*(A && B ? dist(A, B) : 0)}); }
+  const nmed = med(nov.map(x => x.v)), thr = Math.max(1.5, nmed * 0.8), cuts = [];
+  nov.filter((x, i) => x.v > thr && x.v >= (nov[i-1] ? nov[i-1].v : 0) && x.v >= (nov[i+1] ? nov[i+1].v : 0)).sort((x, y) => y.v - x.v)
+    .forEach(x => { if (cuts.length < 9 && cuts.every(c => Math.abs(c - x.p) >= 2)) cuts.push(x.p); });
+  cuts.sort((x, y) => x - y);
+  const bounds = [0, ...cuts, np], parts = [];
+  for (let i = 0; i < bounds.length-1; i++){ const v = avg(bounds[i], bounds[i+1]); parts.push({start:bounds[i], len:bounds[i+1]-bounds[i], v, loud:v[0]}); }
+  // group parts that sound alike
+  const groups = []; parts.forEach(pt => { let g = groups.find(G => dist(G.v, pt.v) < 0.9); if (!g){ g = {v:pt.v, parts:[], loud:0}; groups.push(g); } g.parts.push(pt); pt.g = g; });
+  groups.forEach(g => { g.loud = g.parts.reduce((s, x) => s + x.loud, 0)/g.parts.length; });
+  const loudSorted = parts.map(x => x.loud).sort((x, y) => x - y), quiet = loudSorted[Math.floor(loudSorted.length/3)];
+  const rep = groups.filter(g => g.parts.length > 1), chorus = (rep.length ? rep : groups).slice().sort((x, y) => y.loud - x.loud)[0];
+  const order = ['Verse', 'Bridge', 'Break', 'Part D', 'Part E', 'Part F']; let oi = 0;
+  groups.forEach(g => { g.name = g === chorus ? 'Chorus' : null; });
+  parts.forEach((pt, i) => {
+    if (i === 0 && parts.length > 2 && pt.loud <= quiet && pt.len <= 4 && pt.g !== chorus){ pt.name = 'Intro'; return; }
+    if (i === parts.length-1 && parts.length > 2 && pt.loud <= quiet && pt.len <= 3 && pt.g !== chorus){ pt.name = 'Ending'; return; }
+    if (!pt.g.name) pt.g.name = order[Math.min(oi++, order.length-1)];
+    pt.name = pt.g.name;
+  });
+  const seen = {}, total = {}; parts.forEach(pt => { total[pt.name] = (total[pt.name]||0) + 1; });
+  parts.forEach((pt, i) => { seen[pt.name] = (seen[pt.name]||0) + 1;
+    if (total[pt.name] > 1 && seen[pt.name] > 1) pt.name = pt.name === 'Chorus' && i === parts.length-1 ? 'Final chorus' : `${pt.name} ${seen[pt.name]}`; });
+  return {offset:off, shift, sections:parts.map(pt => ({name:pt.name, start:pt.start + 1}))};
+}
+window.__wbTest = {analyzeSong, buildDemo};   // used by the tests
+async function songBuffer(){ if (cur.audio && cur.audio.demo) return demoBuf || await buildDemo(); const m = await getMedia(cur.id+':audio'); if (!m) throw new Error('no music'); return decodeBlob(m); }
 async function decodeBlob(blob){
   const ab = await blob.arrayBuffer(), oc = new OfflineAudioContext(1, 2, 22050);
   return new Promise((res, rej) => { const p = oc.decodeAudioData(ab, res, rej); if (p && p.then) p.then(res, rej); });
@@ -710,20 +819,11 @@ function phraseLabel(p){ const i = sectionFor(p); return i < 0 ? `${word()} ${p}
 function sortSections(){ cur.sections.sort((a,b)=>a.start-b.start); if (cur.sections.length) cur.sections[0].start = 1; }
 
 /* ================= formations model ================= */
-const ease = k => 0.5 - 0.5*Math.cos(Math.PI*Math.max(0,Math.min(1,k)));
 const sortF = () => cur.formations.sort((a,b)=>a.at-b.at);
-function travelStart(i){ const F = cur.formations; return i === 0 ? F[0].at : Math.max(F[i-1].at, F[i].at - F[i].travel); }
-function stateAt(b){ const s = stateAt0(b); s.b = b; return s; }
-function stateAt0(b){
-  const F = cur.formations; if (!F.length) return {pos:{}, idx:-1, moving:false};
-  let i = 0; while (i+1 < F.length && F[i+1].at <= b) i++;
-  const c = F[i], n = F[i+1];
-  if (!n || b < c.at) return {pos:c.pos, idx:i, moving:false};
-  const ts = travelStart(i+1); if (b <= ts) return {pos:c.pos, idx:i, moving:false};
-  const k = ease((b-ts)/(n.at-ts)), pos = {};
-  cur.dancers.forEach(d => { const a = c.pos[d.id] || n.pos[d.id], z = n.pos[d.id] || a; if (a) pos[d.id] = [a[0]+(z[0]-a[0])*k, a[1]+(z[1]-a[1])*k]; });
-  return {pos, idx:i, next:i+1, moving:true, ts};
-}
+// Motion lives in stagecore.js (shared with the phone player): curved paths, staggered timing, facing, move style.
+const travelStart = i => SC.travelStart(cur, i);
+const moveWindow = (i, id) => SC.moveWindow(cur, i, id);
+const stateAt = b => SC.stateAt(cur, b);
 
 /* ---------- props ----------
    cur.props = [{id, name, kind, w, d, round}]   (feet)
@@ -735,13 +835,8 @@ const PROP_KINDS = {
   hoop:{label:'Hoop', w:3, d:3, round:true}, other:{label:'Prop', w:2, d:2}
 };
 function ensureProps(p){ p.props = Array.isArray(p.props) ? p.props : []; (p.formations||[]).forEach(f => { f.props = f.props || {}; }); }
-const isOn = s => !!(s && s.on);
-function propMoved(a, z){
-  const A = isOn(a), Z = isOn(z); if (!A && !Z) return false; if (A !== Z) return true;
-  return Math.hypot(a.x - z.x, a.y - z.y) > 0.4 || (a.rot||0) !== (z.rot||0);
-}
+const isOn = SC.isOn, propMoved = SC.propMoved;
 const wingSide = x => x < 0 ? 'stage right' : 'stage left';
-const wingOf = s => ({x: s.x < 0 ? -19.5 : 19.5, y: s.y, rot: s.rot||0});
 function moverName(m){ if (m === 'crew') return 'Stage crew'; const d = cur.dancers.find(x => x.id === m); return d ? d.name : 'Nobody chosen'; }
 function propMoveText(pr, a, z){
   const A = isOn(a), Z = isOn(z);
@@ -750,22 +845,7 @@ function propMoveText(pr, a, z){
   if (Math.hypot(a.x - z.x, a.y - z.y) <= 0.4) return `Turn ${pr.name} to face a new direction`;
   return `Move ${pr.name} to ${spotText(z.x, z.y).replace(/^./, c => c.toLowerCase())}`;
 }
-// Where each prop is at the moment described by S (from stateAt).
-function propsAt(S){
-  const F = cur.formations, out = {}; if (S.idx < 0) return out;
-  const c = F[S.idx], n = S.moving ? F[S.next] : null;
-  const k = n ? ease((S.b - S.ts) / (n.at - S.ts)) : 0;
-  cur.props.forEach(pr => {
-    const a = (c.props||{})[pr.id];
-    if (!n){ if (isOn(a)) out[pr.id] = {x:a.x, y:a.y, rot:a.rot||0}; return; }
-    const z = (n.props||{})[pr.id];
-    if (!isOn(a) && !isOn(z)) return;
-    if (!propMoved(a, z)){ out[pr.id] = {x:a.x, y:a.y, rot:a.rot||0}; return; }
-    const from = isOn(a) ? a : wingOf(z), to = isOn(z) ? z : wingOf(a);
-    out[pr.id] = {x: from.x + (to.x - from.x)*k, y: from.y + (to.y - from.y)*k, rot: (from.rot||0) + ((to.rot||0) - (from.rot||0))*k, moving:true, mover: z ? z.mover : ''};
-  });
-  return out;
-}
+const propsAt = S => SC.propsAt(cur, S);
 function insideProp(pr, s, x, y, margin){
   const r = (s.rot||0) * Math.PI / 180, dx = x - s.x, dy = y - s.y;
   const lx = dx*Math.cos(r) + dy*Math.sin(r), ly = -dx*Math.sin(r) + dy*Math.cos(r);
@@ -789,11 +869,8 @@ function addDemoProps(p){
   B.props['prop-b'] = {on:true, x:9, y:13, rot:0, mover:who(9, 11)};
   if (wi > bi){ const W = p.formations[wi]; W.props['prop-a'] = {on:false, mover:'crew'}; W.props['prop-b'] = {on:false, mover:'crew'}; }
 }
-function spotText(x, y){
-  const depth = y < 8 ? 'Downstage' : y < 16 ? 'Centre' : 'Upstage', side = x > 0 ? 'stage left' : 'stage right', ax = Math.abs(x), near = Math.round(ax/4)*4, num = near/2;
-  let spot; if (Math.abs(ax-near) <= 1) spot = num === 0 ? 'on centre' : `on ${num} ${side}`; else { const lo = Math.floor(ax/4)*2; spot = lo === 0 ? `between centre and 2 ${side}` : `between ${lo} and ${lo+2} ${side}`; }
-  return `${depth}, ${spot}`;
-}
+const spotText = (x, y) => SC.spotText(stg(), x, y);
+const faceOf = (f, id) => (f && f.face && f.face[id]) || 0;
 function initials(d){ const f = (d.name.trim()[0]||'?').toUpperCase(); const clash = cur.dancers.some(o => o !== d && (o.name.trim()[0]||'').toUpperCase() === f); return clash ? (d.name.trim().slice(0,2)||'?').replace(/^./, c=>c.toUpperCase()) : f; }
 const nameOf = id => (cur.dancers.find(d=>d.id===id)||{}).name || '';
 let warnings = [];
@@ -826,71 +903,99 @@ function computeWarnings(){
     });
     Object.entries(load).forEach(([m, c]) => { if (c > 1) W.push({a:m, b:null, beat:travelStart(i), text:`${nameOf(m)} is moving ${c} props at once into ${f.name}`}); });
   });
+  const ST = stg();
+  F.forEach(f => D.forEach(d => { const p = f.pos[d.id]; if (p && (Math.abs(p[0]) > ST.w/2 + 0.01 || p[1] < -0.01 || p[1] > ST.d + 0.01)) W.push({a:d.id, b:null, beat:f.at, text:`${d.name} is off the stage in ${f.name} (the stage is ${ST.w} × ${ST.d} ft)`}); }));
   W.sort((x,y)=>x.beat-y.beat); warnings = W;
 }
 
 /* ================= stage component ================= */
+// Cut the last r drawing units off a path so an arrowhead stops at the edge of a dancer's dot.
+function trimEnd(pts, r){
+  if (pts.length < 2) return pts; const end = pts[pts.length-1], o = pts.slice();
+  while (o.length > 1 && Math.hypot(o[o.length-1][0]-end[0], o[o.length-1][1]-end[1]) < r) o.pop();
+  const a = o[o.length-1], L = Math.hypot(end[0]-a[0], end[1]-a[1]); if (L > r){ const k = (L - r)/L; o.push([a[0]+(end[0]-a[0])*k, a[1]+(end[1]-a[1])*k]); }
+  return o;
+}
+const ptsD = pts => pts.length ? 'M' + pts.map(q => q[0].toFixed(1)+' '+q[1].toFixed(1)).join(' L') : '';
 function makeStage(svg, interactive){
-  const st = {svg, view:'aud', interactive, sg:svg.querySelector('.st-static'), dg:svg.querySelector('.st-dyn')};
-  st.toS = (x,y) => st.view === 'aud' ? [200 + x*10, 275 - y*10] : [200 - x*10, 35 + y*10];
-  st.fromS = (X,Y) => st.view === 'aud' ? [(X-200)/10, (275-Y)/10] : [(200-X)/10, (Y-35)/10];
-  st.renderStatic = () => {
-    const [x0,y0] = st.toS(-STAGE_W/2, STAGE_D), [x1,y1] = st.toS(STAGE_W/2, 0);
-    let h = `<rect x="${Math.min(x0,x1)}" y="${Math.min(y0,y1)}" width="${Math.abs(x1-x0)}" height="${Math.abs(y1-y0)}" rx="3" fill="var(--floor)"/>`;
-    for (let y=4;y<STAGE_D;y+=4){ const [a,b]=st.toS(-STAGE_W/2,y), [c,d]=st.toS(STAGE_W/2,y), z=y===8||y===16; h += `<line x1="${a}" y1="${b}" x2="${c}" y2="${d}" stroke="var(--floor-line)" stroke-width="${z?1:.6}" ${z?'stroke-dasharray="4 3"':''}/>`; }
-    for (let x=-16;x<=16;x+=2){ const [a,b]=st.toS(x,0), [c,d]=st.toS(x,STAGE_D); h += `<line x1="${a}" y1="${b}" x2="${c}" y2="${d}" stroke="var(--floor-line)" stroke-width="${x%4===0?.8:.35}"/>`; }
-    const [c1,c2] = st.toS(0,0), [c3,c4] = st.toS(0,STAGE_D); h += `<line x1="${c1}" y1="${c2}" x2="${c3}" y2="${c4}" stroke="var(--floor-muted)" opacity=".55"/>`;
-    const fr = st.view === 'aud' ? 1 : -1;
-    for (let x=-16;x<=16;x+=4){ const [a,b]=st.toS(x,0), n=Math.abs(x)/2; h += `<rect x="${a-3.5}" y="${b-1.6}" width="7" height="3.2" fill="var(--tape-1)" transform="rotate(-6 ${a} ${b})"/><text x="${a}" y="${b+fr*12+3}" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="8.5" fill="var(--floor-ink)">${n===0?'C':n}</text>`; }
-    [['DS',4],['CS',12],['US',20]].forEach(([t,y]) => { const [a,b]=st.toS(-STAGE_W/2+1.1,y); h += `<text x="${a}" y="${b+3}" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="6.5" fill="var(--floor-muted)">${t}</text>`; });
-    const lab = (x,y,t,r) => `<text x="${x}" y="${y}" text-anchor="middle" font-family="Archivo, sans-serif" font-weight="700" font-size="8" letter-spacing="1.6" fill="var(--floor-muted)" ${r?`transform="rotate(${r} ${x} ${y})"`:''}>${t}</text>`;
-    h += st.view === 'aud' ? lab(200,26,'UPSTAGE')+lab(200,304,'AUDIENCE')+lab(390,155,'STAGE LEFT',90)+lab(10,155,'STAGE RIGHT',-90) : lab(200,10,'AUDIENCE')+lab(200,292,'UPSTAGE')+lab(390,155,'STAGE RIGHT',90)+lab(10,155,'STAGE LEFT',-90);
-    h += `<defs><marker id="arr-${svg.id}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--floor-ink)"/></marker></defs>`;
-    st.sg.innerHTML = h;
+  const wrap = svg.parentElement, cv = wrap.querySelector('canvas.stage3d');
+  const st = {svg, view:'aud', interactive, sg:svg.querySelector('.st-static'), dg:svg.querySelector('.st-dyn'), cv, yaw:0, pitch:24};
+  st.g = () => SC.geom(stg(), st.view === 'dan' ? 'dan' : 'aud');
+  st.toS = (x,y) => st.g().toS(x,y);
+  st.fromS = (X,Y) => st.g().fromS(X,Y);
+  st.renderStatic = () => { const is3 = st.view === '3d'; svg.style.display = is3 ? 'none' : ''; if (cv) cv.style.display = is3 ? 'block' : 'none'; if (!is3) st.sg.innerHTML = SC.svgStatic(cur, {view:st.view, markerId:svg.id}); };
+  st.draw3D = (S, sel) => {
+    const r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1, W = Math.max(2, Math.round(r.width*dpr)), H = Math.max(2, Math.round(r.height*dpr));
+    if (cv.width !== W || cv.height !== H){ cv.width = W; cv.height = H; }
+    SC.render3D(cv.getContext('2d'), {x:0, y:0, w:W, h:H}, cur, S, propsAt(S), {yaw:st.yaw, pitch:st.pitch, highlight: sel && sel !== 'crew' ? sel : null, dpr});
   };
   st.renderDyn = (S, sel, hl, warnNow, editable) => {
-    const F = cur.formations, D = cur.dancers; let h = '';
+    if (st.view === '3d'){ st.draw3D(S, sel); return; }
+    const F = cur.formations, D = cur.dancers, g = st.g(), k = g.k, facing = SC.usesFacing(cur), arrow = `marker-end="url(#arr-${svg.id})"`; let h = '<g pointer-events="none">', handle = '';
+    const pathOf = (i, id, r) => trimEnd(SC.pathPoints(cur, i, id, 24).map(q => g.toS(q[0], q[1])), r);
     if (st.interactive && UI.ghosts && !S.moving && S.idx > 0){
       const prev = F[S.idx-1], c = F[S.idx];
-      D.forEach(d => { if (sel && d.id !== sel && !(hl||[]).includes(d.id)) return; const a=prev.pos[d.id], z=c.pos[d.id]; if (!a||!z) return;
-        const [x1,y1]=st.toS(a[0],a[1]), [x2,y2]=st.toS(z[0],z[1]), len=Math.hypot(x2-x1,y2-y1); if (len<4) return; const k=(len-11)/len;
-        h += `<circle cx="${x1}" cy="${y1}" r="9" fill="none" stroke="${d.color}" stroke-width="1.2" stroke-dasharray="2 2" opacity=".7"/><line x1="${x1}" y1="${y1}" x2="${x1+(x2-x1)*k}" y2="${y1+(y2-y1)*k}" stroke="var(--floor-ink)" stroke-dasharray="3 3" opacity=".55" marker-end="url(#arr-${svg.id})"/>`; });
+      D.forEach(d => { if (sel && d.id !== sel && !(hl||[]).includes(d.id)) return; const a = prev.pos[d.id], z = c.pos[d.id]; if (!a || !z) return;
+        const [x1,y1] = g.toS(a[0],a[1]), [x2,y2] = g.toS(z[0],z[1]), curved = !!(c.paths && c.paths[d.id]); if (Math.hypot(x2-x1,y2-y1) < 4 && !curved) return;
+        h += `<circle cx="${x1}" cy="${y1}" r="9" fill="none" stroke="${d.color}" stroke-width="1.2" stroke-dasharray="2 2" opacity=".7"/><path d="${ptsD(pathOf(S.idx, d.id, 11))}" fill="none" stroke="${curved ? d.color : 'var(--floor-ink)'}" stroke-width="${curved ? 1.4 : 1}" stroke-dasharray="3 3" opacity="${curved ? .85 : .55}" ${arrow}/>`; });
+      // the curve handle for the selected dancer: drag it to bend their path
+      if (sel && editable){ const a = prev.pos[sel], z = c.pos[sel], d = D.find(x => x.id === sel);
+        if (a && z && d && Math.hypot(a[0]-z[0], a[1]-z[1]) > 0.9){ const m = SC.midOf(a, z, c.paths && c.paths[sel]), [mx,my] = g.toS(m[0], m[1]);
+          handle = `<g data-handle="${sel}" style="cursor:move"><title>Drag to curve ${esc(d.name)}'s path. Double-click to straighten.</title><circle cx="${mx}" cy="${my}" r="11" fill="transparent"/><rect x="${mx-5}" y="${my-5}" width="10" height="10" fill="var(--floor)" stroke="${d.color}" stroke-width="2" transform="rotate(45 ${mx} ${my})"/></g>`; } }
     }
-    if (sel){ const d = D.find(x=>x.id===sel), pts = F.map(f=>f.pos[sel]).filter(Boolean).map(p=>st.toS(p[0],p[1]));
-      if (d && pts.length > 1){ h += `<polyline points="${pts.map(p=>p.join(',')).join(' ')}" fill="none" stroke="${d.color}" stroke-width="1.6" opacity=".7" stroke-linejoin="round"/>`;
-        pts.forEach((p,i) => { h += `<circle cx="${p[0]}" cy="${p[1]}" r="4.2" fill="var(--floor)" stroke="${d.color}"/><text x="${p[0]}" y="${p[1]+2.2}" text-anchor="middle" font-size="5.5" font-family="JetBrains Mono, monospace" fill="var(--floor-ink)">${i+1}</text>`; }); } }
+    if (!st.interactive && F.length){   // Rehearse: show where you go next
+      const j = S.moving ? S.next : S.idx + 1, dd = sel && D.find(x => x.id === sel);
+      if (dd && F[j]){ const pts = pathOf(j, dd.id, 12); if (pts.length > 1) h += `<path d="${ptsD(pts)}" fill="none" stroke="${dd.color}" stroke-width="2" stroke-dasharray="4 3" opacity=".9" ${arrow}/>`; }
+      else if (!sel && S.moving) D.forEach(d => { const pts = pathOf(S.next, d.id, 12); if (pts.length > 1) h += `<path d="${ptsD(pts)}" fill="none" stroke="${d.color}" stroke-width="1.2" stroke-dasharray="3 3" opacity=".45"/>`; });
+    }
+    if (sel && st.interactive){ const d = D.find(x=>x.id===sel);
+      if (d && F.length > 1){ F.forEach((f, i) => { if (i) h += `<path d="${ptsD(SC.pathPoints(cur, i, sel, 20).map(q => g.toS(q[0], q[1])))}" fill="none" stroke="${d.color}" stroke-width="1.6" opacity=".7" stroke-linejoin="round"/>`; });
+        F.forEach((f, i) => { const p = f.pos[sel]; if (!p) return; const [x,y] = g.toS(p[0],p[1]); h += `<circle cx="${x}" cy="${y}" r="4.2" fill="var(--floor)" stroke="${d.color}"/><text x="${x}" y="${y+2.2}" text-anchor="middle" font-size="5.5" font-family="JetBrains Mono, monospace" fill="var(--floor-ink)">${i+1}</text>`; }); } }
+    h += '</g>' + handle;
     // props sit under the dancers
     const PP = propsAt(S);
     cur.props.forEach(pr => {
       const s = PP[pr.id]; if (!s) return;
-      const [x, y] = st.toS(s.x, s.y), w = pr.w*10, dd = pr.d*10, half = Math.max(w, dd)/2, selP = st.interactive && UI.selProp === pr.id;
+      const [x, y] = g.toS(s.x, s.y), w = pr.w*k, dd = pr.d*k, half = Math.max(w, dd)/2, selP = st.interactive && UI.selProp === pr.id, rot = s.rot||0;
       const mover = s.moving && s.mover ? (s.mover === 'crew' ? {id:'crew', name:'Stage crew', color:'#8F97B3'} : D.find(z => z.id === s.mover)) : null;
       const dimP = sel && !(mover && mover.id === sel);
       const edge = selP ? 'var(--floor-ink)' : '#F1DFBE', dash = s.moving ? 'stroke-dasharray="2.5 1.5"' : '';
-      h += `<g data-prop="${pr.id}" style="cursor:${editable?'grab':'pointer'}" opacity="${dimP?0.45:1}"><g transform="translate(${x} ${y}) rotate(${s.rot||0})">`;
+      h += `<g data-prop="${pr.id}" style="cursor:${editable?'grab':'pointer'}" opacity="${dimP?0.45:1}"><g transform="translate(${x} ${y}) rotate(${rot})">`;
       h += pr.round ? `<ellipse rx="${w/2}" ry="${dd/2}" fill="#B98B4E" stroke="${edge}" stroke-width="${selP?1.6:.8}" ${dash}/>`
                     : `<rect x="${-w/2}" y="${-dd/2}" width="${w}" height="${dd}" rx="2" fill="#B98B4E" stroke="${edge}" stroke-width="${selP?1.6:.8}" ${dash}/><line x1="${-w/2+2}" y1="${-dd/2+2.2}" x2="${w/2-2}" y2="${-dd/2+2.2}" stroke="#F1DFBE" stroke-width=".6" opacity=".7"/>`;
       h += `</g><text x="${x}" y="${y - half - 3}" text-anchor="middle" font-family="Inter, sans-serif" font-size="6.2" font-weight="600" fill="#E9CFA0" pointer-events="none">${esc(pr.name)}</text>`;
       if (mover) h += `<circle cx="${x - 14}" cy="${y + half + 6}" r="2.6" fill="${mover.color}"/><text x="${x - 9}" y="${y + half + 8}" font-family="Inter, sans-serif" font-size="6" fill="var(--floor-ink)" pointer-events="none">${esc(mover.name)} moves it</text>`;
       h += `</g>`;
     });
-    D.forEach(d => { const p = S.pos[d.id]; if (!p) return; const [x,y] = st.toS(p[0],p[1]), dim = sel && d.id !== sel && !(hl||[]).includes(d.id);
+    D.forEach(d => { const p = S.pos[d.id]; if (!p) return; const [x,y] = g.toS(p[0],p[1]), dim = sel && d.id !== sel && !(hl||[]).includes(d.id), fd = (S.face && S.face[d.id]) || 0;
       h += `<g data-id="${d.id}" style="cursor:${editable?'grab':'pointer'}" opacity="${dim?0.32:1}">`;
       if (warnNow && warnNow.has(d.id)) h += `<circle cx="${x}" cy="${y}" r="14" fill="none" stroke="var(--warn)" stroke-width="1.6"/>`;
       if (d.id === sel) h += `<circle cx="${x}" cy="${y}" r="13" fill="none" stroke="var(--floor-ink)" stroke-width="1.4"/>`;
+      if (facing || (d.id === sel && st.interactive)) h += SC.svgFacing(g, x, y, fd, 10);
       h += `<circle cx="${x}" cy="${y}" r="10" fill="${d.color}" stroke="rgba(0,0,0,.35)" stroke-width=".8"/><text x="${x}" y="${y+3.2}" text-anchor="middle" font-family="Inter, sans-serif" font-weight="600" font-size="9" fill="#fff" pointer-events="none">${esc(initials(d))}</text><text x="${x}" y="${y+19}" text-anchor="middle" font-family="Inter, sans-serif" font-size="6.5" fill="var(--floor-ink)" opacity=".85" pointer-events="none">${esc(d.name)}</text></g>`; });
     st.dg.innerHTML = h;
   };
-  st.svg.parentElement.querySelectorAll('.view-toggle button').forEach(b => b.addEventListener('click', () => {
-    st.view = b.dataset.view; st.svg.parentElement.querySelectorAll('.view-toggle button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); st.renderStatic(); needDraw = true;
+  wrap.querySelectorAll('.view-toggle button').forEach(b => b.addEventListener('click', () => {
+    st.view = b.dataset.view; wrap.querySelectorAll('.view-toggle button').forEach(x => x.setAttribute('aria-pressed', String(x === b))); st.renderStatic(); needDraw = true; if (st.interactive) updateFHint();
   }));
+  if (cv){   // drag to walk around the audience; double-click to go back to the centre seat
+    let o = null;
+    cv.addEventListener('pointerdown', e => { o = {x:e.clientX, y:e.clientY, yaw:st.yaw, pitch:st.pitch}; cv.setPointerCapture(e.pointerId); });
+    cv.addEventListener('pointermove', e => { if (!o) return; st.yaw = SC.clamp(o.yaw - (e.clientX - o.x)*0.35, -75, 75); st.pitch = SC.clamp(o.pitch + (e.clientY - o.y)*0.25, 4, 75); needDraw = true; });
+    cv.addEventListener('pointerup', () => { o = null; });
+    cv.addEventListener('dblclick', () => { st.yaw = 0; st.pitch = 24; needDraw = true; });
+  }
   return st;
 }
 const rStage = makeStage($('rStage'), false), fStage = makeStage($('fStage'), true);
 
 /* ================= library ================= */
 async function refreshLib(){
+  const mode = await getMeta('libSort', 'recent'); $('libSort').value = mode;
   lib = (await allProjects()).sort((a,b) => (b.opened||0) - (a.opened||0));
+  if (mode === 'az') lib.sort((a,b) => (a.title||'').localeCompare(b.title||'', undefined, {sensitivity:'base'}));
+  if (mode === 'custom') lib.sort((a,b) => (a.order ?? 1e9) - (b.order ?? 1e9));
+  updateBackupBanner();
   $('libCount').textContent = `${lib.length} ${lib.length === 1 ? 'project' : 'projects'} saved on this device`;
   const box = $('cards'); box.innerHTML = '';
   if (!lib.length){ box.innerHTML = `<div class="panel"><b>No songs yet.</b><p class="muted" style="margin:6px 0 0">Start a new project from a song on this device, open a share file, or <button class="x" id="reseed" type="button" style="padding:0;color:var(--accent)">add the demo project</button>.</p></div>`; $('reseed').addEventListener('click', async () => { await putProject(demoProject()); refreshLib(); }); return; }
@@ -904,7 +1009,17 @@ async function refreshLib(){
       <div class="card-meta"><span>${(p.sections||[]).length} sections</span><span>${nNotes} notes</span><span>${(p.formations||[]).length} formations</span>${(p.props||[]).length ? `<span>${p.props.length} props</span>` : ''}${p.video ? '<span>video</span>' : ''}</div>
       ${missing ? '<div><span class="chiptag warn">Needs your copy of the music</span></div>' : ''}
       ${p.imported ? '<div><span class="chiptag">Received from a share file</span></div>' : ''}
-      <div class="card-actions"><button class="btn small primary" data-a="open" type="button">Open</button><button class="btn small" data-a="dup" type="button">Duplicate</button><button class="btn small danger" data-a="del" type="button">Delete</button></div>`;
+      <div class="card-actions"><button class="btn small primary" data-a="open" type="button">Open</button><button class="btn small" data-a="dup" type="button">Duplicate</button><button class="btn small danger" data-a="del" type="button">Delete</button>${mode === 'custom' ? `<span class="spacer"></span><button class="x move" data-a="up" type="button" aria-label="Move ${esc(p.title)} up">↑</button><button class="x move" data-a="down" type="button" aria-label="Move ${esc(p.title)} down">↓</button>` : ''}</div>`;
+    if (mode === 'custom'){
+      c.draggable = true; c.dataset.id = p.id;
+      c.addEventListener('dragstart', e => { c.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', p.id); });
+      c.addEventListener('dragend', () => c.classList.remove('dragging'));
+      c.addEventListener('dragover', e => { e.preventDefault(); c.classList.add('drop-before'); });
+      c.addEventListener('dragleave', () => c.classList.remove('drop-before'));
+      c.addEventListener('drop', e => { e.preventDefault(); c.classList.remove('drop-before'); const id = e.dataTransfer.getData('text/plain'); if (id && id !== p.id) moveSong(id, lib.findIndex(x => x.id === p.id)); });
+      c.querySelector('[data-a="up"]').addEventListener('click', () => moveSong(p.id, lib.indexOf(p) - 1));
+      c.querySelector('[data-a="down"]').addEventListener('click', () => moveSong(p.id, lib.indexOf(p) + 2));
+    }
     c.querySelector('[data-a="open"]').addEventListener('click', () => openProject(p.id));
     c.querySelector('[data-a="dup"]').addEventListener('click', () => duplicate(p));
     const del = c.querySelector('[data-a="del"]');
@@ -915,6 +1030,53 @@ async function refreshLib(){
     box.appendChild(c);
   });
 }
+// Put song id before position `to` in the current order and save everyone's place.
+async function moveSong(id, to){
+  const from = lib.findIndex(x => x.id === id); if (from < 0) return;
+  to = Math.max(0, Math.min(lib.length, to)); const [p] = lib.splice(from, 1); if (to > from) to--; lib.splice(to, 0, p);
+  for (let i = 0; i < lib.length; i++){ if (lib[i].order !== i){ lib[i].order = i; await putProject(lib[i]); } }
+  refreshLib();
+}
+$('libSort').addEventListener('change', async e => { if (e.target.value === 'custom' && lib.some(p => p.order == null)){ for (let i = 0; i < lib.length; i++){ lib[i].order = i; await putProject(lib[i]); } } await setMeta('libSort', e.target.value); refreshLib(); });
+
+/* backup and restore */
+const DAY = 86400000;
+async function updateBackupBanner(){
+  const b = await getMeta('backup', {last:0, snooze:0, remind:true}), now = Date.now();
+  $('remindChk').checked = b.remind !== false;
+  const changed = lib.filter(p => p.id !== 'demo-spotlight' && Math.max(p.updated||0, p.created||0) > (b.last||0));
+  const show = b.remind !== false && changed.length > 0 && now - (b.last||0) > 7*DAY && now > (b.snooze||0);
+  $('backupBanner').hidden = !show;
+  if (show) $('backupText').textContent = b.last ? `It's been ${Math.floor((now - b.last)/DAY)} days since you backed up your library, and ${changed.length} ${changed.length === 1 ? 'song has' : 'songs have'} changed. Keep a copy on a USB stick or in OneDrive in case this PC breaks.` : `You haven't backed up your library yet. Save a copy of all ${lib.length} songs to a USB stick or OneDrive in case this PC breaks.`;
+}
+async function backupLibrary(){
+  const projects = await allProjects(), media = [];
+  toast('Gathering your songs…');
+  for (const p of projects){ for (const kind of ['audio','video']){ if (kind === 'audio' && p.audio && p.audio.demo) continue; const m = await getMedia(p.id+':'+kind); if (m) media.push({project:p.id, kind, name:(kind === 'audio' ? p.audio && p.audio.name : p.video && p.video.name) || kind, data:await m.arrayBuffer()}); } }
+  const res = await window.workbook.saveBackup({data:{exported:new Date().toISOString(), projects, rosters:await getMeta('rosters', [])}, media});
+  if (!res || !res.ok){ if (res && res.error) toast(`Couldn't save the backup: ${res.error}`); return; }
+  const b = await getMeta('backup', {remind:true}); b.last = Date.now(); b.snooze = 0; await setMeta('backup', b);
+  const mb = res.size/1048576; toast(`Backed up ${projects.length} ${projects.length === 1 ? 'song' : 'songs'} (${mb < 1 ? Math.max(1, Math.round(res.size/1024)) + ' KB' : mb.toFixed(1) + ' MB'}) to ${res.path}.`); updateBackupBanner();
+}
+async function restoreLibrary(){
+  const res = await window.workbook.openBackup(); if (!res) return;
+  if (!res.ok){ if (!res.canceled) toast(res.error || "That backup couldn't be opened."); return; }
+  const have = new Map((await allProjects()).map(p => [p.id, p])); let added = 0, updated = 0, kept = 0;
+  for (const p of res.data.projects){
+    if (!p || !p.id) continue; const mine = have.get(p.id);
+    if (mine && (mine.updated||mine.created||0) >= (p.updated||p.created||0)){ kept++; continue; }
+    await putProject(p); mine ? updated++ : added++;
+    for (const m of res.media.filter(x => x.project === p.id)) await putMedia(p.id+':'+m.kind, new Blob([m.data], {type:MIME[m.ext]||''}));
+  }
+  const rs = await getMeta('rosters', []), ids = new Set(rs.map(r => r.id)); (res.data.rosters||[]).forEach(r => { if (r && r.id && !ids.has(r.id)) rs.push(r); }); await setMeta('rosters', rs);
+  toast(`Restored from ${res.fileName}: ${added} new, ${updated} updated${kept ? `, ${kept} already up to date on this PC` : ''}.`); refreshLib();
+}
+$('backupBtn').addEventListener('click', backupLibrary);
+$('backupNow').addEventListener('click', backupLibrary);
+$('restoreBtn').addEventListener('click', restoreLibrary);
+$('backupLater').addEventListener('click', async () => { const b = await getMeta('backup', {last:0, remind:true}); b.snooze = Date.now() + 7*DAY; await setMeta('backup', b); updateBackupBanner(); });
+$('remindChk').addEventListener('change', async e => { const b = await getMeta('backup', {last:0, snooze:0}); b.remind = e.target.checked; await setMeta('backup', b); updateBackupBanner(); });
+
 async function duplicate(p){
   const c = JSON.parse(JSON.stringify(p)); c.id = uid('p'); c.title = p.title + ' (copy)'; c.created = c.opened = Date.now(); c.demo = false;
   for (const k of ['audio','video']){ const m = await getMedia(p.id+':'+k); if (m) await putMedia(c.id+':'+k, m); }
@@ -926,10 +1088,11 @@ $('newFile').addEventListener('change', async e => {
   const id = uid('p'), isVideo = (f.type||'').startsWith('video');
   const p = {id, title:f.name.replace(/\.[^.]+$/,''), style:'Jazz', created:Date.now(), opened:Date.now(), bpm:120, offset:0, phrase:8,
     sections:[{name:'Intro',start:1}], notes:{}, dancers:[], formations:[], audio:{name:f.name, duration:0}, hasAudio:true, peaks:null, video:isVideo ? {name:f.name, offset:0, mirror:false} : null};
-  try { const buf = await decodeBlob(f); p.peaks = computePeaks(buf); p.audio.duration = Math.round(buf.duration*100)/100; const r = detectTempo(buf); if (r){ p.bpm = r.bpm; p.offset = r.offset; } }
+  try { const buf = await decodeBlob(f); p.peaks = computePeaks(buf); p.audio.duration = Math.round(buf.duration*100)/100; const r = detectTempo(buf); if (r){ p.bpm = r.bpm; p.offset = r.offset; const a = analyzeSong(buf, p.bpm, p.offset, p.phrase); if (a){ p.offset = Math.round(a.offset*1000)/1000; if (a.sections && a.sections.length > 1){ p.sections = a.sections; p.autoSections = true; } } } }
   catch(err){ toast("Couldn't read the beat from this file. You can tap the tempo inside the project."); }
   await putMedia(id+':audio', f); if (isVideo) await putMedia(id+':video', f);
-  await putProject(p); openProject(id);
+  await putProject(p); await openProject(id);
+  if (p.autoSections) toast(`Found ${p.sections.length} sections in the music (${p.sections.map(x => x.name).join(', ')}). Rename or move them in Counts & notes.`);
 });
 const MIME = {mp3:'audio/mpeg', m4a:'audio/mp4', aac:'audio/aac', wav:'audio/wav', ogg:'audio/ogg', flac:'audio/flac', mp4:'video/mp4', mov:'video/quicktime', webm:'video/webm', m4v:'video/mp4'};
 async function importShare(share){
@@ -937,7 +1100,7 @@ async function importShare(share){
   if (!share.ok){ if (!share.canceled) toast(share.error || "That file couldn't be opened."); return; }
   const data = share.data, s = data.project, id = uid('p');
   const p = {id, title:s.title || 'Shared project', style:s.style||'Other', created:Date.now(), opened:Date.now(), bpm:+s.bpm||120, offset:+s.offset||0, phrase:+s.phrase||8,
-    sections:Array.isArray(s.sections)&&s.sections.length ? s.sections : [{name:'Intro',start:1}], notes:s.notes||{}, dancers:s.dancers||[], formations:s.formations||[], props:Array.isArray(s.props) ? s.props : [], propsSeeded:true,
+    sections:Array.isArray(s.sections)&&s.sections.length ? s.sections : [{name:'Intro',start:1}], notes:s.notes||{}, dancers:s.dancers||[], formations:s.formations||[], props:Array.isArray(s.props) ? s.props : [], propsSeeded:true, stage:s.stage && typeof s.stage === 'object' ? s.stage : undefined,
     audio:s.audio || null, hasAudio:false, peaks:s.peaks||null, video:null, imported:true, from:data.exported};
   const m = share.media || {};
   if (m.audio){ await putMedia(id+':audio', new Blob([m.audio.data], {type:MIME[m.audio.ext]||''})); p.hasAudio = true; if (p.audio) p.audio.demo = false; }
@@ -1166,6 +1329,14 @@ $('detectBtn').addEventListener('click', async () => {
     const r = detectTempo(buf); if (!r) throw 0; cur.bpm = r.bpm; cur.offset = r.offset; save(); renderAll(); setStatus(`Detected ${cur.bpm} BPM with count 1 at ${cur.offset.toFixed(2)} s.`);
   } catch(e){ setStatus("Couldn't read the beat. Use Tap tempo while the song plays."); }
 });
+$('suggestBtn').addEventListener('click', async () => {
+  const box = $('secSuggest'); box.hidden = false; box.innerHTML = '<span class="muted">Listening to the song…</span>';
+  let a = null; try { a = analyzeSong(await songBuffer(), cur.bpm, cur.offset, cur.phrase, true); } catch(e){}
+  if (!a || !a.sections || a.sections.length < 2){ box.innerHTML = '<span>No clear changes found in this song. Add sections by hand with <b>Add section</b>.</span><div class="inline"><button class="btn small" type="button" id="sugNo">OK</button></div>'; $('sugNo').addEventListener('click', () => box.hidden = true); return; }
+  box.innerHTML = `<b>Suggested sections</b><ol>${a.sections.map(x => `<li>${esc(x.name)} <span class="muted">from ${word()} ${x.start} (${fmt(phraseTime(x.start))})</span></li>`).join('')}</ol><span class="muted">Notes and formations stay on their counts; only the section names and starts change.</span><div class="inline"><button class="btn small primary" type="button" id="sugYes">Use these sections</button><button class="btn small" type="button" id="sugNo">Keep mine</button></div>`;
+  $('sugYes').addEventListener('click', () => { cur.sections = a.sections; sortSections(); save(); box.hidden = true; renderAll(); setStatus(`Using ${a.sections.length} suggested sections. Rename them to match the song.`); });
+  $('sugNo').addEventListener('click', () => box.hidden = true);
+});
 $('addSecBtn').addEventListener('click', () => {
   const p = Math.max(1, posAt(aud.currentTime||0).phrase); if (cur.sections.some(s => s.start === p)){ setStatus(`A section already starts at ${word()} ${p}. Rename it instead.`); return; }
   cur.sections.push({name:'New section', start:p}); sortSections(); save(); renderAll();
@@ -1198,10 +1369,14 @@ function updateCue(b, S){
     let h = '', n = 0; for (let j = start; j < F.length && n < 3; j++){ const jobs = propJobsFor('crew', j); if (jobs.length){ h += jobLine({j, jobs}, n ? 'Then:' : 'Next crew job:'); n++; } }
     box.innerHTML = h || '<span class="muted">No more stage crew jobs in this number.</span>'; return;
   }
-  if (!d){ box.innerHTML = '<span class="muted">Pick a dancer to see where they are and where they go next.</span>'; return; }
-  const p = S.pos[d.id]; let h = '';
-  if (S.moving){ const n = F[S.next]; h += `<div><b>${esc(d.name)}</b> is travelling into <b>${esc(n.name)}</b>, arriving on ${esc(beatLabel(n.at))}.</div><div class="muted">Going to: ${esc(spotText(n.pos[d.id][0], n.pos[d.id][1]))}</div>`; }
-  else if (p){ h += `<div><b>${esc(d.name)}</b> is in <b>${esc(F[S.idx].name)}</b>: ${esc(spotText(p[0],p[1]))}.</div>`; const n = F[S.idx+1]; if (n && n.pos[d.id]) h += `<div class="muted">Next: start moving on ${esc(beatLabel(travelStart(S.idx+1)))} to ${esc(spotText(n.pos[d.id][0], n.pos[d.id][1]))}.</div>`; }
+  const fnote = f => f && f.note && f.note.trim() ? `<div class="fnote"><b>${esc(f.name)}:</b> ${esc(f.note)}</div>` : '';
+  if (!d){ box.innerHTML = '<span class="muted">Pick a dancer to see where they are and where they go next.</span>' + fnote(S.moving ? F[S.next] : F[S.idx]); return; }
+  const p = S.pos[d.id], useFace = SC.usesFacing(cur), faceBit = (f) => useFace ? `, ${SC.faceText(faceOf(f, d.id))}` : ''; let h = '';
+  if (S.moving){ const n = F[S.next], [ws, we] = moveWindow(S.next, d.id), np = n.pos[d.id];
+    h += `<div><b>${esc(d.name)}</b> ${S.b < ws ? `waits, then starts moving on ${esc(beatLabel(ws))}` : S.b >= we ? 'is already there' : 'is travelling'} into <b>${esc(n.name)}</b>, arriving on ${esc(beatLabel(we))}.</div>${np ? `<div class="muted">Going to: ${esc(spotText(np[0], np[1]))}${faceBit(n)}${n.paths && n.paths[d.id] ? ' (curved path)' : ''}</div>` : ''}`; h += fnote(n); }
+  else if (p){ h += `<div><b>${esc(d.name)}</b> is in <b>${esc(F[S.idx].name)}</b>: ${esc(spotText(p[0],p[1]))}${faceBit(F[S.idx])}.</div>`; const n = F[S.idx+1];
+    if (n && n.pos[d.id]){ const [ws, we] = moveWindow(S.idx+1, d.id); h += `<div class="muted">Next: start moving on ${esc(beatLabel(ws))}${n.paths && n.paths[d.id] ? ' on a curved path' : ''} to ${esc(spotText(n.pos[d.id][0], n.pos[d.id][1]))}, arriving on ${esc(beatLabel(we))}.</div>`; }
+    h += fnote(F[S.idx]); }
   const nj = nextJob(d.id); if (nj) h += jobLine(nj, 'Prop job:');
   box.innerHTML = h;
 }
@@ -1230,35 +1405,81 @@ function svgPoint(svg, e){ const pt = svg.createSVGPoint(); pt.x = e.clientX; pt
 const editable = S => !S.moving && aud.paused && !UI.counting && S.idx >= 0;
 const fsvg = $('fStage');
 fsvg.addEventListener('pointerdown', e => {
-  const g = e.target.closest('[data-id]'), gp = g ? null : e.target.closest('[data-prop]');
-  if (!g && !gp){ if (UI.sel || UI.selProp){ UI.sel = null; UI.hl = null; UI.selProp = null; renderDancers(); renderProps(true); needDraw = true; } return; }
-  drag = {id:g ? g.dataset.id : null, prop:gp ? gp.dataset.prop : null, moved:false, S:stateAt(beatAt(aud.currentTime||0)), x0:e.clientX, y0:e.clientY}; fsvg.setPointerCapture(e.pointerId); e.preventDefault();
+  const hd = e.target.closest('[data-handle]'), g = hd ? null : e.target.closest('[data-id]'), gp = (hd || g) ? null : e.target.closest('[data-prop]');
+  if (!hd && !g && !gp){ if (UI.sel || UI.selProp){ UI.sel = null; UI.hl = null; UI.selProp = null; renderDancers(); renderProps(true); renderFPanel(true); needDraw = true; } return; }
+  drag = {handle:hd ? hd.dataset.handle : null, id:g ? g.dataset.id : null, prop:gp ? gp.dataset.prop : null, moved:false, S:stateAt(beatAt(aud.currentTime||0)), x0:e.clientX, y0:e.clientY}; fsvg.setPointerCapture(e.pointerId); e.preventDefault();
 });
+fsvg.addEventListener('dblclick', e => {
+  const hd = e.target.closest('[data-handle]'); if (!hd) return; const S = stateAt(beatAt(aud.currentTime||0)); if (!editable(S)) return;
+  straighten(cur.formations[S.idx], hd.dataset.handle);
+});
+function straighten(f, id){ if (f.paths){ delete f.paths[id]; if (!Object.keys(f.paths).length) delete f.paths; } computeWarnings(); save(); renderWarnings(); renderFPanel(true); needDraw = true; }
 fsvg.addEventListener('pointermove', e => {
   if (!drag) return; if (!drag.moved && Math.hypot(e.clientX-drag.x0, e.clientY-drag.y0) < 4) return;
   if (!editable(drag.S)){ if (!drag.warned){ drag.warned = true; toast(aud.paused ? 'Everything is travelling here. Jump to a formation to move dancers or props.' : 'Pause the music to move dancers or props.'); } return; }
-  drag.moved = true; const p = svgPoint(fsvg, e); let [x,y] = fStage.fromS(p.x, p.y);
+  drag.moved = true; const p = svgPoint(fsvg, e), ST = stg(); let [x,y] = fStage.fromS(p.x, p.y);
+  const F = cur.formations, f = F[drag.S.idx];
+  if (drag.handle){   // bend the path: the handle is the curve's midpoint
+    const prev = F[drag.S.idx-1], a = prev && prev.pos[drag.handle], z = f.pos[drag.handle]; if (!a || !z) return;
+    const c = SC.ctrlFromMid(a, z, [x, y]).map(v => Math.round(v*10)/10);
+    f.paths = f.paths || {}; if (Math.hypot(x - (a[0]+z[0])/2, y - (a[1]+z[1])/2) < 0.5) delete f.paths[drag.handle]; else f.paths[drag.handle] = c;
+    needDraw = true; $('fHint').innerHTML = `<b>${esc(nameOf(drag.handle))}</b>: curved path. Double-click the handle to straighten it.`; return;
+  }
   if (UI.snap){ x = Math.round(x*2)/2; y = Math.round(y*2)/2; if (!drag.prop){ x = Math.round(x); y = Math.round(y); } }
-  x = Math.max(-STAGE_W/2+1, Math.min(STAGE_W/2-1, x)); y = Math.max(1, Math.min(STAGE_D-1, y));
-  const f = cur.formations[drag.S.idx];
+  x = Math.max(-ST.w/2+1, Math.min(ST.w/2-1, x)); y = Math.max(1, Math.min(ST.d-1, y));
   if (drag.prop){
     const old = f.props[drag.prop] || {}; f.props[drag.prop] = Object.assign({}, old, {on:true, x, y, rot:old.rot||0});
     UI.selProp = drag.prop; needDraw = true;
     const pr = cur.props.find(q => q.id === drag.prop); $('fHint').innerHTML = `<b>${esc(pr ? pr.name : 'Prop')}</b>: ${esc(spotText(x,y))}`;
     return;
   }
+  // keep curved paths into and out of this spot the same shape
+  const old = f.pos[drag.id], nx = F[drag.S.idx+1];
+  if (old){ const dx = (x - old[0])/2, dy = (y - old[1])/2;
+    [f, nx].forEach(ff => { const c = ff && ff.paths && ff.paths[drag.id]; if (c) ff.paths[drag.id] = [Math.round((c[0]+dx)*10)/10, Math.round((c[1]+dy)*10)/10]; }); }
   f.pos[drag.id] = [x,y]; UI.sel = drag.id; needDraw = true;
   $('fHint').innerHTML = `<b>${esc(nameOf(drag.id))}</b>: ${esc(spotText(x,y))}`;
 });
 fsvg.addEventListener('pointerup', () => {
   if (!drag) return; const d = drag; drag = null;
+  if (d.handle){ if (d.moved){ computeWarnings(); save(); renderWarnings(); renderFPanel(true); } updateFHint(); return; }
   if (d.prop){
     if (d.moved){ computeWarnings(); save(); renderWarnings(); } else UI.selProp = UI.selProp === d.prop ? null : d.prop;
     renderProps(true); needDraw = true; updateFHint(); return;
   }
-  if (d.moved){ computeWarnings(); save(); renderDancers(); renderWarnings(); renderProps(true); }
-  else { UI.sel = UI.sel === d.id ? null : d.id; UI.hl = null; renderDancers(); }
+  if (d.moved){ computeWarnings(); save(); renderDancers(); renderWarnings(); renderProps(true); renderFPanel(true); }
+  else { UI.sel = UI.sel === d.id ? null : d.id; UI.hl = null; renderDancers(); renderFPanel(true); }
   needDraw = true; updateFHint();
+});
+
+/* stage settings */
+function renderStagePanel(){
+  const st = stg(), pre = SC.STAGE_PRESETS.find(q => q.w === st.w && q.d === st.d);
+  $('stPreset').innerHTML = SC.STAGE_PRESETS.map(q => `<option value="${q.id}">${esc(q.label)}</option>`).join('') + '<option value="custom">Custom size</option>';
+  $('stPreset').value = pre ? pre.id : 'custom'; $('stCustom').hidden = !!pre;
+  $('stW').value = st.w; $('stD').value = st.d; $('stSpike').value = String(st.spike);
+  $('stLabels').innerHTML = Object.entries(SC.LABELS).map(([k, t]) => `<option value="${k}">${esc(t)}</option>`).join(''); $('stLabels').value = st.labels;
+  $('stFloor').innerHTML = Object.entries(SC.FLOORS).filter(([k]) => k !== 'photo' || st.bg).map(([k, f]) => `<option value="${k}">${esc(f.label)}</option>`).join(''); $('stFloor').value = st.floor;
+  $('stBgLbl').textContent = st.bg ? 'Change picture…' : 'Use my own picture…';
+  $('stSizeTxt').textContent = `${st.w} × ${st.d} ft`;
+}
+function applyStage(patch, msg){
+  const st = Object.assign(stg(), patch); cur.stage = {w:st.w, d:st.d, spike:st.spike, labels:st.labels, floor:st.floor}; if (st.bg) cur.stage.bg = st.bg;
+  save(); computeWarnings(); renderStagePanel(); renderWarnings(); rStage.renderStatic(); fStage.renderStatic(); needDraw = true; if (msg) toast(msg);
+}
+$('stPreset').addEventListener('change', e => { const q = SC.STAGE_PRESETS.find(x => x.id === e.target.value); if (q) applyStage({w:q.w, d:q.d}); else { $('stCustom').hidden = false; $('stW').focus(); } });
+['stW','stD'].forEach(id => $(id).addEventListener('change', () => applyStage({w:+$('stW').value, d:+$('stD').value})));
+$('stSpike').addEventListener('change', e => applyStage({spike:+e.target.value}));
+$('stLabels').addEventListener('change', e => applyStage({labels:e.target.value}));
+$('stFloor').addEventListener('change', e => applyStage({floor:e.target.value}));
+$('stBgFile').addEventListener('change', async e => {
+  const f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return;
+  try {
+    const url = URL.createObjectURL(f), im = new Image(); im.src = url; await im.decode(); URL.revokeObjectURL(url);
+    const sc = Math.min(1, 1400 / Math.max(im.naturalWidth, im.naturalHeight)), c = document.createElement('canvas'); c.width = Math.round(im.naturalWidth*sc); c.height = Math.round(im.naturalHeight*sc);
+    c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+    applyStage({floor:'photo', bg:c.toDataURL('image/jpeg', 0.82)}, 'Picture set as the floor. The top of the picture is upstage.');
+  } catch(err){ toast("That picture couldn't be opened."); }
 });
 
 /* props panel */
@@ -1294,7 +1515,7 @@ function renderProps(force){
     const on = row.querySelector('[data-a="on"]');
     if (on) on.addEventListener('change', e => {
       const s = Object.assign({}, f.props[pr.id] || {});
-      if (e.target.value === '1'){ s.on = true; if (s.x == null){ s.x = 0; s.y = 12; s.rot = 0; } } else s.on = false;
+      if (e.target.value === '1'){ s.on = true; if (s.x == null){ s.x = 0; s.y = Math.round(stg().d/2); s.rot = 0; } } else s.on = false;
       f.props[pr.id] = s; UI.selProp = pr.id; computeWarnings(); save(); renderProps(true); renderWarnings(); needDraw = true;
     });
     const rot = row.querySelector('[data-a="rot"]');
@@ -1310,7 +1531,7 @@ $('addProp').addEventListener('click', () => {
   const pr = {id:uid('pr'), name:`${K.label} ${n}`, kind, w:K.w, d:K.d, round:!!K.round};
   cur.props.push(pr);
   const S = stateAt(beatAt(aud.currentTime||0)), from = cur.formations.length ? (S.moving ? S.next : Math.max(0, S.idx)) : 0, slot = (cur.props.length - 1) % 5;
-  cur.formations.forEach((fm, i) => { fm.props = fm.props || {}; fm.props[pr.id] = i < from ? {on:false} : {on:true, x:-8 + slot*4, y:20, rot:0, mover:''}; });
+  cur.formations.forEach((fm, i) => { fm.props = fm.props || {}; fm.props[pr.id] = i < from ? {on:false} : {on:true, x:-8 + slot*4, y:Math.max(2, stg().d - 4), rot:0, mover:''}; });
   UI.selProp = pr.id; computeWarnings(); save(); renderProps(true); renderWarnings(); needDraw = true;
   toast(cur.formations.length ? `Added ${pr.name} from "${cur.formations[from].name}" on. Drag it into place${from > 0 ? ' and choose who brings it on' : ''}.` : `Added ${pr.name}. It appears on stage once you add a formation.`);
 });
@@ -1319,13 +1540,20 @@ function updateFHint(){
   if (!F.length) h = cur.dancers.length ? 'Scrub to the count where the first formation should land, then press <b>Add formation here</b>.' : 'Add your dancers first, then add a formation.';
   else if (!aud.paused) h = 'Playing. Pause to move dancers.';
   else if (S.moving) h = `Travelling into <b>${esc(F[S.next].name)}</b>. Jump to a formation to move dancers.`;
-  else h = `Drag dancers to set their spots for <b>${esc(F[S.idx].name)}</b>.${UI.snap ? ' Spots snap to 1 ft.' : ''} Tap a dancer to follow their path.`;
+  else h = `Drag dancers to set their spots for <b>${esc(F[S.idx].name)}</b>.${UI.snap ? ' Spots snap to 1 ft.' : ''} Tap a dancer to set which way they face, when they move, and to curve their path.`;
+  if (fStage.view === '3d') h = '3D view from the audience: drag to change your seat, double-click for the centre seat. Switch to Audience to move dancers.';
   $('fHint').innerHTML = h;
 }
 function renderFStrip(S){
   const box = $('fstrip'); box.innerHTML = '';
   cur.formations.forEach((f,i) => { const b = document.createElement('button'); b.type='button'; b.className='fchip'; if (!S.moving && S.idx===i) b.classList.add('current'); if (S.moving && S.next===i) b.classList.add('next');
     b.innerHTML = `<span class="n">${i+1}. ${esc(f.name)}</span><span class="w">${esc(beatLabel(f.at,true))}</span>`; b.addEventListener('click', () => seekBeat(f.at)); box.appendChild(b); });
+}
+function staggerSummary(i){
+  const f = cur.formations[i]; if (!f.timing || !Object.keys(f.timing).length) return 'Everyone moves together.';
+  const w = cur.dancers.filter(d => f.pos[d.id]).map(d => [d, moveWindow(i, d.id)]).sort((a, b) => a[1][0] - b[1][0]);
+  const first = w[0], last = w[w.length-1];
+  return `Staggered: ${first[0].name} starts first on ${beatLabel(first[1][0], true)}; ${last[0].name} starts last on ${beatLabel(last[1][0], true)}.`;
 }
 function renderFPanel(force){
   const box = $('fPanel'); if (!force && box.contains(document.activeElement)) return;
@@ -1335,21 +1563,57 @@ function renderFPanel(force){
   if (!F.length){ $('fTitle').textContent = 'Formations'; box.innerHTML = `<div class="fgrid"><p class="muted" style="margin:0">${cur.dancers.length ? 'No formations yet. Scrub the timeline to a count and add the first one.' : 'Add dancers below first.'}</p><div class="inline">${addBtn}</div></div>`; }
   else if (S.moving){ const n = F[S.next]; $('fTitle').textContent = 'Travelling'; box.innerHTML = `<div class="fgrid"><div class="moving-note">Dancers are moving into <b>${esc(n.name)}</b>, arriving on ${esc(beatLabel(n.at))}.</div><div class="inline">${addBtn}</div></div>`; }
   else {
-    const f = F[S.idx], p = beatParts(f.at), maxT = S.idx === 0 ? 0 : f.at - F[S.idx-1].at;
+    const f = F[S.idx], p = beatParts(f.at), maxT = S.idx === 0 ? 0 : f.at - F[S.idx-1].at, ts = S.idx > 0 ? travelStart(S.idx) : f.at, len = f.at - ts;
+    const d = cur.dancers.find(x => x.id === UI.sel && f.pos[x.id]);
+    const stag = f.stagger || {order:'together', len:Math.max(1, Math.round(len/2))};
+    const tOpts = (from, to, sel) => { let o = ''; for (let v = from; v <= to; v++) o += `<option value="${v}" ${v === sel ? 'selected' : ''}>${esc(beatLabel(ts + v, true))}</option>`; return o; };
+    let dbox = '';
+    if (d){
+      const fd = SC.normDeg(faceOf(f, d.id)), [wa, wb] = S.idx > 0 ? moveWindow(S.idx, d.id).map(v => v - ts) : [0, 0], curved = !!(f.paths && f.paths[d.id]);
+      dbox = `<div class="dbox"><div class="dbox-head"><span class="dot sm" style="background:${d.color}">${esc(initials(d))}</span><b>${esc(d.name)}</b><span class="muted">in ${esc(f.name)}</span></div>
+        <div class="inline"><span class="label">Facing</span><button class="btn small" id="faceL" type="button" title="Turn 45° to the left" aria-label="Turn left">⟲</button><span class="face-txt">${esc(SC.faceText(fd).replace(/^./, c => c.toUpperCase()))}</span><button class="btn small" id="faceR" type="button" title="Turn 45° to the right" aria-label="Turn right">⟳</button><button class="btn small" id="faceFront" type="button">Front</button><button class="x" id="faceAll" type="button">Everyone faces this way</button></div>
+        ${S.idx > 0 && len > 0 ? `<div class="inline"><span class="label">Moves</span><span class="muted">from</span><select id="tA" aria-label="Starts moving on">${tOpts(0, len-1, wa)}</select><span class="muted">to</span><select id="tB" aria-label="Arrives on">${tOpts(1, len, wb)}</select></div>
+        <div class="inline"><span class="label">Path</span>${curved ? `<span class="muted">Curved.</span><button class="btn small" id="straightBtn" type="button">Straighten</button>` : '<span class="muted">Straight. Drag the ◆ on their path to curve it.</span>'}</div>` : ''}</div>`;
+    }
     $('fTitle').textContent = `Formation ${S.idx+1} of ${F.length}`;
     box.innerHTML = `<div class="fgrid">
       <div class="field"><label class="label" for="fName">Name</label><input type="text" id="fName" value="${esc(f.name)}" style="width:100%"></div>
       <div class="field"><span class="label">Dancers arrive on</span><div class="inline"><select id="fSec" aria-label="Section">${cur.sections.map((s,i)=>`<option value="${i}" ${i===p.si?'selected':''}>${esc(s.name)}</option>`).join('')}</select>
         <label class="inline muted">${word()} <input type="number" id="fPh" min="1" value="${p.inSec}"></label><label class="inline muted">count <input type="number" id="fCt" min="1" max="${cur.phrase}" value="${p.count}"></label></div></div>
-      ${S.idx > 0 ? `<div class="field"><label class="label" for="fTr">Travel time</label><div class="inline"><input type="number" id="fTr" min="1" max="${maxT}" value="${Math.min(f.travel,maxT)}"><span class="muted">counts, starting on ${esc(beatLabel(travelStart(S.idx)))}</span></div></div>` : '<p class="muted" style="margin:0">Opening formation: dancers start here.</p>'}
+      ${S.idx > 0 ? `<div class="field"><label class="label" for="fTr">Travel time</label><div class="inline"><input type="number" id="fTr" min="1" max="${maxT}" value="${Math.min(f.travel,maxT)}"><span class="muted">counts, starting on ${esc(beatLabel(travelStart(S.idx)))}</span>
+          <select id="fEase" aria-label="How they move"><option value="smooth" ${f.ease !== 'steady' ? 'selected' : ''}>Smooth start and stop</option><option value="steady" ${f.ease === 'steady' ? 'selected' : ''}>Steady walk</option></select></div></div>
+        ${len > 1 ? `<div class="field"><span class="label">Who moves when</span><div class="inline"><select id="stagOrder" aria-label="Who moves first">
+          ${[['together','Everyone together'],['front','Front row first'],['back','Back row first'],['right','Stage right first'],['left','Stage left first'],['one','One at a time']].concat(stag.order === 'custom' ? [['custom','Set for each dancer']] : []).map(([v,t]) => `<option value="${v}" ${stag.order===v?'selected':''}>${t}</option>`).join('')}</select>
+          <label class="inline muted" id="stagLenLbl" ${stag.order === 'together' || stag.order === 'custom' ? 'hidden' : ''}>each moving for <input type="number" id="stagLen" min="1" max="${len}" value="${Math.min(stag.len, len)}"> counts</label></div><span class="muted" style="font-size:12.5px">${esc(staggerSummary(S.idx))}</span></div>` : ''}`
+        : '<p class="muted" style="margin:0">Opening formation: dancers start here.</p>'}
+      <div class="field"><label class="label" for="fNote">Formation note</label><textarea id="fNote" rows="2" placeholder="Spacing, who's in front, entrances, focus…" style="width:100%">${esc(f.note||'')}</textarea></div>
+      ${dbox}
       ${noteOf(f.at)}
       <div class="inline">${addBtn}<button class="btn small danger" id="delF" type="button">Delete formation</button></div></div>`;
     $('fName').addEventListener('input', e => { f.name = e.target.value || 'Untitled'; save(); renderFStrip(stateAt(beatAt(aud.currentTime||0))); });
+    $('fNote').addEventListener('input', e => { f.note = e.target.value; if (!f.note.trim()) delete f.note; save(); });
     const reAt = () => { const s = cur.sections[+$('fSec').value], ph = Math.max(1, parseInt($('fPh').value,10)||1), ct = Math.max(1, Math.min(cur.phrase, parseInt($('fCt').value,10)||1)), at = (s.start-1+ph-1)*cur.phrase + (ct-1);
       if (F.some(o => o !== f && o.at === at)){ toast(`Another formation already arrives on ${beatLabel(at)}.`); renderFPanel(true); return; }
       f.at = at; sortF(); computeWarnings(); save(); seekBeat(at); lastIdx = null; renderFPanel(true); renderWarnings(); };
     ['fSec','fPh','fCt'].forEach(id => $(id).addEventListener('change', reAt));
-    const tr = $('fTr'); if (tr) tr.addEventListener('change', e => { f.travel = Math.max(1, Math.min(maxT, parseInt(e.target.value,10)||1)); computeWarnings(); save(); renderFPanel(true); renderWarnings(); needDraw = true; });
+    const restagger = () => { if (f.stagger && !['together','custom'].includes(f.stagger.order)){ const t = SC.staggerTimings(cur, S.idx, f.stagger.order, f.stagger.len); if (t) f.timing = t; else delete f.timing; } };
+    const tr = $('fTr'); if (tr) tr.addEventListener('change', e => { f.travel = Math.max(1, Math.min(maxT, parseInt(e.target.value,10)||1)); restagger(); computeWarnings(); save(); renderFPanel(true); renderWarnings(); needDraw = true; });
+    const fe = $('fEase'); if (fe) fe.addEventListener('change', e => { if (e.target.value === 'steady') f.ease = 'steady'; else delete f.ease; save(); computeWarnings(); renderWarnings(); needDraw = true; });
+    const applyStagger = () => { const order = $('stagOrder').value; if (order === 'custom') return; const sl = Math.max(1, Math.min(len, parseInt($('stagLen').value,10)||1));
+      if (order === 'together'){ delete f.timing; delete f.stagger; } else { f.stagger = {order, len:sl}; const t = SC.staggerTimings(cur, S.idx, order, sl); if (t) f.timing = t; else delete f.timing; }
+      computeWarnings(); save(); renderFPanel(true); renderWarnings(); renderCues(); needDraw = true; };
+    const so = $('stagOrder'); if (so){ so.addEventListener('change', applyStagger); $('stagLen').addEventListener('change', applyStagger); }
+    if (d){
+      const setFace = v => { f.face = f.face || {}; v = SC.normDeg(v); if (v) f.face[d.id] = v; else delete f.face[d.id]; if (!Object.keys(f.face).length) delete f.face; save(); renderFPanel(true); renderCues(); needDraw = true; };
+      $('faceL').addEventListener('click', () => setFace(faceOf(f, d.id) - 45));
+      $('faceR').addEventListener('click', () => setFace(faceOf(f, d.id) + 45));
+      $('faceFront').addEventListener('click', () => setFace(0));
+      $('faceAll').addEventListener('click', () => { const v = SC.normDeg(faceOf(f, d.id)); f.face = {}; if (v) cur.dancers.forEach(x => { f.face[x.id] = v; }); else delete f.face; save(); renderFPanel(true); renderCues(); needDraw = true; toast(v ? `Everyone in ${f.name} is ${SC.faceText(v)}.` : `Everyone in ${f.name} faces front.`); });
+      const ta = $('tA'), tb = $('tB');
+      if (ta){ const setT = () => { let a = +ta.value, z = +tb.value; if (z <= a) z = Math.min(len, a + 1); f.timing = f.timing || {}; if (a === 0 && z === len) delete f.timing[d.id]; else f.timing[d.id] = [a, z]; if (!Object.keys(f.timing).length) delete f.timing; f.stagger = {order:'custom', len:z-a}; computeWarnings(); save(); renderFPanel(true); renderWarnings(); renderCues(); needDraw = true; };
+        ta.addEventListener('change', setT); tb.addEventListener('change', setT); }
+      const sb = $('straightBtn'); if (sb) sb.addEventListener('click', () => straighten(f, d.id));
+    }
     $('delF').addEventListener('click', () => { F.splice(S.idx,1); computeWarnings(); save(); lastIdx = null; needDraw = true; renderFPanel(true); renderWarnings(); toast(`Deleted ${f.name}.`); });
   }
   const add = $('addF'); if (add) add.addEventListener('click', addFormationHere);
@@ -1359,10 +1623,10 @@ function addFormationHere(){
   if (cur.formations.some(f => f.at === b)){ toast(`A formation already arrives on ${beatLabel(b)}.`); return; }
   const pos = {};
   if (cur.formations.length){ const S = stateAt(b); cur.dancers.forEach(d => { if (S.pos[d.id]) pos[d.id] = S.pos[d.id].map(v => Math.round(v*2)/2); }); }
-  else { const n = cur.dancers.length; cur.dancers.forEach((d,i) => pos[d.id] = [Math.round((-((n-1)*3)/2 + i*3)*2)/2, 8]); }
+  else { const n = cur.dancers.length, ST = stg(), gap = Math.min(3, (ST.w - 2) / Math.max(1, n - 1)); cur.dancers.forEach((d,i) => pos[d.id] = [Math.round((-((n-1)*gap)/2 + i*gap)*2)/2, Math.round(Math.min(8, ST.d/3))]); }
   const fprops = {}, had = cur.formations.length, PP = had ? propsAt(stateAt(b)) : {};
   cur.props.forEach((pr, i) => { const s = PP[pr.id];
-    fprops[pr.id] = had ? (s ? {on:true, x:Math.round(s.x*2)/2, y:Math.round(s.y*2)/2, rot:Math.round(s.rot||0), mover:''} : {on:false}) : {on:true, x:-8 + (i%5)*4, y:20, rot:0, mover:''}; });
+    fprops[pr.id] = had ? (s ? {on:true, x:Math.round(s.x*2)/2, y:Math.round(s.y*2)/2, rot:Math.round(s.rot||0), mover:''} : {on:false}) : {on:true, x:-8 + (i%5)*4, y:Math.max(2, stg().d - 4), rot:0, mover:''}; });
   const prev = [...cur.formations].reverse().find(f => f.at < b);
   cur.formations.push({id:uid('f'), name:`Formation ${cur.formations.length+1}`, at:b, travel: prev ? Math.min(4, b-prev.at) : 0, pos, props:fprops});
   sortF(); computeWarnings(); save(); seekBeat(b); lastIdx = null; renderFPanel(true); renderWarnings();
@@ -1397,26 +1661,54 @@ function renderCues(){
   const box = $('cueBox'), d = cur.dancers.find(x => x.id === UI.sel);
   if (!d){ box.innerHTML = cur.dancers.length ? '<p class="muted" style="margin:12px 0 0">Pick a dancer to see their spots for the whole number.</p>' : ''; return; }
   let h = '<div class="cues">';
-  cur.formations.forEach((f,i) => { const p = f.pos[d.id]; if (!p) return; const when = i === 0 ? `Start · ${beatLabel(f.at)}` : `Arrive ${beatLabel(f.at)} · travel ${f.at - travelStart(i)} counts`;
+  const useFace = SC.usesFacing(cur);
+  cur.formations.forEach((f,i) => { const p = f.pos[d.id]; if (!p) return; const w = i ? moveWindow(i, d.id) : null; const when = i === 0 ? `Start · ${beatLabel(f.at)}` : `Move ${beatLabel(w[0], true)} to ${beatLabel(w[1], true)}${f.paths && f.paths[d.id] ? ' · curved' : ''}`;
     const jobs = propJobsFor(d.id, i).map(j => `<div class="cue-prop">Prop: ${esc(j)}</div>`).join('');
-    h += `<div class="cue" data-at="${f.at}"><span class="cue-n">${i+1}</span><div><div class="cue-name">${esc(f.name)}</div><div class="cue-when">${esc(when)}</div><div class="cue-spot">${esc(spotText(p[0],p[1]))}</div>${jobs}</div></div>`; });
+    h += `<div class="cue" data-at="${f.at}"><span class="cue-n">${i+1}</span><div><div class="cue-name">${esc(f.name)}</div><div class="cue-when">${esc(when)}</div><div class="cue-spot">${esc(spotText(p[0],p[1]))}${useFace ? ', ' + esc(SC.faceText(faceOf(f, d.id))) : ''}</div>${jobs}</div></div>`; });
   box.innerHTML = h + '</div>';
   box.querySelectorAll('.cue').forEach(c => c.addEventListener('click', () => seekBeat(+c.dataset.at)));
 }
-function renderFormsSide(){ renderFPanel(true); renderProps(true); renderWarnings(); renderDancers(); updateFHint(); renderFStrip(stateAt(beatAt(aud.currentTime||0))); }
+function renderFormsSide(){ renderStagePanel(); renderRosters(); renderFPanel(true); renderProps(true); renderWarnings(); renderDancers(); updateFHint(); renderFStrip(stateAt(beatAt(aud.currentTime||0))); }
 $('snapChk').addEventListener('change', e => { UI.snap = e.target.checked; updateFHint(); });
 $('ghostChk').addEventListener('change', e => { UI.ghosts = e.target.checked; needDraw = true; });
-$('addDancer').addEventListener('click', () => {
-  const used = new Set(cur.dancers.map(d=>d.color)), color = DCOL.find(c => !used.has(c)) || DCOL[cur.dancers.length % DCOL.length];
-  const d = {id:uid('d'), name:`Dancer ${cur.dancers.length+1}`, color}, n = cur.dancers.length;
-  cur.formations.forEach(f => { f.pos[d.id] = [Math.max(-17, Math.min(17, -16 + (n%8)*2 + 1)), 22]; });
-  cur.dancers.push(d); computeWarnings(); save(); renderDancers(); renderWarnings(); renderFollow(); renderFPanel(true); updateFHint(); needDraw = true;
+/* saved classes (rosters): reuse the same dancers in every number */
+async function renderRosters(){
+  const rs = await getMeta('rosters', []), sel = $('rosterSel');
+  sel.innerHTML = `<option value="">Classes…</option>${rs.map(r => `<option value="${esc(r.id)}">Add ${esc(r.name)} (${r.dancers.length})</option>`).join('')}<option value="save" ${cur && cur.dancers.length ? '' : 'disabled'}>Save these dancers as a class…</option>`;
+  sel.value = '';
+}
+$('rosterSel').addEventListener('change', async e => {
+  const v = e.target.value, row = $('rosterRow'); e.target.value = ''; if (!v) return;
+  row.hidden = false;
+  if (v === 'save'){
+    row.innerHTML = `<span>Save ${cur.dancers.length} dancers as</span><input type="text" id="rosterName" placeholder="Class name, e.g. Jazz Tuesday 4pm" style="flex:1; min-width:160px"><button class="btn small primary" id="rosterOk" type="button">Save class</button><button class="x" id="rosterNo" type="button">Cancel</button>`;
+    $('rosterName').focus();
+    const doSave = async () => { const name = $('rosterName').value.trim(); if (!name){ $('rosterName').focus(); return; }
+      const rs = await getMeta('rosters', []), same = rs.find(r => r.name.toLowerCase() === name.toLowerCase()), r = same || {id:uid('r'), name};
+      r.name = name; r.dancers = cur.dancers.map(d => ({name:d.name, color:d.color})); if (!same) rs.push(r); await setMeta('rosters', rs);
+      row.hidden = true; renderRosters(); toast(`${same ? 'Updated' : 'Saved'} the class "${name}" with ${r.dancers.length} dancers. Add it to any number from Classes.`); };
+    $('rosterOk').addEventListener('click', doSave); $('rosterName').addEventListener('keydown', ev => { if (ev.key === 'Enter') doSave(); });
+  } else {
+    const rs = await getMeta('rosters', []), r = rs.find(x => x.id === v); if (!r){ row.hidden = true; return; }
+    const have = new Set(cur.dancers.map(d => d.name.trim().toLowerCase())), fresh = r.dancers.filter(d => !have.has(d.name.trim().toLowerCase()));
+    row.innerHTML = `<span><b>${esc(r.name)}</b>: ${esc(r.dancers.map(d => d.name).join(', '))}.${fresh.length < r.dancers.length ? ` ${r.dancers.length - fresh.length} already in this number.` : ''}</span><button class="btn small primary" id="rosterOk" type="button" ${fresh.length ? '' : 'disabled'}>Add ${fresh.length} ${fresh.length === 1 ? 'dancer' : 'dancers'}</button><button class="btn small danger" id="rosterDel" type="button">Delete class</button><button class="x" id="rosterNo" type="button">Cancel</button>`;
+    $('rosterOk').addEventListener('click', () => { fresh.forEach(fd => addDancerNamed(fd.name, fd.color)); row.hidden = true; toast(`Added ${fresh.length} dancers from ${r.name}.`); });
+    $('rosterDel').addEventListener('click', async () => { await setMeta('rosters', rs.filter(x => x !== r)); row.hidden = true; renderRosters(); toast(`Deleted the class "${r.name}". Dancers already in numbers stay.`); });
+  }
+  $('rosterNo').addEventListener('click', () => { row.hidden = true; });
 });
+function addDancerNamed(name, color){
+  const used = new Set(cur.dancers.map(d=>d.color)); if (!color || used.has(color)) color = DCOL.find(c => !used.has(c)) || DCOL[cur.dancers.length % DCOL.length];
+  const d = {id:uid('d'), name, color}, n = cur.dancers.length;
+  const ST = stg(), lim = ST.w/2 - 1; cur.formations.forEach(f => { f.pos[d.id] = [Math.max(-lim, Math.min(lim, -lim + 1 + (n % Math.max(1, Math.floor(ST.w/2) - 1))*2)), ST.d - 2]; });
+  cur.dancers.push(d); computeWarnings(); save(); renderDancers(); renderWarnings(); renderFollow(); renderFPanel(true); updateFHint(); renderRosters(); needDraw = true;
+}
+$('addDancer').addEventListener('click', () => addDancerNamed(`Dancer ${cur.dancers.length+1}`));
 
 /* ================= share & print ================= */
 function shareObject(){
   return {app:'choreo-workbook', format:1, exported:new Date().toISOString(), project:{title:cur.title, style:cur.style, bpm:cur.bpm, offset:cur.offset, phrase:cur.phrase,
-    sections:cur.sections, notes:cur.notes, dancers:cur.dancers, formations:cur.formations, props:cur.props, peaks:cur.peaks,
+    sections:cur.sections, notes:cur.notes, dancers:cur.dancers, formations:cur.formations, props:cur.props, stage:cur.stage || null, peaks:cur.peaks,
     audio:cur.audio ? {name:cur.audio.name, duration:cur.audio.duration, demo:!!cur.audio.demo} : null, video:cur.video ? {name:cur.video.name, offset:cur.video.offset, mirror:cur.video.mirror} : null}};
 }
 let lastSharePath = null;
@@ -1439,18 +1731,22 @@ function preparePrint(){ renderPaper(); const root = $('printRoot'); root.innerH
 $('printBtn').addEventListener('click', async () => { preparePrint(); const r = await window.workbook.print(); $('printMsg').textContent = r && r.ok ? 'Sent to the printer.' : ''; });
 $('pdfBtn').addEventListener('click', async () => { preparePrint(); const r = await window.workbook.savePdf(cur.title); if (r && r.ok){ $('printMsg').textContent = `Saved ${r.path}`; } else if (r && r.error) toast(`Couldn't save the PDF: ${r.error}`); });
 function printStage(f){
-  const X = x => 200 + x*10, Y = y => 255 - y*10;
-  let h = `<svg viewBox="0 0 400 290" role="img" aria-label="${esc(f.name)}"><rect x="20" y="15" width="360" height="240" fill="#F6F7F9" stroke="#9097A6"/>`;
-  for (let x=-16;x<=16;x+=4) h += `<line x1="${X(x)}" y1="15" x2="${X(x)}" y2="255" stroke="#DADDE4" stroke-width="${x===0?1.2:.6}"/><text x="${X(x)}" y="272" text-anchor="middle" font-size="11" font-family="JetBrains Mono, monospace" fill="#4A5060">${x===0?'C':Math.abs(x)/2}</text>`;
-  h += `<line x1="20" y1="${Y(8)}" x2="380" y2="${Y(8)}" stroke="#DADDE4" stroke-dasharray="4 3"/><line x1="20" y1="${Y(16)}" x2="380" y2="${Y(16)}" stroke="#DADDE4" stroke-dasharray="4 3"/>`;
-  h += `<text x="200" y="287" text-anchor="middle" font-size="9" letter-spacing="1.5" fill="#4A5060">AUDIENCE</text>`;
-  cur.props.forEach(pr => { const s = (f.props||{})[pr.id]; if (!isOn(s)) return; const x = X(s.x), y = Y(s.y), w = pr.w*10, d = pr.d*10;
+  const ST = stg(), k = Math.min(360/ST.w, 240/ST.d), fw = ST.w*k, fh = ST.d*k, x0 = 200 - fw/2, y0 = 15 + (240 - fh)/2, X = x => 200 + x*k, Y = y => y0 + fh - y*k, facing = SC.usesFacing(cur);
+  let h = `<svg viewBox="0 0 400 290" role="img" aria-label="${esc(f.name)}"><rect x="${x0}" y="${y0}" width="${fw}" height="${fh}" fill="#F6F7F9" stroke="#9097A6"/>`;
+  SC.marks(ST).forEach(m => { h += `<line x1="${X(m.x)}" y1="${y0}" x2="${X(m.x)}" y2="${y0+fh}" stroke="#DADDE4" stroke-width="${m.x===0?1.2:.6}"/><text x="${X(m.x)}" y="${y0+fh+16}" text-anchor="middle" font-size="${SC.marks(ST).length > 15 ? 8 : 11}" font-family="JetBrains Mono, monospace" fill="#4A5060">${SC.markLabel(ST, m.n)}</text>`; });
+  [ST.d/3, ST.d*2/3].forEach(y => { h += `<line x1="${x0}" y1="${Y(y)}" x2="${x0+fw}" y2="${Y(y)}" stroke="#DADDE4" stroke-dasharray="4 3"/>`; });
+  h += `<text x="200" y="${Math.min(287, y0+fh+30)}" text-anchor="middle" font-size="9" letter-spacing="1.5" fill="#4A5060">AUDIENCE</text>`;
+  cur.props.forEach(pr => { const s = (f.props||{})[pr.id]; if (!isOn(s)) return; const x = X(s.x), y = Y(s.y), w = pr.w*k, d = pr.d*k;
     h += `<g transform="translate(${x} ${y}) rotate(${s.rot||0})">${pr.round ? `<ellipse rx="${w/2}" ry="${d/2}" fill="#E8DCC6" stroke="#8A6A3A" stroke-width="1.2"/>` : `<rect x="${-w/2}" y="${-d/2}" width="${w}" height="${d}" rx="2" fill="#E8DCC6" stroke="#8A6A3A" stroke-width="1.2"/>`}</g><text x="${x}" y="${y - Math.max(w,d)/2 - 3}" text-anchor="middle" font-size="8" font-family="Inter, sans-serif" fill="#6B4F26">${esc(pr.name)}</text>`; });
-  cur.dancers.forEach(d => { const p = f.pos[d.id]; if (!p) return; h += `<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="10" fill="#fff" stroke="#15171C" stroke-width="1.4"/><text x="${X(p[0])}" y="${Y(p[1])+4}" text-anchor="middle" font-size="10" font-weight="600" font-family="Inter, sans-serif" fill="#15171C">${esc(initials(d))}</text>`; });
+  const i = cur.formations.indexOf(f);
+  if (i > 0) cur.dancers.forEach(d => { if (!(f.paths && f.paths[d.id])) return; const pts = SC.pathPoints(cur, i, d.id, 16).map(q => [X(q[0]), Y(q[1])]); h += `<path d="${ptsD(pts)}" fill="none" stroke="#9097A6" stroke-width="1" stroke-dasharray="3 2"/>`; });
+  cur.dancers.forEach(d => { const p = f.pos[d.id]; if (!p) return; const cx = X(p[0]), cy = Y(p[1]);
+    if (facing){ const v = SC.faceVec(faceOf(f, d.id)); h += `<path d="M${cx + v[0]*15} ${cy - v[1]*15}L${cx + v[0]*9 + v[1]*4} ${cy - v[1]*9 + v[0]*4}L${cx + v[0]*9 - v[1]*4} ${cy - v[1]*9 - v[0]*4}Z" fill="#15171C"/>`; }
+    h += `<circle cx="${cx}" cy="${cy}" r="10" fill="#fff" stroke="#15171C" stroke-width="1.4"/><text x="${cx}" y="${cy+4}" text-anchor="middle" font-size="10" font-weight="600" font-family="Inter, sans-serif" fill="#15171C">${esc(initials(d))}</text>`; });
   return h + '</svg>';
 }
 function renderPaper(){
-  const P = $('paper'), total = totalPhrases(); let h = `<h1>${esc(cur.title)}</h1><div class="pmeta"><span>${esc(cur.style||'')}</span><span>${cur.bpm} BPM</span><span>${word()}s</span><span>Count 1 at ${cur.offset.toFixed(2)} s</span>${cur.audio ? `<span>${esc(cur.audio.name)}${cur.audio.duration ? ' · '+fmt(cur.audio.duration) : ''}</span>` : ''}</div>`;
+  const P = $('paper'), total = totalPhrases(); let h = `<h1>${esc(cur.title)}</h1><div class="pmeta"><span>${esc(cur.style||'')}</span><span>${cur.bpm} BPM</span><span>${word()}s</span><span>Count 1 at ${cur.offset.toFixed(2)} s</span><span>Stage ${stg().w} × ${stg().d} ft</span>${cur.audio ? `<span>${esc(cur.audio.name)}${cur.audio.duration ? ' · '+fmt(cur.audio.duration) : ''}</span>` : ''}</div>`;
   if ($('prSheet').checked){
     cur.sections.forEach((s,i) => { const end = Math.min(sectionEnd(i), total); if (s.start > end) return;
       h += `<h4><span style="display:inline-block;width:18px;height:7px;background:var(${TAPES[i%6]});transform:rotate(-6deg)"></span>${esc(s.name)}</h4><table>`;
@@ -1459,7 +1755,7 @@ function renderPaper(){
   }
   if ($('prForms').checked && cur.formations.length){
     h += `<h4 style="margin-top:24px">Formations · ${cur.dancers.length} dancers</h4><div class="pforms">`;
-    cur.formations.forEach((f,i) => { h += `<div class="pform"><b>${i+1}. ${esc(f.name)}</b><span>Arrive ${esc(beatLabel(f.at))}${i>0 ? ` · travel ${f.at - travelStart(i)} counts` : ''}</span>${printStage(f)}</div>`; });
+    cur.formations.forEach((f,i) => { h += `<div class="pform"><b>${i+1}. ${esc(f.name)}</b><span>Arrive ${esc(beatLabel(f.at))}${i>0 ? ` · travel ${f.at - travelStart(i)} counts` : ''}${i>0 && f.timing ? ' · staggered' : ''}</span>${printStage(f)}${f.note && f.note.trim() ? `<p class="pnote">${esc(f.note)}</p>` : ''}</div>`; });
     h += `</div><p style="margin-top:10px;color:#4A5060;font-size:11px">${cur.dancers.map(d => `${esc(initials(d))} = ${esc(d.name)}`).join(' · ')}</p>`;
     if (cur.props.length){
       const F = cur.formations, rows = [];
@@ -1533,33 +1829,48 @@ function vWrap(c, text, maxW){
 }
 
 function vStage(c, L, songT, o){
-  const B = L.stage, k = B.w / 400, toS = (x, y) => o.view === 'aud' ? [B.x + (200 + x*10)*k, B.y + (275 - y*10)*k] : [B.x + (200 - x*10)*k, B.y + (35 + y*10)*k];
+  const B = L.stage, k = B.w / 400, ST = stg(), P = SC.palette(ST), G = SC.geom(ST, o.view === 'dan' ? 'dan' : 'aud');
+  const toS = (x, y) => { const q = G.toS(x, y); return [B.x + q[0]*k, B.y + q[1]*k]; };
   c.fillStyle = VC.panel; vRound(c, B.x, B.y, B.w, B.h, 22); c.fill();
-  const [ax, ay] = toS(-18, 24), [bx, by] = toS(18, 0);
-  c.fillStyle = VC.floor; c.fillRect(Math.min(ax, bx), Math.min(ay, by), Math.abs(bx - ax), Math.abs(by - ay));
-  c.lineWidth = Math.max(1, k*0.6); c.strokeStyle = VC.line;
-  for (let y = 4; y < 24; y += 4){ const [x1, y1] = toS(-18, y), [x2, y2] = toS(18, y); c.setLineDash(y === 8 || y === 16 ? [4*k, 3*k] : []); c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke(); }
-  c.setLineDash([]);
-  for (let x = -16; x <= 16; x += 4){ const [x1, y1] = toS(x, 0), [x2, y2] = toS(x, 24); c.strokeStyle = x === 0 ? '#59607A' : VC.line; c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke(); }
-  const fr = o.view === 'aud' ? 1 : -1;
-  vFont(c, 500, 10*k, VF.mono); c.textAlign = 'center';
-  for (let x = -16; x <= 16; x += 4){ const [px, py] = toS(x, 0); c.save(); c.translate(px, py); c.rotate(-6*Math.PI/180); c.fillStyle = VTAPE[0]; c.fillRect(-3.5*k, -1.6*k, 7*k, 3.2*k); c.restore(); c.fillStyle = VC.ink; c.fillText(x === 0 ? 'C' : String(Math.abs(x)/2), px, py + fr*13*k + 3.5*k); }
-  vFont(c, 700, 8.5*k, VF.display, 'expanded'); c.fillStyle = VC.muted;
-  const lab = (x, y, t, r) => { c.save(); c.translate(B.x + x*k, B.y + y*k); if (r) c.rotate(r*Math.PI/180); c.fillText(t, 0, 0); c.restore(); };
-  if (o.view === 'aud'){ lab(200, 24, 'UPSTAGE'); lab(200, 306, 'AUDIENCE'); lab(390, 155, 'STAGE LEFT', 90); lab(10, 155, 'STAGE RIGHT', -90); }
-  else { lab(200, 12, 'AUDIENCE'); lab(200, 296, 'UPSTAGE'); lab(390, 155, 'STAGE RIGHT', 90); lab(10, 155, 'STAGE LEFT', -90); }
-  if (!cur.formations.length){ vFont(c, 500, 14*k, VF.body); c.fillStyle = VC.muted; c.fillText('No formations in this number', B.x + B.w/2, B.y + B.h/2); return; }
-  const b = beatAt(songT), S = stateAt(b), sel = o.highlight;
+  const b = beatAt(songT), S = cur.formations.length ? stateAt(b) : null, sel = o.highlight;
+  if (o.view === '3d'){
+    c.save(); vRound(c, B.x, B.y, B.w, B.h, 22); c.clip();
+    if (S) SC.render3D(c, {x:B.x, y:B.y, w:B.w, h:B.h}, cur, S, propsAt(S), {yaw:0, pitch:24, highlight:sel || null, dpr:k*1.2, colors:{bg1:'#0E1120', bg2:VC.panel}});
+    c.restore();
+  } else {
+    const [ax, ay] = toS(-ST.w/2, ST.d), [bx, by] = toS(ST.w/2, 0), fx = Math.min(ax, bx), fy = Math.min(ay, by), fw = Math.abs(bx - ax), fh = Math.abs(by - ay);
+    c.fillStyle = P.solid; c.fillRect(fx, fy, fw, fh);
+    const im = ST.floor === 'photo' ? SC.imageFor(ST.bg) : null;
+    if (im){ c.save(); c.beginPath(); c.rect(fx, fy, fw, fh); c.clip(); const s2 = Math.max(fw/im.naturalWidth, fh/im.naturalHeight), iw = im.naturalWidth*s2, ih = im.naturalHeight*s2;
+      c.translate(fx + fw/2, fy + fh/2); if (o.view === 'dan') c.rotate(Math.PI); c.drawImage(im, -iw/2, -ih/2, iw, ih); c.restore(); c.fillStyle = 'rgba(10,12,22,.38)'; c.fillRect(fx, fy, fw, fh); }
+    c.lineWidth = Math.max(1, k*0.6); c.strokeStyle = P.solidLine;
+    for (let y = 4; y < ST.d; y += 4){ const [x1, y1] = toS(-ST.w/2, y), [x2, y2] = toS(ST.w/2, y); c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke(); }
+    c.setLineDash([4*k, 3*k]); [ST.d/3, ST.d*2/3].forEach(y => { const [x1, y1] = toS(-ST.w/2, y), [x2, y2] = toS(ST.w/2, y); c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke(); }); c.setLineDash([]);
+    const M = SC.marks(ST);
+    M.forEach(m => { const [x1, y1] = toS(m.x, 0), [x2, y2] = toS(m.x, ST.d); c.strokeStyle = m.x === 0 ? '#59607A' : P.solidLine; c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke(); });
+    const fr = o.view === 'dan' ? -1 : 1;
+    vFont(c, 500, (M.length > 15 ? 8 : 10)*k, VF.mono); c.textAlign = 'center';
+    M.forEach(m => { const [px, py] = toS(m.x, 0); c.save(); c.translate(px, py); c.rotate(-6*Math.PI/180); c.fillStyle = VTAPE[0]; c.fillRect(-3.5*k, -1.6*k, 7*k, 3.2*k); c.restore(); c.fillStyle = VC.ink; c.fillText(SC.markLabel(ST, m.n), px, py + fr*13*k + 3.5*k); });
+    vFont(c, 700, 8.5*k, VF.display, 'expanded'); c.fillStyle = VC.muted;
+    const lab = (x, y, t, r) => { c.save(); c.translate(B.x + x*k, B.y + y*k); if (r) c.rotate(r*Math.PI/180); c.fillText(t, 0, 0); c.restore(); };
+    const sx = Math.min(390, G.right + 10), sxl = Math.max(10, G.left - 10);
+    if (o.view !== 'dan'){ lab(200, G.top - 11, 'UPSTAGE'); lab(200, G.bottom + 31, 'AUDIENCE'); lab(sx, 155, 'STAGE LEFT', 90); lab(sxl, 155, 'STAGE RIGHT', -90); }
+    else { lab(200, G.top - 23, 'AUDIENCE'); lab(200, G.bottom + 21, 'UPSTAGE'); lab(sx, 155, 'STAGE RIGHT', 90); lab(sxl, 155, 'STAGE LEFT', -90); }
+  }
+  if (!S){ vFont(c, 500, 14*k, VF.body); c.fillStyle = VC.muted; c.textAlign = 'center'; c.fillText('No formations in this number', B.x + B.w/2, B.y + B.h/2); return; }
   // formation name, top left of the stage panel
   c.textAlign = 'left'; vFont(c, 700, 11*k, VF.display, 'expanded'); c.fillStyle = VC.ink;
   const fname = S.moving ? `Travelling into ${cur.formations[S.next].name}` : cur.formations[S.idx].name;
   c.fillText(vEllipsis(c, fname.toUpperCase(), B.w*0.62), B.x + 16*k*0.9, B.y + 22*k*0.9);
-  // highlighted dancer's path
-  if (sel){ const d = cur.dancers.find(x => x.id === sel), pts = cur.formations.map(f => f.pos[sel]).filter(Boolean).map(p => toS(p[0], p[1]));
-    if (d && pts.length > 1){ c.strokeStyle = d.color; c.globalAlpha = .55; c.lineWidth = 1.6*k; c.beginPath(); pts.forEach((p, i) => i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1])); c.stroke(); c.globalAlpha = 1; } }
+  if (o.view === '3d') return;
+  const dpath = (pts) => { c.beginPath(); pts.forEach((p, i) => { const q = toS(p[0], p[1]); i ? c.lineTo(q[0], q[1]) : c.moveTo(q[0], q[1]); }); c.stroke(); };
+  // highlighted dancer: their whole route, and the move coming up
+  if (sel){ const d = cur.dancers.find(x => x.id === sel);
+    if (d && cur.formations.length > 1){ c.strokeStyle = d.color; c.globalAlpha = .45; c.lineWidth = 1.6*k; cur.formations.forEach((f, i) => { if (i) dpath(SC.pathPoints(cur, i, sel, 20)); }); c.globalAlpha = 1;
+      const j = S.moving ? S.next : S.idx + 1; if (cur.formations[j]){ c.setLineDash([4*k, 3*k]); c.lineWidth = 2.2*k; dpath(SC.pathPoints(cur, j, sel, 20)); c.setLineDash([]); } } }
   // props
   const PP = propsAt(S);
-  cur.props.forEach(pr => { const s = PP[pr.id]; if (!s) return; const [x, y] = toS(s.x, s.y), w = pr.w*10*k, d = pr.d*10*k, half = Math.max(w, d)/2;
+  cur.props.forEach(pr => { const s = PP[pr.id]; if (!s) return; const [x, y] = toS(s.x, s.y), w = pr.w*G.k*k, d = pr.d*G.k*k, half = Math.max(w, d)/2;
     const mover = s.moving && s.mover ? (s.mover === 'crew' ? {id:'crew', name:'Stage crew'} : cur.dancers.find(z => z.id === s.mover)) : null;
     c.globalAlpha = sel && !(mover && mover.id === sel) ? 0.45 : 1;
     c.save(); c.translate(x, y); c.rotate((s.rot||0)*Math.PI/180); c.fillStyle = VC.prop; c.strokeStyle = VC.propEdge; c.lineWidth = .8*k;
@@ -1570,9 +1881,12 @@ function vStage(c, L, songT, o){
     if (mover){ vFont(c, 400, 6.5*k, VF.body); c.fillStyle = VC.ink; c.fillText(`${mover.name} moves it`, x, y + half + 8*k); }
     c.globalAlpha = 1; });
   // dancers
+  const facing = SC.usesFacing(cur);
   cur.dancers.forEach(d => { const p = S.pos[d.id]; if (!p) return; const [x, y] = toS(p[0], p[1]);
     c.globalAlpha = sel && sel !== d.id ? 0.3 : 1;
     if (d.id === sel){ c.strokeStyle = VC.ink; c.lineWidth = 1.6*k; c.beginPath(); c.arc(x, y, 14*k, 0, Math.PI*2); c.stroke(); }
+    if (facing){ const v = SC.faceVec((S.face && S.face[d.id]) || 0), q0 = toS(p[0], p[1]), q1 = toS(p[0] + v[0], p[1] + v[1]); let dx = q1[0]-q0[0], dy = q1[1]-q0[1]; const Ln = Math.hypot(dx, dy) || 1; dx /= Ln; dy /= Ln;
+      c.fillStyle = '#FFFFFF'; c.beginPath(); c.moveTo(x + dx*15*k, y + dy*15*k); c.lineTo(x + (dx*9 - dy*4)*k, y + (dy*9 + dx*4)*k); c.lineTo(x + (dx*9 + dy*4)*k, y + (dy*9 - dx*4)*k); c.closePath(); c.fill(); }
     c.fillStyle = d.color; c.beginPath(); c.arc(x, y, 10*k, 0, Math.PI*2); c.fill(); c.strokeStyle = 'rgba(0,0,0,.35)'; c.lineWidth = .8*k; c.stroke();
     c.textAlign = 'center'; vFont(c, 600, 9*k, VF.body); c.fillStyle = '#fff'; c.fillText(initials(d), x, y + 3.2*k);
     vFont(c, 400, 6.8*k, VF.body); c.fillStyle = VC.ink; c.fillText(d.name, x, y + 19.5*k);
@@ -1711,7 +2025,7 @@ async function makeVideo(){
   const name = `${cur.title} - ${range.whole ? 'formations' : range.label}${rate < 1 ? ` ${Math.round(rate*100)}pct` : ''} (${shape === '169' ? '16x9' : '9x16'})`;
   const filePath = await window.workbook.chooseVideoPath(name);
   if (!filePath) return;
-  stopAll();
+  stopAll(); await SC.preloadImage(stg().bg);
   const job = vJob = {cancel:false};
   const ui = busy => { $('vMake').disabled = busy; $('vCancel').hidden = !busy; $('vProgress').hidden = !busy; if (busy) $('vDone').hidden = true; };
   const progress = (f, msg) => { $('vBarFill').style.width = `${Math.round(f*100)}%`; $('vMsg').textContent = msg; };
@@ -1785,7 +2099,7 @@ $('vCancel').addEventListener('click', () => { if (vJob) vJob.cancel = true; });
 $('vReveal').addEventListener('click', () => { if (vLastPath) window.workbook.reveal(vLastPath); });
 // Preview one frame in the app, so the layout can be checked before rendering.
 $('vPreview').addEventListener('click', async () => {
-  await Promise.all([document.fonts.load('900 100px Archivo'), document.fonts.load('600 40px Inter'), document.fonts.load('500 30px "JetBrains Mono"')]).catch(() => {});
+  await Promise.all([document.fonts.load('900 100px Archivo'), document.fonts.load('600 40px Inter'), document.fonts.load('500 30px "JetBrains Mono"'), SC.preloadImage(stg().bg)]).catch(() => {});
   const shape = document.querySelector('input[name="vShape"]:checked').value, range = vRange(), L = vLayout(shape), cv = $('vPreviewCanvas');
   cv.width = L.W; cv.height = L.H; cv.hidden = false;
   const o = {view:$('vView').value, highlight:$('vDancer').value, video:false, rate:+$('vSpeed').value};

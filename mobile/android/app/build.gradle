@@ -9,7 +9,7 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         // versionCode must go up with every build Android should accept as an update.
         versionCode Integer.parseInt(System.getenv("BUILD_NUMBER") ?: "1")
-        versionName "0.1.2"
+        versionName "0.2.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
