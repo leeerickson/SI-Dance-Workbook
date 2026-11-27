@@ -4,7 +4,7 @@ Tags: dance, choreography, formations, music, rehearsal
 Requires at least: 5.8
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 0.2.0
+Stable tag: 0.3.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -37,6 +37,10 @@ Options: `open="no"` hides the "Open a .dance file" button, `width="480"` sets t
 To include the music, save the share file in Choreography Workbook with "Everything, including music and video". Only post music and video you have the right to share.
 
 == Changelog ==
+
+= 0.3.0 =
+* Save a video with the counts drawn on it, at 100, 75, 50 or 25% speed: your filmed run, or the file's video.
+* 25% (slow motion) speed.
 
 = 0.2.0 =
 * The stage size, spike marks and floor from the file; curved paths and staggered timing; which way each dancer faces; formation notes.

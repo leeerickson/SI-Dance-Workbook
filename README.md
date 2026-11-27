@@ -92,10 +92,12 @@ Projects are stored in the app's own folder (`%APPDATA%\Choreography Workbook`).
 **Workbook Player** is a play-only Android app. It opens `.dance` files and plays them, with no editing:
 
 - big count, section and 8-count, plus the note for each 8-count and the next one
-- speed (50–100% without pitch change), count-off, loop this 8-count, and repeat sections a set number of times with a count-in
+- speed (25–100% without pitch change), count-off, loop this 8-count, and repeat sections a set number of times with a count-in
 - the live formation with props, in audience, dancer or 3D view, on the stage size and floor from the file; "Follow" a dancer for their spot, which way they face, when they start moving, their path to the next spot and their prop jobs, or follow the stage crew
 - formation notes from the teacher
 - **Film yourself:** prop up the phone, tap Record, and the front camera films your run while the music plays (video only, no microphone). Then tap Watch to see your run next to the formation or the teacher's video, in time with the counts and at any speed. The last 10 runs per song stay on the phone
+- **Save a video with counts:** save a filmed run, or the teacher's video (the part chosen under Repeat), as a video with the count, section, 8-count and note drawn on it and the music underneath, at 100, 75, 50 or 25% speed (the music keeps its pitch). It's made in real time, so a 1-minute run at 50% takes 2 minutes. Then the share sheet saves it to Photos or Files, or sends it
+- speeds down to 25% for slow motion
 - the video, if the file includes it, locked to the music, with mirror
 - if the file came without music, add your own copy of the song
 - the screen stays on while a song is open, and numbers you open are kept on the phone

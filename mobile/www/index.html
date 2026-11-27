@@ -76,7 +76,11 @@ select{min-height:40px; padding:6px 10px; border:1px solid var(--line); border-r
 .stage.split #vid{inset:0 50% 0 0; width:50%; object-fit:cover}
 .stage.split #takeVid{inset:0 0 0 50%; width:50%; object-fit:cover}
 .badge.rec{background:#D92D20; color:#fff}
-.take{display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:8px; align-items:center; padding:10px 0; border-top:1px solid var(--line); font-size:14px}
+.sheet-back{position:fixed; inset:0; z-index:40; background:rgba(8,10,20,.55); display:flex; align-items:flex-end; justify-content:center}
+.sheet{width:100%; max-width:560px; background:var(--surface); border-radius:18px 18px 0 0; padding:18px 16px calc(18px + env(safe-area-inset-bottom,0px))}
+.xbar{height:10px; border-radius:999px; background:var(--surface-2); overflow:hidden}
+.xbar i{display:block; height:100%; width:0; background:var(--accent); transition:width .2s}
+.take{display:grid; grid-template-columns:minmax(0,1fr) auto auto auto; gap:8px; align-items:center; padding:10px 0; border-top:1px solid var(--line); font-size:14px}
 .take:first-child{margin-top:10px}
 .cd{position:relative; display:grid; justify-items:center; gap:1.4cqw; text-align:center; z-index:1}
 .cd-section{display:flex; align-items:center; gap:2cqw; font-family:var(--f-display); font-stretch:118%; font-weight:750; font-size:5cqw; letter-spacing:.08em; text-transform:uppercase}
@@ -223,6 +227,7 @@ select{min-height:40px; padding:6px 10px; border:1px solid var(--line); border-r
 
   <div class="row" style="margin-bottom:10px">
     <div class="seg" role="radiogroup" aria-label="Speed">
+      <input type="radio" name="speed" id="sp25" value="0.25"><label for="sp25" title="Slow motion">25%</label>
       <input type="radio" name="speed" id="sp50" value="0.5"><label for="sp50">50%</label>
       <input type="radio" name="speed" id="sp75" value="0.75"><label for="sp75">75%</label>
       <input type="radio" name="speed" id="sp90" value="0.9"><label for="sp90">90%</label>
@@ -234,6 +239,7 @@ select{min-height:40px; padding:6px 10px; border:1px solid var(--line); border-r
     <button class="btn small" id="loopBtn" type="button" aria-pressed="false">Loop this 8-count</button>
     <button class="btn small" id="vidBtn" type="button" aria-pressed="true" hidden>Show formation</button>
     <button class="btn small" id="mirrorBtn" type="button" aria-pressed="false" hidden>Mirror</button>
+    <button class="btn small" id="saveRefBtn" type="button" hidden>Save video with counts</button>
   </div>
 
   <div class="card">
@@ -270,6 +276,33 @@ select{min-height:40px; padding:6px 10px; border:1px solid var(--line); border-r
   </div>
   <p class="foot">Tap the timeline to jump. The screen stays on while this song is open.</p>
 </section>
+<div class="sheet-back" id="xSheet" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="xTitle">
+    <h2 id="xTitle">Save video</h2>
+    <p class="muted" id="xWhat" style="margin:6px 0 12px"></p>
+    <div id="xOpts">
+      <span class="label">Speed</span>
+      <div class="seg" role="radiogroup" aria-label="Video speed" style="margin:6px 0 12px">
+        <input type="radio" name="xspeed" id="xs100" value="1" checked><label for="xs100">100%</label>
+        <input type="radio" name="xspeed" id="xs75" value="0.75"><label for="xs75">75%</label>
+        <input type="radio" name="xspeed" id="xs50" value="0.5"><label for="xs50">50%</label>
+        <input type="radio" name="xspeed" id="xs25" value="0.25"><label for="xs25">25%</label>
+      </div>
+      <label class="row muted" id="xMirrorRow" style="gap:6px; margin-bottom:6px"><input type="checkbox" id="xMirror" checked> Mirror it, like in the app</label>
+      <label class="row muted" style="gap:6px; margin-bottom:14px"><input type="checkbox" id="xNote" checked> Show the note for each 8-count</label>
+      <div class="row"><button class="btn primary" id="xGo" type="button" style="flex:1">Make video</button><button class="btn" id="xClose" type="button">Cancel</button></div>
+    </div>
+    <div id="xBusy" hidden>
+      <div class="xbar"><i id="xBar"></i></div>
+      <p class="muted" id="xMsg" style="margin:8px 0 12px">Making your video. Keep the app open until it's done.</p>
+      <button class="btn" id="xStop" type="button" style="width:100%">Stop</button>
+    </div>
+    <div id="xDone" hidden>
+      <p id="xDoneMsg" style="margin:0 0 12px"></p>
+      <div class="row"><button class="btn primary" id="xSave" type="button" style="flex:1">Save or send</button><button class="btn" id="xDoneClose" type="button">Done</button></div>
+    </div>
+  </div>
+</div>
 <div class="toast" id="toast" hidden></div>
 
 <script src="vendor/jszip.min.js"></script>
@@ -506,7 +539,7 @@ function placeFloor(){
   vid.hidden = !showRef; takeVid.hidden = !showTake;
   $('vidBtn').textContent = UI.vidOn ? (has ? 'Show formation' : 'Hide video') : 'Show video';
   $('vidBtn').setAttribute('aria-pressed', String(!UI.vidOn));
-  $('mirrorBtn').hidden = !showRef;
+  $('mirrorBtn').hidden = !showRef; $('saveRefBtn').hidden = !UI.hasVideo;
   needDraw = true;
 }
 
@@ -566,8 +599,9 @@ function renderTakes(){
   const box = $('takes'), T = (cur.takes || []).map((t, i) => [t, i + 1]).reverse();
   $('recRef').textContent = UI.hasVideo ? "teacher's video" : 'formation';
   box.innerHTML = T.length ? T.map(([t, n]) => { const on = UI.compare && UI.compare.id === t.id;
-    return `<div class="take"><div><b>Run ${n}</b> · ${esc(whereAt(t.start))} · ${fmt(t.dur)}${t.rate !== 1 ? ` · ${Math.round(t.rate*100)}%` : ''}<div class="muted">${esc(new Date(t.created).toLocaleString([], {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}))}</div></div><button class="btn small ${on ? '' : 'primary'}" type="button" data-w="${t.id}">${on ? 'Stop watching' : 'Watch'}</button><button class="btn small danger" type="button" data-d="${t.id}">Delete</button></div>`; }).join('') : '';
+    return `<div class="take"><div><b>Run ${n}</b> · ${esc(whereAt(t.start))} · ${fmt(t.dur)}${t.rate !== 1 ? ` · ${Math.round(t.rate*100)}%` : ''}<div class="muted">${esc(new Date(t.created).toLocaleString([], {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}))}</div></div><button class="btn small ${on ? '' : 'primary'}" type="button" data-w="${t.id}">${on ? 'Stop watching' : 'Watch'}</button><button class="btn small" type="button" data-x="${t.id}">Save</button><button class="btn small danger" type="button" data-d="${t.id}">Delete</button></div>`; }).join('') : '';
   box.querySelectorAll('[data-w]').forEach(b => b.addEventListener('click', () => watchTake(cur.takes.find(t => t.id === b.dataset.w))));
+  box.querySelectorAll('[data-x]').forEach(b => b.addEventListener('click', () => openExport({take:cur.takes.find(t => t.id === b.dataset.x)})));
   box.querySelectorAll('[data-d]').forEach(b => b.addEventListener('click', async () => {
     if (b.dataset.armed !== '1'){ b.dataset.armed = '1'; b.textContent = 'Tap again'; setTimeout(() => { b.dataset.armed = ''; b.textContent = 'Delete'; }, 3000); return; }
     const id = b.dataset.d; if (UI.compare && UI.compare.id === id) stopCompare();
@@ -604,7 +638,7 @@ async function openSong(id){
   sizeCanvas(); lastBeat = lastPhrase = null; needDraw = true; keepAwake(true);
   if (!(history.state && history.state.v === 'song')) history.pushState({v:'song'}, '');
 }
-async function closeSong(){ cancelCountoff(); await stopRec(); stopCompare(); aud.pause(); vid.pause(); keepAwake(false); cur = null; $('playView').hidden = true; $('libView').hidden = false; await renderLib(); window.scrollTo(0,0); }
+async function closeSong(){ if (xJob) xJob.cancel = true; $('xSheet').hidden = true; cancelCountoff(); await stopRec(); stopCompare(); aud.pause(); vid.pause(); keepAwake(false); cur = null; $('playView').hidden = true; $('libView').hidden = false; await renderLib(); window.scrollTo(0,0); }
 $('backBtn').addEventListener('click', () => { if (history.state && history.state.v === 'song') history.back(); else closeSong(); });
 $('musicFile').addEventListener('change', async e => {
   const f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return;
@@ -696,6 +730,135 @@ const scrubTo = e => { const r = tl.getBoundingClientRect(); seek((e.clientX - r
 tl.addEventListener('pointerdown', e => { scrubbing = true; tl.setPointerCapture(e.pointerId); scrubTo(e); });
 tl.addEventListener('pointermove', e => { if (scrubbing) scrubTo(e); });
 tl.addEventListener('pointerup', () => { scrubbing = false; });
+
+/* ---------- save a video with the counts drawn on it ----------
+   Plays the run (or the teacher's video) and the music together at the chosen speed, draws every frame onto a
+   canvas with the count, section, 8-count and note on top, and records the canvas plus the slowed music (same
+   pitch). It runs in real time, so a 1-minute run at 50% takes 2 minutes. */
+const XTAPE = ['#F2C200','#E8508A','#19A7BC','#45A852','#F07B24','#9A6BF7'];
+let xJob = null, xResult = null;
+function exportSource(o){
+  if (o.take){ const T = o.take; return {kind:'take', key:`${cur.id}:take:${T.id}`, start:T.start, end:T.start + T.dur*T.rate, vt:t => (t - T.start)/T.rate, vrate:1/T.rate, mirror:null, label:`run from ${whereAt(T.start)}`, name:`${cur.title} - my run`}; }
+  const off = (cur.video && cur.video.offset) || 0, fi = +$('repFrom').value || 0, ti = Math.max(fi, +$('repTo').value || 0), whole = fi === 0 && ti === cur.sections.length - 1;
+  const vd = isFinite(vid.duration) && vid.duration > 0 ? vid.duration : dur();
+  let a = whole ? 0 : phraseTime(cur.sections[fi].start), b = whole ? dur() : Math.min(dur(), phraseTime(Math.min(sectionEnd(ti), totalPhrases()) + 1));
+  a = Math.max(a, off); b = Math.min(b, off + vd);
+  const what = whole ? 'the whole song' : fi === ti ? cur.sections[fi].name : `${cur.sections[fi].name} to ${cur.sections[ti].name}`;
+  return {kind:'ref', key:`${cur.id}:video`, start:a, end:b, vt:t => t - off, vrate:1, mirror:!!(cur.video && cur.video.mirror), label:`the video, ${what} (change the part in Repeat)`, name:`${cur.title} - ${what}`};
+}
+function openExport(o){
+  if (typeof MediaRecorder === 'undefined' || !HTMLCanvasElement.prototype.captureStream){ toast("This phone can't make videos from Workbook Player."); return; }
+  if (!UI.hasAudio){ toast('Add the music first.'); return; }
+  aud.pause(); stopCompare();
+  xResult = null; const src = exportSource(o); $('xSheet').dataset.src = JSON.stringify(o.take ? {take:o.take.id} : {ref:true});
+  $('xTitle').textContent = o.take ? 'Save your run' : 'Save the video with counts';
+  $('xWhat').textContent = `A video of ${src.label}, ${fmt(src.end - src.start)} long, with the count, section and 8-count on it and the music underneath.`;
+  $('xMirrorRow').hidden = !o.take; $('xOpts').hidden = false; $('xBusy').hidden = true; $('xDone').hidden = true;
+  const r = document.querySelector(`input[name="xspeed"][value="${UI.rate === 0.9 ? 1 : UI.rate}"]`); if (r) r.checked = true;
+  $('xSheet').hidden = false;
+}
+$('saveRefBtn').addEventListener('click', () => openExport({}));
+$('xClose').addEventListener('click', () => { $('xSheet').hidden = true; });
+$('xDoneClose').addEventListener('click', () => { $('xSheet').hidden = true; xResult = null; });
+$('xStop').addEventListener('click', () => { if (xJob) xJob.cancel = true; });
+$('xGo').addEventListener('click', async () => {
+  const o = JSON.parse($('xSheet').dataset.src || '{}'), take = o.take ? (cur.takes || []).find(t => t.id === o.take) : null, src = exportSource(take ? {take} : {});
+  const rate = +document.querySelector('input[name="xspeed"]:checked').value;
+  if (take) src.mirror = $('xMirror').checked;
+  $('xOpts').hidden = true; $('xBusy').hidden = false; $('xBar').style.width = '0%';
+  $('xMsg').textContent = `Making your video. It takes ${fmt((src.end - src.start)/rate)}; keep the app open until it's done.`;
+  try {
+    const blob = await makeExport(src, rate, $('xNote').checked, f => { $('xBar').style.width = `${Math.round(f*100)}%`; });
+    if (!blob){ $('xSheet').hidden = true; toast('Stopped.'); return; }
+    xResult = {blob, name:`${src.name}${rate < 1 ? ` ${Math.round(rate*100)}pct` : ''}`.replace(/[\\/:*?"<>|]+/g, ' ').trim()};
+    const mb = blob.size/1048576;
+    $('xBusy').hidden = true; $('xDone').hidden = false;
+    $('xDoneMsg').textContent = `Your video is ready (${mb < 1 ? Math.max(1, Math.round(blob.size/1024)) + ' KB' : mb.toFixed(1) + ' MB'}${rate < 1 ? `, ${Math.round(rate*100)}% speed` : ''}). Tap Save or send to keep it in your photos or files, or send it to someone.`;
+  } catch(e){ $('xSheet').hidden = true; toast(`Couldn't make the video: ${e && e.message ? e.message : e}`); }
+});
+$('xSave').addEventListener('click', async () => { if (!xResult) return; try { await saveVideoFile(xResult.blob, xResult.name); } catch(e){ toast(`Couldn't save the video: ${e && e.message ? e.message : e}`); } });
+
+const waitEv = (el, ev, ms) => new Promise(res => { let done = false; const fin = () => { if (!done){ done = true; res(); } }; el.addEventListener(ev, fin, {once:true}); setTimeout(fin, ms || 4000); });
+async function makeExport(src, rate, withNote, progress){
+  const blob = await getMedia(src.key); if (!blob) throw new Error('the video is missing');
+  const job = xJob = {cancel:false};
+  const xv = document.createElement('video'); xv.muted = true; xv.playsInline = true; xv.preload = 'auto';
+  const vurl = URL.createObjectURL(blob); xv.src = vurl; await waitEv(xv, 'loadeddata', 8000);
+  const xa = new Audio(); xa.src = aud.currentSrc || aud.src; xa.preload = 'auto'; xa.preservesPitch = true; xa.webkitPreservesPitch = true; await waitEv(xa, 'canplay', 8000);
+  const vw = xv.videoWidth || 720, vh = xv.videoHeight || 1280, sc = Math.min(1, 1280 / Math.max(vw, vh)), W = Math.round(vw*sc/2)*2, H = Math.round(vh*sc/2)*2;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const c = cv.getContext('2d');
+  const C = window.AudioContext || window.webkitAudioContext, actx = new C(), node = actx.createMediaElementSource(xa), dest = actx.createMediaStreamDestination(); node.connect(dest);
+  if (actx.state === 'suspended') await actx.resume().catch(() => {});
+  const stream = cv.captureStream(30); dest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
+  const mime = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'].find(m => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) || '';
+  const mr = new MediaRecorder(stream, mime ? {mimeType:mime, videoBitsPerSecond:4000000, audioBitsPerSecond:160000} : undefined), chunks = [];
+  mr.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+  const stopped = new Promise(res => { mr.onstop = res; });
+  xa.currentTime = src.start; const vt0 = Math.max(0, src.vt(src.start)); if (vt0 > 0.05){ xv.currentTime = vt0; await waitEv(xv, 'seeked', 4000); }
+  xa.playbackRate = rate; const vnom = rate*src.vrate; xv.playbackRate = vnom;
+  const draw = t => {
+    c.save(); if (src.mirror){ c.translate(W, 0); c.scale(-1, 1); } c.drawImage(xv, 0, 0, W, H); c.restore();
+    drawCounts(c, W, H, t, rate, withNote);
+  };
+  draw(src.start); mr.start(500);
+  await Promise.all([xa.play(), xv.play()]).catch(() => {});
+  await new Promise(res => {
+    const tick = () => {
+      if (job.cancel || xa.ended || xv.ended || xa.currentTime >= src.end){ res(); return; }
+      const t = xa.currentTime, drift = xv.currentTime - src.vt(t);   // keep the picture on the music without seeking
+      if (Math.abs(drift) > 1) xv.currentTime = Math.max(0, src.vt(t)); else xv.playbackRate = Math.max(0.0625, vnom * (1 - Math.max(-0.4, Math.min(0.4, drift))));
+      draw(t); progress((t - src.start)/(src.end - src.start)); requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+  xa.pause(); xv.pause(); if (mr.state !== 'inactive') mr.stop(); await stopped;
+  stream.getTracks().forEach(t => t.stop()); actx.close().catch(() => {}); URL.revokeObjectURL(vurl); xJob = null;
+  if (job.cancel) return null;
+  return new Blob(chunks, {type:(mr.mimeType || mime || 'video/webm').split(';')[0]});
+}
+function rr(c, x, y, w, h, r){ c.beginPath(); c.moveTo(x+r, y); c.arcTo(x+w, y, x+w, y+h, r); c.arcTo(x+w, y+h, x, y+h, r); c.arcTo(x, y+h, x, y, r); c.arcTo(x, y, x+w, y, r); c.closePath(); }
+function wrapLines(c, text, maxW, maxLines){ const words = String(text).split(/\s+/), out = []; let line = '';
+  for (const w of words){ const t = line ? line + ' ' + w : w; if (c.measureText(t).width <= maxW || !line) line = t; else { out.push(line); line = w; if (out.length === maxLines) break; } }
+  if (out.length < maxLines && line) out.push(line);
+  if (out.length === maxLines && words.join(' ').length > out.join(' ').length){ let l = out[maxLines-1]; while (l.length > 1 && c.measureText(l + '…').width > maxW) l = l.slice(0, -1); out[maxLines-1] = l + '…'; }
+  return out; }
+// The count panel (bottom left), like the app's stage, plus the note (top) and the speed.
+function drawCounts(c, W, H, t, rate, withNote){
+  const u = Math.min(W, H)/100, pos = posAt(t), si = pos.lead ? -1 : sectionFor(pos.phrase), tape = si >= 0 ? XTAPE[si % 6] : '#9CA3BF';
+  const pw = 46*u, ph = 37*u, px = 4*u, py = H - ph - 4*u;
+  c.fillStyle = 'rgba(8,10,20,.74)'; rr(c, px, py, pw, ph, 3*u); c.fill();
+  c.save(); c.translate(px + 4.5*u, py + 6.5*u); c.rotate(-6*Math.PI/180); c.fillStyle = tape; c.fillRect(-2.6*u, -1*u, 5.2*u, 2*u); c.restore();
+  c.fillStyle = '#F3F4FA'; c.textBaseline = 'alphabetic'; c.textAlign = 'left';
+  c.font = `750 ${4*u}px Archivo, "Arial Narrow", sans-serif`; try { c.fontStretch = 'expanded'; } catch(e){}
+  const secName = pos.lead ? 'LEAD-IN' : (si >= 0 ? cur.sections[si].name : word()).toUpperCase();
+  let sn = secName; while (sn.length > 1 && c.measureText(sn).width > pw - 12*u) sn = sn.slice(0, -1); c.fillText(sn === secName ? sn : sn + '…', px + 8.5*u, py + 8*u);
+  c.font = `900 ${19*u}px Archivo, "Arial Narrow", sans-serif`; c.fillText(pos.lead ? '·' : String(pos.count), px + 3.5*u, py + 26*u);
+  c.font = `500 ${3.1*u}px "JetBrains Mono", monospace`; c.fillStyle = '#C9CDE0'; try { c.fontStretch = 'normal'; } catch(e){}
+  const sub = pos.lead ? `Count 1 in ${Math.max(0, cur.offset - t).toFixed(1)} s` : si >= 0 ? `${word()} ${pos.phrase - cur.sections[si].start + 1} of ${Math.max(1, Math.min(sectionEnd(si), totalPhrases()) - cur.sections[si].start + 1)}` : `${word()} ${pos.phrase}`;
+  c.fillText(sub, px + 3.5*u, py + 30.5*u);
+  for (let i = 0; i < cur.phrase; i++){ const on = !pos.lead && i + 1 === pos.count, past = !pos.lead && i + 1 < pos.count; c.fillStyle = on ? tape : past ? 'rgba(243,244,250,.5)' : 'rgba(243,244,250,.2)'; c.beginPath(); c.arc(px + 4.6*u + i*(pw - 9*u)/Math.max(1, cur.phrase - 1), py + 33.5*u, 1.15*u, 0, Math.PI*2); c.fill(); }
+  // speed tag and title, top
+  c.font = `600 ${3*u}px Inter, sans-serif`;
+  const tag = rate < 1 ? `${Math.round(rate*100)}% speed` : '';
+  if (tag){ const tw = c.measureText(tag).width; c.fillStyle = 'rgba(8,10,20,.74)'; rr(c, W - tw - 9*u, 4*u, tw + 5*u, 5.4*u, 2.7*u); c.fill(); c.fillStyle = '#F3F4FA'; c.fillText(tag, W - tw - 6.5*u, 7.8*u); }
+  if (withNote && !pos.lead){ const n = cur.notes[pos.phrase];
+    if (n && n.trim()){ c.font = `500 ${3.6*u}px Inter, sans-serif`; const lines = wrapLines(c, n, W - 14*u - (tag ? 27*u : 0), 3), lh = 4.6*u, bh = lines.length*lh + 3.4*u;
+      c.fillStyle = 'rgba(8,10,20,.68)'; rr(c, 4*u, 4*u, W - 8*u - (tag ? 27*u : 0), bh, 2.5*u); c.fill(); c.fillStyle = '#F3F4FA'; lines.forEach((l, i) => c.fillText(l, 7*u, 4*u + 1.7*u + (i + 0.8)*lh)); } }
+}
+const blobToB64 = b => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = () => rej(r.error); r.readAsDataURL(b); });
+// On the phone: write it to the app's cache and open the share sheet (Save video, Photos, Files, Messages…).
+// In a browser (WordPress page): the share sheet where there is one, otherwise a download.
+async function saveVideoFile(blob, name){
+  const file = `${name}.${blob.type.includes('mp4') ? 'mp4' : 'webm'}`, cap = window.Capacitor, P = cap && cap.isNativePlatform && cap.isNativePlatform() ? cap.Plugins : null;
+  if (P && P.Filesystem && P.Share){
+    const w = await P.Filesystem.writeFile({path:file, data:await blobToB64(blob), directory:'CACHE'});
+    try { await P.Share.share({title:name, files:[w.uri], dialogTitle:'Save or send your video'}); } catch(e){ if (!/cancel/i.test(String(e && e.message))) throw e; }
+    return;
+  }
+  const f = new File([blob], file, {type:blob.type});
+  if (navigator.canShare && navigator.canShare({files:[f]})){ try { await navigator.share({files:[f], title:name}); return; } catch(e){ if (e && e.name === 'AbortError') return; } }
+  const a = document.createElement('a'), u = URL.createObjectURL(f); a.href = u; a.download = file; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 60000);
+}
 
 /* ---------- frame loop ---------- */
 let needDraw = true, lastT = -1, lastBeat = null, lastPhrase = null;

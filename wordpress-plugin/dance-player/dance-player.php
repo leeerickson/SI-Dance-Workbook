@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Dance Player
  * Description:       Show a Choreography Workbook .dance file on any page: the counts, notes, formations, props and music play together, just like the Workbook Player app. Add the Dance Player block, or the [dance_player] shortcode.
- * Version:           0.2.0
+ * Version:           0.3.0
  * Requires at least: 5.8
  * Requires PHP:      7.4
  * Author:            Choreography Workbook
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'DANCE_PLAYER_VERSION', '0.2.0' );
+define( 'DANCE_PLAYER_VERSION', '0.3.0' );
 
 /*
  * .dance files are zip files. Let people who can upload media add them to the Media Library.

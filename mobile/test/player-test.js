@@ -134,6 +134,17 @@ const types = { '.html':'text/html', '.js':'text/javascript', '.woff2':'font/wof
     await page.evaluate(() => window.scrollTo(0, 0)); await page.waitForTimeout(150);
     if (shots) await page.screenshot({ path: path.join(shots, `player-compare-${ENGINE}.png`) });
     await page.click('.take [data-w]');
+    // Save the run as a video with the counts on it, in slow motion
+    await page.click('.take [data-x]'); await page.waitForTimeout(200);
+    ok(await page.isVisible('#xSheet'), 'Save opens the video options');
+    await page.click('label[for="xs50"]'); await page.click('#xGo');
+    await page.waitForSelector('#xDone:not([hidden])', { timeout: 60000 });
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#xSave')]);
+    const out = path.join(require('os').tmpdir(), dl.suggestedFilename()); await dl.saveAs(out);
+    const vb = fs.readFileSync(out);
+    ok(vb.length > 20000 && /50pct\.(mp4|webm)$/.test(dl.suggestedFilename()), `the run saves as a 50% speed video with counts (${dl.suggestedFilename()}, ${Math.round(vb.length/1024)} KB)`);
+    if (shots) fs.copyFileSync(out, path.join(shots, dl.suggestedFilename().replace(/^.*(\.\w+)$/, 'exported-run$1')));
+    await page.click('#xDoneClose');
   }
 
   // Persistence
