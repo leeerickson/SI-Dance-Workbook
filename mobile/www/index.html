@@ -1483,7 +1483,7 @@ function frame(){
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch(e){}
   // On a web page (WordPress plugin): ?file=<url of a .dance file> opens it, ?open=0 hides "Open a .dance file".
   const q = new URLSearchParams(location.search), embedded = window.parent !== window;
-  if (q.get('open') === '0'){ $('openFile').previousElementSibling.hidden = true; $('newSongLbl').hidden = true; document.body.classList.add('no-open'); }
+  if (q.get('open') === '0'){ document.querySelector('label[for="openFile"]').hidden = true; $('newSongLbl').hidden = true; document.body.classList.add('no-open'); }
   if (embedded){
     document.body.classList.add('embedded');
     let lastH = 0; const report = () => { const h = Math.ceil(document.documentElement.scrollHeight); if (h !== lastH){ lastH = h; window.parent.postMessage({type:'dance-player-height', h}, '*'); } };

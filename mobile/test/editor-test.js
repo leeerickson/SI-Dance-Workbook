@@ -35,6 +35,8 @@ function makeSong(file){
   const browser = await playwright[ENGINE].launch();
   const ctx = await browser.newContext({ ...devices[DEVICE], acceptDownloads: true });
   console.log(`Testing editing with ${ENGINE} as ${DEVICE}`);
+  // Safari has a share sheet; the test wants the download fallback so it can read the file.
+  await ctx.addInitScript(() => { try { Object.defineProperty(Navigator.prototype, 'canShare', { value: undefined, configurable: true }); } catch(e){} });
   const page = await ctx.newPage();
   const errors = []; page.on('pageerror', e => errors.push(e.message));
   const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) process.exitCode = 1; };
