@@ -22,6 +22,12 @@ jobs:
           cache-dependency-path: mobile/package-lock.json
       - run: npm ci
       - run: npm run sync
+      - name: Test the player and the editor in Chrome's engine on a phone-sized screen
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.63.0
+          npx playwright install --with-deps chromium
+          node test/player-test.js
+          node test/editor-test.js
       - name: Build the APK
         working-directory: mobile/android
         env:

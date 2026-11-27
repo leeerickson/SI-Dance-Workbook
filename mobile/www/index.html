@@ -76,6 +76,52 @@ select{min-height:40px; padding:6px 10px; border:1px solid var(--line); border-r
 .stage.split #vid{inset:0 50% 0 0; width:50%; object-fit:cover}
 .stage.split #takeVid{inset:0 0 0 50%; width:50%; object-fit:cover}
 .badge.rec{background:#D92D20; color:#fff}
+/* Editing */
+.editbar{position:fixed; left:0; right:0; bottom:0; z-index:30; display:flex; gap:2px; overflow-x:auto; background:var(--surface); border-top:1px solid var(--line); padding:6px max(8px, env(safe-area-inset-left,0px)) calc(6px + env(safe-area-inset-bottom,0px))}
+.editbar button{flex:1 1 0; min-width:44px; display:grid; justify-items:center; gap:1px; border:none; background:transparent; color:var(--ink); font-size:18px; line-height:1.1; padding:4px 6px; border-radius:10px; cursor:pointer; position:relative}
+.editbar button span{font-size:10.5px; color:var(--muted); white-space:nowrap}
+.editbar button:disabled{opacity:.35}
+.ebadge{position:absolute; top:2px; right:8px; min-width:16px; height:16px; border-radius:8px; background:var(--warn); color:#fff; font:600 10px/16px var(--f-body); font-style:normal; padding:0 4px}
+body.editing{padding-bottom:calc(90px + env(safe-area-inset-bottom,0px))}
+body.editing #stageSvg{touch-action:none}
+body.editing .toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+.etools{padding:6px 2px 0}
+.ehint{margin:0 2px 6px; font-size:13px; color:var(--floor-muted); min-height:2.6em}
+.ehint b{color:var(--floor-ink)}
+.equick{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px}
+.equick:empty{display:none}
+.equick .btn{background:transparent; color:var(--floor-ink); border-color:var(--floor-line); min-height:34px}
+.estrip{display:flex; gap:6px; overflow-x:auto; padding-bottom:4px}
+.estrip button{flex:0 0 auto; text-align:left; border:1px solid var(--floor-line); background:transparent; color:var(--floor-ink); border-radius:8px; padding:6px 9px; font-size:12.5px; cursor:pointer}
+.estrip button.on{border-color:var(--tape-1); box-shadow:inset 0 0 0 1px var(--tape-1)}
+.estrip button small{display:block; font-family:var(--f-mono); color:var(--floor-muted); font-size:11px}
+.estrip button.add{border-style:dashed}
+.note-edit{width:100%; resize:none; border:1px dashed var(--accent); border-radius:8px; padding:4px 6px; background:var(--surface); color:var(--ink); font:500 17px/1.3 var(--f-body)}
+.sheet{max-height:88vh; overflow:auto}
+.sheet-head{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; position:sticky; top:-18px; background:var(--surface); padding:4px 0 6px; z-index:1}
+.sfield{display:grid; gap:5px; margin-bottom:12px}
+.sfield input[type=text],.sfield input[type=number],.sfield textarea,.sfield select{width:100%; min-height:40px; padding:6px 10px; border:1px solid var(--line); border-radius:10px; background:var(--surface); font:inherit; color:inherit}
+.sfield input[type=number]{width:auto; max-width:7em}
+.srow{display:flex; flex-wrap:wrap; align-items:center; gap:8px}
+.srow > input[type=text]{flex:1; min-width:120px}
+.slist{display:grid; gap:6px; margin-bottom:10px}
+.sitem{display:flex; align-items:center; gap:8px; padding:6px 8px; border:1px solid var(--line); border-radius:10px}
+.sitem input[type=text]{flex:1; min-width:0; min-height:36px; border:1px solid transparent; background:transparent; font:inherit; color:inherit; padding:4px 6px; border-radius:8px}
+.sitem input[type=text]:focus{border-color:var(--line)}
+.sitem input[type=number]{width:4.2em; min-height:36px; border:1px solid var(--line); border-radius:8px; padding:4px; background:var(--surface); color:inherit}
+.dotc{width:30px; height:30px; flex:0 0 auto; border-radius:50%; display:grid; place-items:center; color:#fff; font-weight:600; font-size:12px; border:none}
+.swatches{display:flex; flex-wrap:wrap; gap:8px}
+.swatches button{width:30px; height:30px; border-radius:50%; border:2px solid transparent; cursor:pointer}
+.swatches button[aria-pressed="true"]{border-color:var(--ink)}
+.wl{display:grid; gap:6px; margin:0 0 12px; padding:0; list-style:none}
+.wl button{width:100%; text-align:left; border:1px solid var(--line); background:var(--warn-bg); color:var(--ink); border-radius:10px; padding:8px 10px; font-size:13.5px}
+.tape-s{display:inline-block; width:18px; height:7px; border-radius:1px; transform:rotate(-6deg); flex:0 0 auto}
+.x{border:none; background:transparent; color:var(--muted); font-size:18px; padding:4px 8px; cursor:pointer}
+/* Tablets: the stage on the left, the cards on the right */
+@media (min-width: 880px){
+  .pcols{display:grid; grid-template-columns:minmax(0,1.1fr) minmax(320px,.9fr); gap:18px; align-items:start}
+  #songs{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:0 12px}
+}
 .sheet-back{position:fixed; inset:0; z-index:40; background:rgba(8,10,20,.55); display:flex; align-items:flex-end; justify-content:center}
 .sheet{width:100%; max-width:560px; background:var(--surface); border-radius:18px 18px 0 0; padding:18px 16px calc(18px + env(safe-area-inset-bottom,0px))}
 .xbar{height:10px; border-radius:999px; background:var(--surface-2); overflow:hidden}
@@ -174,6 +220,8 @@ select{min-height:40px; padding:6px 10px; border:1px solid var(--line); border-r
     <p>Open a .dance file a teacher sent you and rehearse it: counts, notes, formations, props and video.</p>
     <div class="row">
       <label class="btn primary" for="openFile">Open a .dance file</label>
+      <label class="btn" for="newSong" id="newSongLbl">New number from a song</label>
+      <input type="file" id="newSong" accept="audio/*,video/*" hidden>
       <input type="file" id="openFile" hidden>
       <button class="btn" id="demoBtn" type="button">Try the demo</button>
     </div>
@@ -187,6 +235,7 @@ select{min-height:40px; padding:6px 10px; border:1px solid var(--line); border-r
   <header class="top">
     <button class="back" id="backBtn" type="button" aria-label="Back to your numbers"><svg viewBox="0 0 24 24"><path d="M15.4 5.4 14 4l-8 8 8 8 1.4-1.4L8.8 12z"/></svg></button>
     <span class="top-title" id="pTitle"></span>
+    <button class="btn small" id="editBtn" type="button" aria-pressed="false">Edit</button>
   </header>
   <div class="banner" id="musicBanner" hidden>
     <span id="musicText"></span>
@@ -194,6 +243,7 @@ select{min-height:40px; padding:6px 10px; border:1px solid var(--line); border-r
     <input type="file" id="musicFile" accept="audio/*,video/*" hidden>
   </div>
 
+  <div class="pcols"><div class="pleft">
   <div class="stage" id="stage">
     <video id="vid" playsinline muted hidden></video>
     <video id="takeVid" playsinline muted hidden></video>
@@ -210,6 +260,7 @@ select{min-height:40px; padding:6px 10px; border:1px solid var(--line); border-r
   <div class="card notecard">
     <span class="label" id="noteLabel">Note</span>
     <div class="note-now" id="noteNow"></div>
+    <textarea class="note-now note-edit" id="noteEdit" hidden aria-label="Note for this 8-count" placeholder="Steps, counts, arms, facings…"></textarea>
     <div class="note-next" id="noteNext"></div>
   </div>
 
@@ -242,6 +293,7 @@ select{min-height:40px; padding:6px 10px; border:1px solid var(--line); border-r
     <button class="btn small" id="saveRefBtn" type="button" hidden>Save video with counts</button>
   </div>
 
+  </div><div class="pright">
   <div class="card">
     <div class="card-head"><h2>Repeat</h2><span class="rep-status" id="repStatus"></span></div>
     <div class="rep-grid">
@@ -264,6 +316,11 @@ select{min-height:40px; padding:6px 10px; border:1px solid var(--line); border-r
       </div>
       <svg id="stageSvg" viewBox="0 0 400 310" aria-label="Where everyone is on stage right now"><g class="st-static"></g><g class="st-dyn"></g></svg>
       <canvas id="stage3d" style="display:none" aria-label="The stage in 3D from the audience. Swipe sideways to move around."></canvas>
+      <div class="etools" id="eTools" hidden>
+        <p class="ehint" id="eHint"></p>
+        <div class="equick" id="eQuick"></div>
+        <div class="estrip" id="eStrip"></div>
+      </div>
     </div></div>
     <div class="row" id="followRow"><span class="label">Follow</span><select id="followSel" aria-label="Dancer to follow" style="flex:1"></select></div>
     <div class="cue" id="cue"></div>
@@ -274,8 +331,20 @@ select{min-height:40px; padding:6px 10px; border:1px solid var(--line); border-r
     <button class="btn primary" id="recBtn" type="button" style="width:100%">Record a run</button>
     <div id="takes"></div>
   </div>
+  </div></div>
   <p class="foot">Tap the timeline to jump. The screen stays on while this song is open.</p>
 </section>
+<nav class="editbar" id="editBar" hidden aria-label="Editing tools">
+  <button type="button" id="ebUndo" aria-label="Undo">↶<span>Undo</span></button>
+  <button type="button" id="ebRedo" aria-label="Redo">↷<span>Redo</span></button>
+  <button type="button" data-sheet="song">♫<span>Song</span></button>
+  <button type="button" data-sheet="formation">◆<span>Formation</span><i class="ebadge" id="ebWarn" hidden></i></button>
+  <button type="button" data-sheet="dancers">●<span>Dancers</span></button>
+  <button type="button" data-sheet="props">▭<span>Props</span></button>
+  <button type="button" data-sheet="stage">▦<span>Stage</span></button>
+  <button type="button" data-sheet="send">↗<span>Send</span></button>
+</nav>
+<div class="sheet-back" id="eSheet" hidden><div class="sheet" role="dialog" aria-modal="true"><div class="sheet-head"><h2 id="eTitle"></h2><button class="btn small" id="eClose" type="button">Done</button></div><div id="eBody"></div></div></div>
 <div class="sheet-back" id="xSheet" hidden>
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="xTitle">
     <h2 id="xTitle">Save video</h2>
@@ -307,6 +376,7 @@ select{min-height:40px; padding:6px 10px; border:1px solid var(--line); border-r
 
 <script src="vendor/jszip.min.js"></script>
 <script src="stagecore.js"></script>
+<script src="songcore.js"></script>
 <script>
 (() => {
 const $ = id => document.getElementById(id);
@@ -322,14 +392,16 @@ const fmt = t => { t = Math.max(0, t||0); const m = Math.floor(t/60); return `${
 let toastTimer; const toast = m => { const t = $('toast'); t.textContent = m; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.hidden = true, 3200); };
 
 /* ---------- storage (IndexedDB on the phone) ---------- */
-let db = null; const mem = {projects:new Map(), media:new Map()};
-const openDB = () => new Promise(res => { try { const r = indexedDB.open('workbook-player', 1); r.onupgradeneeded = () => { r.result.createObjectStore('projects', {keyPath:'id'}); r.result.createObjectStore('media'); }; r.onsuccess = () => { db = r.result; res(true); }; r.onerror = () => res(false); } catch(e){ res(false); } });
+let db = null; const mem = {projects:new Map(), media:new Map(), meta:new Map()};
+const openDB = () => new Promise(res => { try { const r = indexedDB.open('workbook-player', 2); r.onupgradeneeded = () => { const d = r.result; ['projects','media','meta'].forEach(n => { if (!d.objectStoreNames.contains(n)) n === 'projects' ? d.createObjectStore(n, {keyPath:'id'}) : d.createObjectStore(n); }); }; r.onsuccess = () => { db = r.result; res(true); }; r.onerror = () => res(false); } catch(e){ res(false); } });
 const tx = (store, mode, fn) => new Promise(res => { if (!db) return res(fn(null)); try { const t = db.transaction(store, mode), r = fn(t.objectStore(store)); t.oncomplete = () => res(r && r.result !== undefined ? r.result : undefined); t.onerror = () => res(undefined); } catch(e){ res(undefined); } });
 const allProjects = async () => db ? (await tx('projects','readonly', s => s.getAll())) || [] : [...mem.projects.values()];
 const putProject = async p => { const c = JSON.parse(JSON.stringify(p)); if (!db) return mem.projects.set(p.id, c); await tx('projects','readwrite', s => s.put(c)); };
 const delProject = async id => { if (!db) return mem.projects.delete(id); await tx('projects','readwrite', s => s.delete(id)); };
 const putMedia = async (k, b) => { if (!db) return mem.media.set(k, b); await tx('media','readwrite', s => s.put(b, k)); };
 const getMedia = async k => db ? tx('media','readonly', s => s.get(k)) : mem.media.get(k);
+const getMeta = async (k, dflt) => { const v = db ? await tx('meta','readonly', s => s.get(k)) : mem.meta.get(k); return v === undefined ? dflt : v; };
+const setMeta = async (k, v) => { if (!db) return mem.meta.set(k, v); await tx('meta','readwrite', s => s.put(JSON.parse(JSON.stringify(v)), k)); };
 const delMedia = async k => { if (!db) return mem.media.delete(k); await tx('media','readwrite', s => s.delete(k)); };
 
 /* ---------- demo track (same as the desktop app) ---------- */
@@ -381,35 +453,80 @@ function demoProject(){
   const B = formations[5], who = (x,y) => (Object.entries(B.pos).find(([,v]) => v[0]===x && v[1]===y)||[''])[0];
   B.props['prop-a'] = {on:true, x:-9, y:13, rot:0, mover:who(-9,11)}; B.props['prop-b'] = {on:true, x:9, y:13, rot:0, mover:who(9,11)};
   formations[6].props['prop-a'] = {on:false, mover:'crew'}; formations[6].props['prop-b'] = {on:false, mover:'crew'};
-  return {id:'demo-spotlight', title:'Spotlight (demo)', style:'Jazz', added:Date.now(), bpm:120, offset:1, phrase:8,
+  return {id:'demo-spotlight', uid:'demo-spotlight', title:'Spotlight (demo)', style:'Jazz', added:Date.now(), bpm:120, offset:1, phrase:8,
     sections:[{name:'Intro',start:1},{name:'Verse',start:3},{name:'Chorus',start:7},{name:'Bridge',start:11},{name:'Final chorus',start:13}],
     notes:{1:'Hold opening pose, head down. Lift chin on 7, 8.',2:'Walk 4 into the V (R, L, R, L). Arms up through 1st to 5th on 5–8.',3:'Jazz square R (1–4), ball change 5-6, hip roll 7-8.',4:'Chassé R, pas de bourrée L, single pirouette R from 4th on 5-6, land 7, plié 8.',5:'Travel into two lines on 5–8. Repeat 8-count 1 to the left.',6:'Kick ball change ×2, fan kick R on 7, land in lunge on 8.',7:'Hits on 1, 3, 5-6-7. Sharp arms. Front row only.',8:'Body roll down 1–4, slide R 5-6, turn to face back 7-8.',9:'Leap R on 1, run run 2-3, toe touch 4. Start the pinwheel.',10:'Pinwheel circle, 2 counts per spot. Finish facing front on 8.',11:'Slow. Contemporary arms, développé L on 3-4, roll down 5–8.',12:'Rise 1–4 in canon by rows. Everyone up by 8.',13:'Same as Chorus 8-count 1, bigger.',14:'Same as Chorus 8-count 2.',15:'Switch leaps on 1 and 5. Travel into the final pose.',16:'Final pose on 7. Hold 8 and freeze.'},
     dancers, formations, props, audio:{name:'Demo track', duration:67, demo:true}, hasAudio:true, video:null};
 }
 
 /* ---------- opening .dance files ---------- */
+// The fields of a number that come from a .dance file.
+function danceFields(s, fileName){
+  const p = {title:s.title || (fileName || '').replace(/\.dance$/i,'') || 'Number', style:s.style || '', bpm:+s.bpm||120, offset:+s.offset||0, phrase:+s.phrase||8,
+    sections:Array.isArray(s.sections) && s.sections.length ? s.sections : [{name:'Song', start:1}], notes:s.notes||{}, dancers:s.dancers||[], formations:s.formations||[], props:Array.isArray(s.props) ? s.props : [],
+    stage:s.stage && typeof s.stage === 'object' ? s.stage : undefined, peaks:s.peaks||null, audio:s.audio||null};
+  p.formations.forEach(f => { f.props = f.props || {}; });
+  return p;
+}
+async function readDance(file){
+  let zip; try { zip = await JSZip.loadAsync(file); } catch(e){ toast("That file isn't a .dance file."); return null; }
+  const pj = zip.file('project.json'); if (!pj){ toast("That file wasn't made by Choreography Workbook."); return null; }
+  let data; try { data = JSON.parse(await pj.async('string')); } catch(e){ toast('That .dance file is damaged.'); return null; }
+  if (data.app !== 'choreo-workbook' || !data.project){ toast("That file wasn't made by Choreography Workbook."); return null; }
+  if ((data.format || 1) > 1){ toast('This file needs a newer version of Workbook Player.'); return null; }
+  const media = [];
+  for (const e of Object.values(zip.files)){ const m = /^media\/(audio|video)\.([a-z0-9]+)$/i.exec(e.name); if (m) media.push({kind:m[1], ext:m[2].toLowerCase(), e}); }
+  return {data, media};
+}
+async function storeDanceMedia(id, p, s, media){
+  for (const m of media){
+    await putMedia(id + ':' + m.kind, new Blob([await m.e.async('arraybuffer')], {type:MIME[m.ext]||''}));
+    if (m.kind === 'audio'){ p.hasAudio = true; if (p.audio) p.audio.demo = false; } else p.video = s.video || {offset:0, mirror:false};
+  }
+}
+// Opening a .dance file. A number you already have (same uid) is updated in place; if both copies changed, you choose.
 async function openDance(file, opts){
   opts = opts || {};
-  let zip; try { zip = await JSZip.loadAsync(file); } catch(e){ toast("That file isn't a .dance file."); return; }
-  const pj = zip.file('project.json'); if (!pj){ toast("That file wasn't made by Choreography Workbook."); return; }
-  let data; try { data = JSON.parse(await pj.async('string')); } catch(e){ toast('That .dance file is damaged.'); return; }
-  if (data.app !== 'choreo-workbook' || !data.project){ toast("That file wasn't made by Choreography Workbook."); return; }
-  if ((data.format || 1) > 1){ toast('This file needs a newer version of Workbook Player.'); return; }
-  const s = data.project, id = opts.id || uid('p');
-  if (opts.id){ await delMedia(id + ':audio'); await delMedia(id + ':video'); }
-  const p = {id, title:s.title || file.name.replace(/\.dance$/i,'') || 'Number', style:s.style || '', added:Date.now(), bpm:+s.bpm||120, offset:+s.offset||0, phrase:+s.phrase||8,
-    sections:Array.isArray(s.sections) && s.sections.length ? s.sections : [{name:'Song', start:1}], notes:s.notes||{}, dancers:s.dancers||[], formations:s.formations||[], props:Array.isArray(s.props) ? s.props : [],
-    stage:s.stage && typeof s.stage === 'object' ? s.stage : undefined, peaks:s.peaks||null, audio:s.audio||null, hasAudio:!!(s.audio && s.audio.demo), video:null};
-  p.formations.forEach(f => { f.props = f.props || {}; });
-  for (const e of Object.values(zip.files)){
-    const m = /^media\/(audio|video)\.([a-z0-9]+)$/i.exec(e.name); if (!m) continue;
-    const blob = new Blob([await e.async('arraybuffer')], {type:MIME[m[2].toLowerCase()]||''});
-    await putMedia(id + ':' + m[1], blob);
-    if (m[1] === 'audio'){ p.hasAudio = true; if (p.audio) p.audio.demo = false; }
-    else p.video = s.video || {offset:0, mirror:false};
+  const r = await readDance(file); if (!r) return;
+  const s = r.data.project;
+  if (opts.id){   // a web page's own file (WordPress): always replace
+    const id = opts.id; await delMedia(id + ':audio'); await delMedia(id + ':video');
+    const p = Object.assign({id, uid:s.uid, added:Date.now(), hasAudio:!!(s.audio && s.audio.demo), video:null}, danceFields(s, file.name));
+    await storeDanceMedia(id, p, s, r.media); await putProject(p); await renderLib(); return id;
   }
-  await putProject(p); if (!opts.quiet) toast(`Added "${p.title}".`); await renderLib();
-  return id;
+  const mine = s.uid ? (await allProjects()).find(x => x.uid === s.uid) : null;
+  if (mine){
+    const plan = SongCore.importPlan(mine, s);
+    if (plan === 'same'){ toast(`You already have this version of "${mine.title}".`); return mine.id; }
+    if (plan === 'update') return updateFromDance(mine, s, r, file.name);
+    const choice = await askChoice(plan === 'older' ? `This file has an older copy of "${mine.title}" than the one on your phone.` : `"${mine.title}" was changed on your phone and in this file since they last matched.`,
+      [['replace', 'Replace mine with the file'], ['both', 'Keep both'], ['cancel', 'Cancel']]);
+    if (choice === 'replace') return updateFromDance(mine, s, r, file.name);
+    if (choice !== 'both') return null;
+    return addDance(s, r, file.name, null, ' (from file)');
+  }
+  return addDance(s, r, file.name, s.uid);
+}
+async function addDance(s, r, fileName, keepUid, suffix){
+  const id = uid('p'), p = Object.assign({id, uid:keepUid || uid('u'), base:keepUid ? (+s.updated || 0) : 0, updated:keepUid ? (+s.updated || 0) : Date.now(), added:Date.now(), hasAudio:!!(s.audio && s.audio.demo), video:null}, danceFields(s, fileName));
+  if (suffix) p.title += suffix;
+  await storeDanceMedia(id, p, s, r.media); await putProject(p); toast(`Added "${p.title}".`); await renderLib(); return id;
+}
+async function updateFromDance(mine, s, r, fileName){
+  const p = Object.assign({}, mine, danceFields(s, fileName), {base:+s.updated || 0, updated:+s.updated || Date.now()});
+  if (!r.media.some(m => m.kind === 'audio') && mine.hasAudio && p.audio) p.audio = Object.assign({}, p.audio, {demo:false});
+  await storeDanceMedia(mine.id, p, s, r.media); await putProject(p);
+  if (cur && cur.id === mine.id) cur = p;
+  toast(`Updated "${p.title}" with the changes from the file.`); await renderLib(); return mine.id;
+}
+// A small choice sheet: resolves to the key of the button tapped.
+function askChoice(text, buttons){
+  return new Promise(res => {
+    $('eTitle').textContent = 'Same number, two versions'; $('eClose').hidden = true;
+    $('eBody').innerHTML = `<p style="margin:0 0 14px">${esc(text)}</p><div style="display:grid; gap:8px">${buttons.map(([k, t], i) => `<button class="btn ${i === 0 ? 'primary' : ''}" type="button" data-k="${k}">${esc(t)}</button>`).join('')}</div>`;
+    $('eSheet').hidden = false;
+    $('eBody').querySelectorAll('[data-k]').forEach(b => b.addEventListener('click', () => { $('eSheet').hidden = true; $('eClose').hidden = false; res(b.dataset.k); }));
+  });
 }
 $('openFile').addEventListener('change', async e => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) await openDance(f); });
 $('demoBtn').addEventListener('click', async () => { await putProject(demoProject()); await renderLib(); openSong('demo-spotlight'); });
@@ -479,26 +596,37 @@ function renderStatic(){
 function trimEnd(pts, r){ if (pts.length < 2) return pts; const end = pts[pts.length-1], o = pts.slice(); while (o.length > 1 && Math.hypot(o[o.length-1][0]-end[0], o[o.length-1][1]-end[1]) < r) o.pop(); const a = o[o.length-1], L = Math.hypot(end[0]-a[0], end[1]-a[1]); if (L > r){ const k = (L-r)/L; o.push([a[0]+(end[0]-a[0])*k, a[1]+(end[1]-a[1])*k]); } return o; }
 const ptsD = pts => pts.length ? 'M' + pts.map(q => q[0].toFixed(1)+' '+q[1].toFixed(1)).join(' L') : '';
 function renderDyn(S){
-  const sel = UI.follow;
+  const editing = UI.editing, sel = editing ? UI.sel : UI.follow;
   if (UI.view === '3d'){
     const r = cv3.getBoundingClientRect(), dpr = window.devicePixelRatio || 1, W = Math.max(2, Math.round(r.width*dpr)), H = Math.max(2, Math.round(r.height*dpr));
     if (cv3.width !== W || cv3.height !== H){ cv3.width = W; cv3.height = H; }
     SC.render3D(cv3.getContext('2d'), {x:0, y:0, w:W, h:H}, cur, S, propsAt(S), {yaw, pitch, highlight: sel && sel !== 'crew' ? sel : null, dpr}); return;
   }
-  const g = geo(), k = g.k, F = cur.formations, facing = SC.usesFacing(cur); let h = '';
-  // where you go next
-  const j = S.moving ? S.next : S.idx + 1, dd = sel && cur.dancers.find(x => x.id === sel), path = (i, id, r) => trimEnd(SC.pathPoints(cur, i, id, 24).map(q => g.toS(q[0], q[1])), r);
-  if (dd && F[j]){ const pts = path(j, dd.id, 13); if (pts.length > 1) h += `<path d="${ptsD(pts)}" fill="none" stroke="${dd.color}" stroke-width="2.2" stroke-dasharray="4 3" opacity=".9" marker-end="url(#arr-m)"/>`; }
-  else if (!sel && S.moving) cur.dancers.forEach(d => { const pts = path(S.next, d.id, 13); if (pts.length > 1) h += `<path d="${ptsD(pts)}" fill="none" stroke="${d.color}" stroke-width="1.3" stroke-dasharray="3 3" opacity=".45"/>`; });
-  const PP = propsAt(S);
-  cur.props.forEach(pr => { const s = PP[pr.id]; if (!s) return; const [x,y] = g.toS(s.x, s.y), w = pr.w*k, d = pr.d*k, half = Math.max(w,d)/2;
+  const g = geo(), k = g.k, F = cur.formations, facing = SC.usesFacing(cur), ed = editable(S); let h = '<g pointer-events="none">', handle = '';
+  const path = (i, id, r) => trimEnd(SC.pathPoints(cur, i, id, 24).map(q => g.toS(q[0], q[1])), r);
+  if (ed && S.idx > 0){   // editing: everyone's path into this formation, and the curve handle for the selected dancer
+    const prev = F[S.idx-1], c = F[S.idx];
+    cur.dancers.forEach(d => { const a = prev.pos[d.id], z = c.pos[d.id]; if (!a || !z) return; const curved = !!(c.paths && c.paths[d.id]), [x1,y1] = g.toS(a[0],a[1]), [x2,y2] = g.toS(z[0],z[1]); if (Math.hypot(x2-x1, y2-y1) < 4 && !curved) return;
+      const on = !sel || sel === d.id; h += `<circle cx="${x1}" cy="${y1}" r="9" fill="none" stroke="${d.color}" stroke-width="1.2" stroke-dasharray="2 2" opacity="${on ? .75 : .25}"/><path d="${ptsD(path(S.idx, d.id, 13))}" fill="none" stroke="${curved || sel === d.id ? d.color : 'var(--floor-ink)'}" stroke-width="${sel === d.id ? 2 : 1.1}" stroke-dasharray="3 3" opacity="${on ? .8 : .25}" marker-end="url(#arr-m)"/>`; });
+    const d = sel && cur.dancers.find(x => x.id === sel), a = d && prev.pos[d.id], z = d && c.pos[d.id];
+    if (a && z && Math.hypot(a[0]-z[0], a[1]-z[1]) > 0.9){ const m = SC.midOf(a, z, c.paths && c.paths[d.id]), [mx,my] = g.toS(m[0], m[1]);
+      handle = `<g data-handle="${d.id}"><circle cx="${mx}" cy="${my}" r="18" fill="transparent"/><rect x="${mx-6}" y="${my-6}" width="12" height="12" fill="var(--floor)" stroke="${d.color}" stroke-width="2.4" transform="rotate(45 ${mx} ${my})"/></g>`; }
+  } else if (!editing && F.length){   // rehearsing: where you go next
+    const j = S.moving ? S.next : S.idx + 1, dd = sel && cur.dancers.find(x => x.id === sel);
+    if (dd && F[j]){ const pts = path(j, dd.id, 13); if (pts.length > 1) h += `<path d="${ptsD(pts)}" fill="none" stroke="${dd.color}" stroke-width="2.2" stroke-dasharray="4 3" opacity=".9" marker-end="url(#arr-m)"/>`; }
+    else if (!sel && S.moving) cur.dancers.forEach(d => { const pts = path(S.next, d.id, 13); if (pts.length > 1) h += `<path d="${ptsD(pts)}" fill="none" stroke="${d.color}" stroke-width="1.3" stroke-dasharray="3 3" opacity=".45"/>`; });
+  }
+  h += '</g>' + handle;
+  const PP = F.length ? propsAt(S) : {}, warnNow = new Set();
+  if (editing) (UI.warn || []).forEach(w => { if (Math.abs(w.beat - S.b) < 0.6){ warnNow.add(w.a); warnNow.add(w.b); } });
+  cur.props.forEach(pr => { const s = PP[pr.id]; if (!s) return; const [x,y] = g.toS(s.x, s.y), w = pr.w*k, d = pr.d*k, half = Math.max(w,d)/2, selP = editing && UI.selProp === pr.id;
     const mover = s.moving && s.mover ? (s.mover === 'crew' ? {id:'crew', name:'Stage crew', color:'#8F97B3'} : cur.dancers.find(z => z.id === s.mover)) : null;
-    const dim = sel && !(mover && mover.id === sel);
-    h += `<g opacity="${dim?0.45:1}"><g transform="translate(${x} ${y}) rotate(${s.rot||0})">${pr.round ? `<ellipse rx="${w/2}" ry="${d/2}" fill="#B98B4E" stroke="#F1DFBE" stroke-width=".8"/>` : `<rect x="${-w/2}" y="${-d/2}" width="${w}" height="${d}" rx="2" fill="#B98B4E" stroke="#F1DFBE" stroke-width=".8" ${s.moving?'stroke-dasharray="2.5 1.5"':''}/>`}</g>`
-      + `<text x="${x}" y="${y-half-3}" text-anchor="middle" font-family="Inter, sans-serif" font-size="7" font-weight="600" fill="#E9CFA0">${esc(pr.name)}</text>`
-      + (mover ? `<text x="${x}" y="${y+half+9}" text-anchor="middle" font-family="Inter, sans-serif" font-size="7" fill="var(--floor-ink)">${esc(mover.name)} moves it</text>` : '') + `</g>`; });
-  cur.dancers.forEach(d => { const p = S.pos[d.id]; if (!p) return; const [x,y] = g.toS(p[0],p[1]), dim = sel && sel !== d.id;
-    h += `<g opacity="${dim?0.3:1}">${d.id === sel ? `<circle cx="${x}" cy="${y}" r="15" fill="none" stroke="var(--floor-ink)" stroke-width="1.6"/>` : ''}${facing ? SC.svgFacing(g, x, y, (S.face && S.face[d.id]) || 0, 11) : ''}<circle cx="${x}" cy="${y}" r="11" fill="${d.color}" stroke="rgba(0,0,0,.35)" stroke-width=".8"/><text x="${x}" y="${y+3.6}" text-anchor="middle" font-family="Inter, sans-serif" font-weight="600" font-size="10" fill="#fff">${esc(initials(d))}</text><text x="${x}" y="${y+21}" text-anchor="middle" font-family="Inter, sans-serif" font-size="7.5" fill="var(--floor-ink)">${esc(d.name)}</text></g>`; });
+    const dim = !editing && sel && !(mover && mover.id === sel);
+    h += `<g data-prop="${pr.id}" opacity="${dim?0.45:1}"><g transform="translate(${x} ${y}) rotate(${s.rot||0})">${pr.round ? `<ellipse rx="${w/2}" ry="${d/2}" fill="#B98B4E" stroke="${selP ? 'var(--floor-ink)' : '#F1DFBE'}" stroke-width="${selP ? 2 : .8}"/>` : `<rect x="${-w/2}" y="${-d/2}" width="${w}" height="${d}" rx="2" fill="#B98B4E" stroke="${selP ? 'var(--floor-ink)' : '#F1DFBE'}" stroke-width="${selP ? 2 : .8}" ${s.moving?'stroke-dasharray="2.5 1.5"':''}/>`}</g>`
+      + `<text x="${x}" y="${y-half-3}" text-anchor="middle" font-family="Inter, sans-serif" font-size="7" font-weight="600" fill="#E9CFA0" pointer-events="none">${esc(pr.name)}</text>`
+      + (mover ? `<text x="${x}" y="${y+half+9}" text-anchor="middle" font-family="Inter, sans-serif" font-size="7" fill="var(--floor-ink)" pointer-events="none">${esc(mover.name)} moves it</text>` : '') + `</g>`; });
+  cur.dancers.forEach(d => { const p = S.pos[d.id]; if (!p) return; const [x,y] = g.toS(p[0],p[1]), dim = !editing && sel && sel !== d.id;
+    h += `<g data-id="${d.id}" opacity="${dim?0.3:1}"><circle cx="${x}" cy="${y}" r="18" fill="transparent"/>${warnNow.has(d.id) ? `<circle cx="${x}" cy="${y}" r="15" fill="none" stroke="var(--warn)" stroke-width="2"/>` : ''}${d.id === sel ? `<circle cx="${x}" cy="${y}" r="15" fill="none" stroke="var(--floor-ink)" stroke-width="1.8"/>` : ''}${facing || (editing && d.id === sel) ? SC.svgFacing(g, x, y, (S.face && S.face[d.id]) || 0, 11) : ''}<circle cx="${x}" cy="${y}" r="11" fill="${d.color}" stroke="rgba(0,0,0,.35)" stroke-width=".8"/><text x="${x}" y="${y+3.6}" text-anchor="middle" font-family="Inter, sans-serif" font-weight="600" font-size="10" fill="#fff" pointer-events="none">${esc(initials(d))}</text><text x="${x}" y="${y+21}" text-anchor="middle" font-family="Inter, sans-serif" font-size="7.5" fill="var(--floor-ink)" pointer-events="none">${esc(d.name)}</text></g>`; });
   dg.innerHTML = h;
 }
 // 3D: swipe sideways to walk around the audience (up and down still scrolls the page); double-tap for the centre seat
@@ -531,7 +659,7 @@ function updateCue(S){
 
 /* Formation goes in the top area when there's no video showing; otherwise in its card. */
 function placeFloor(){
-  const has = cur && cur.formations.length > 0, showRef = UI.hasVideo && UI.vidOn, showTake = !!(UI.compare || UI.rec), anyVid = showRef || showTake, inStage = has && !anyVid;
+  const has = cur && (cur.formations.length > 0 || UI.editing), showRef = !UI.editing && UI.hasVideo && UI.vidOn, showTake = !UI.editing && !!(UI.compare || UI.rec), anyVid = showRef || showTake, inStage = has && !anyVid;
   (inStage ? $('stageFloorSlot') : $('cardFloorSlot')).appendChild($('floorBox'));
   $('stage').classList.toggle('has-floor', !!inStage);
   $('stage').classList.toggle('has-video', !!anyVid);
@@ -629,7 +757,9 @@ async function openSong(id){
   $('pTitle').textContent = cur.title;
   $('musicBanner').hidden = UI.hasAudio; $('playBtn').disabled = !UI.hasAudio;
   if (!UI.hasAudio) $('musicText').textContent = `This number came without music. Add your copy of "${cur.audio ? cur.audio.name : 'the song'}"${cur.audio && cur.audio.duration ? ` (${fmt(cur.audio.duration)})` : ''}.`;
-  $('formCard').hidden = !cur.formations.length;
+  $('formCard').hidden = !cur.formations.length && !UI.editing;
+  if (!cur.uid) cur.uid = cur.id === 'demo-spotlight' ? 'demo-spotlight' : uid('u');
+  UI.sel = null; UI.selProp = null; undoStack = []; redoStack = []; UI.warn = SC.checkSpacing(cur, 2); setZoom(1);
   const dots = $('cdBeats'); dots.innerHTML = ''; for (let i=0;i<cur.phrase;i++) dots.appendChild(document.createElement('i'));
   $('coBtn').textContent = `Count-off ${countoffNums().join(', ')}`; $('loopBtn').textContent = `Loop this ${word()}`;
   UI.compare = null; UI.rec = null; recUI();
@@ -638,7 +768,7 @@ async function openSong(id){
   sizeCanvas(); lastBeat = lastPhrase = null; needDraw = true; keepAwake(true);
   if (!(history.state && history.state.v === 'song')) history.pushState({v:'song'}, '');
 }
-async function closeSong(){ if (xJob) xJob.cancel = true; $('xSheet').hidden = true; cancelCountoff(); await stopRec(); stopCompare(); aud.pause(); vid.pause(); keepAwake(false); cur = null; $('playView').hidden = true; $('libView').hidden = false; await renderLib(); window.scrollTo(0,0); }
+async function closeSong(){ if (UI.editing) setEditing(false); flushSave(); if (xJob) xJob.cancel = true; $('xSheet').hidden = true; cancelCountoff(); await stopRec(); stopCompare(); aud.pause(); vid.pause(); keepAwake(false); cur = null; $('playView').hidden = true; $('libView').hidden = false; await renderLib(); window.scrollTo(0,0); }
 $('backBtn').addEventListener('click', () => { if (history.state && history.state.v === 'song') history.back(); else closeSong(); });
 $('musicFile').addEventListener('change', async e => {
   const f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return;
@@ -860,8 +990,456 @@ async function saveVideoFile(blob, name){
   const a = document.createElement('a'), u = URL.createObjectURL(f); a.href = u; a.download = file; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 60000);
 }
 
+/* ---------- editing on the phone ----------
+   Edit turns the player into an editor: the formation sits in the top area, a toolbar runs along the bottom, and
+   each tool opens a sheet. On the stage: tap a dancer to pick them, then tap where they go, or drag them (on a
+   touch screen the dot rides just above your finger). Pinch to zoom, drag the empty floor to pan. Every change
+   can be undone. */
+let undoStack = [], redoStack = [], editSave = null, sheetName = null;
+UI.editing = false; UI.sel = null; UI.selProp = null; UI.zoom = {k:1, x:0, y:0}; UI.warn = [];
+const PROP_KINDS = {chair:{label:'Chair', w:1.5, d:1.5}, stool:{label:'Stool', w:1.2, d:1.2, round:true}, box:{label:'Box', w:2, d:2}, bench:{label:'Bench', w:4, d:1.5}, table:{label:'Table', w:4, d:2}, ladder:{label:'Ladder', w:2, d:3}, hoop:{label:'Hoop', w:3, d:3, round:true}, other:{label:'Prop', w:2, d:2}};
+const editable = S => UI.editing && aud.paused && !UI.counting && !S.moving && S.idx >= 0;
+const curBeat = () => beatAt(aud.currentTime || 0);
+const nowS = () => stateAt(curBeat());
+const shortBeat = b => { const ph = Math.floor(b/cur.phrase)+1, ct = ((b % cur.phrase)+cur.phrase)%cur.phrase + 1, i = sectionFor(ph); return `${i < 0 ? word() : cur.sections[i].name} ${i < 0 ? ph : ph - cur.sections[i].start + 1}:${ct}`; };
+const nameOfD = id => (cur.dancers.find(d => d.id === id) || {}).name || '';
+const editFields = p => ({title:p.title, style:p.style, bpm:p.bpm, offset:p.offset, phrase:p.phrase, sections:p.sections, notes:p.notes, dancers:p.dancers, formations:p.formations, props:p.props, stage:p.stage});
+
+function saveCur(){ if (!cur) return; cur.updated = Date.now(); clearTimeout(editSave); const p = cur; editSave = setTimeout(() => { editSave = null; putProject(p); }, 300); }
+function flushSave(){ if (editSave){ clearTimeout(editSave); editSave = null; if (cur) putProject(cur); } }
+function snap(){ undoStack.push(JSON.stringify(editFields(cur))); if (undoStack.length > 60) undoStack.shift(); redoStack = []; updateUndo(); }
+function restore(from, to){ if (!from.length) return; to.push(JSON.stringify(editFields(cur))); Object.assign(cur, JSON.parse(from.pop())); if (!cur.stage) delete cur.stage; afterChange(true); }
+function updateUndo(){ $('ebUndo').disabled = !undoStack.length; $('ebRedo').disabled = !redoStack.length; }
+$('ebUndo').addEventListener('click', () => { restore(undoStack, redoStack); toast('Undone.'); });
+$('ebRedo').addEventListener('click', () => { restore(redoStack, undoStack); toast('Redone.'); });
+// After any change: save, re-check spacing, redraw everything that shows project data.
+function afterChange(keepSheet){
+  saveCur(); cur.formations.sort((a, b) => a.at - b.at); cur.sections.sort((a, b) => a.start - b.start); if (cur.sections.length) cur.sections[0].start = 1;
+  if (UI.sel && !cur.dancers.some(d => d.id === UI.sel)) UI.sel = null;
+  if (UI.selProp && !cur.props.some(p => p.id === UI.selProp)) UI.selProp = null;
+  UI.warn = SC.checkSpacing(cur, 2);
+  $('pTitle').textContent = cur.title;
+  const dots = $('cdBeats'); if (dots.children.length !== cur.phrase){ dots.innerHTML = ''; for (let i=0;i<cur.phrase;i++) dots.appendChild(document.createElement('i')); }
+  $('coBtn').textContent = `Count-off ${countoffNums().join(', ')}`; $('loopBtn').textContent = `Loop this ${word()}`;
+  renderRepeat(); renderFollow(); renderStatic(); placeFloor(); updateUndo();
+  lastBeat = lastPhrase = null; lastEditKey = ''; needDraw = true;
+  if (keepSheet !== false && sheetName && !$('eSheet').hidden) renderSheet();
+}
+
+/* edit mode on and off */
+function setEditing(on){
+  UI.editing = on; document.body.classList.toggle('editing', on);
+  $('editBtn').setAttribute('aria-pressed', String(on)); $('editBtn').textContent = on ? 'Done' : 'Edit';
+  $('editBar').hidden = !on; $('eTools').hidden = !on; $('noteEdit').hidden = !on; $('noteNow').hidden = on;
+  if (on){ stopCompare(); if (UI.rec) stopRec(); UI.view = UI.view === '3d' ? 'aud' : UI.view; document.querySelectorAll('.view-toggle button').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.view === UI.view))); renderStatic(); }
+  else { UI.sel = null; UI.selProp = null; setZoom(1); flushSave(); $('eSheet').hidden = true; }
+  $('formCard').hidden = !cur.formations.length && !on;
+  document.querySelector('.view-toggle [data-view="3d"]').disabled = on;
+  placeFloor(); updateUndo(); lastPhrase = null; lastEditKey = ''; needDraw = true;
+  if (on){ refreshEditUI(); window.scrollTo({top:0, behavior:'smooth'}); }
+}
+$('editBtn').addEventListener('click', () => setEditing(!UI.editing));
+document.querySelectorAll('#editBar [data-sheet]').forEach(b => b.addEventListener('click', () => openSheet(b.dataset.sheet)));
+
+/* the note box */
+let noteP = null;
+function syncNoteEdit(pos){
+  const ne = $('noteEdit'); if (!UI.editing || document.activeElement === ne) return;
+  noteP = pos.lead ? null : pos.phrase; ne.disabled = !noteP; ne.value = noteP ? (cur.notes[noteP] || '') : '';
+  ne.placeholder = noteP ? `Note for ${phraseLabel(noteP)}: steps, counts, arms, facings…` : 'Lead-in: no note before count 1';
+  if (UI.editing) $('noteLabel').textContent = noteP ? `Note · ${phraseLabel(noteP)} · tap to write` : 'Before count 1';
+}
+let noteSnapped = false;
+$('noteEdit').addEventListener('focus', () => { noteSnapped = false; if (noteP) $('noteLabel').textContent = `Writing the note for ${phraseLabel(noteP)}`; });
+$('noteEdit').addEventListener('input', e => { if (!noteP) return; if (!noteSnapped){ snap(); noteSnapped = true; } const v = e.target.value; if (v.trim()) cur.notes[noteP] = v; else delete cur.notes[noteP]; saveCur(); });
+$('noteEdit').addEventListener('blur', () => { lastPhrase = null; needDraw = true; });
+
+/* zoom and the touch editor on the stage */
+function setZoom(k, cx, cy){
+  const z = UI.zoom; k = Math.max(1, Math.min(4, k)); const w = 400/k, h = 310/k;
+  if (cx == null){ cx = z.x + 200/z.k; cy = z.y + 155/z.k; }
+  z.k = k; z.x = Math.max(0, Math.min(400 - w, cx - w/2)); z.y = Math.max(0, Math.min(310 - h, cy - h/2));
+  svg.setAttribute('viewBox', `${z.x.toFixed(1)} ${z.y.toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)}`);
+  if (UI.editing) refreshEditUI();
+}
+function svgAt(cx, cy){ const pt = svg.createSVGPoint(); pt.x = cx; pt.y = cy; return pt.matrixTransform(svg.getScreenCTM().inverse()); }
+function feetAt(cx, cy, fine){
+  const q = svgAt(cx, cy), ST = stg(); let [x, y] = geo().fromS(q.x, q.y);
+  if (fine){ x = Math.round(x*2)/2; y = Math.round(y*2)/2; } else { x = Math.round(x); y = Math.round(y); }
+  return [Math.max(-ST.w/2+1, Math.min(ST.w/2-1, x)), Math.max(1, Math.min(ST.d-1, y))];
+}
+function moveDancer(f, next, id, x, y){
+  const old = f.pos[id];
+  if (old){ const dx = (x - old[0])/2, dy = (y - old[1])/2; [f, next].forEach(ff => { const c = ff && ff.paths && ff.paths[id]; if (c) ff.paths[id] = [Math.round((c[0]+dx)*10)/10, Math.round((c[1]+dy)*10)/10]; }); }
+  f.pos[id] = [x, y];
+}
+const pointers = new Map(); let gest = null;
+svg.addEventListener('pointerdown', e => {
+  if (!UI.editing || UI.view === '3d') return;
+  try { svg.setPointerCapture(e.pointerId); } catch(_){} pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if (pointers.size === 2){ const [a, b] = [...pointers.values()], m = svgAt((a.x+b.x)/2, (a.y+b.y)/2); gest = {pinch:true, d0:Math.hypot(a.x-b.x, a.y-b.y) || 1, k0:UI.zoom.k, m}; return; }
+  const t = e.target.closest('[data-handle],[data-id],[data-prop]'), S = nowS();
+  gest = {x0:e.clientX, y0:e.clientY, moved:false, kind:t ? (t.dataset.handle ? 'handle' : t.dataset.id ? 'dancer' : 'prop') : 'empty', id:t ? (t.dataset.handle || t.dataset.id || t.dataset.prop) : null,
+    touch:e.pointerType !== 'mouse', S, f:S.idx >= 0 ? cur.formations[S.idx] : null, z0:{...UI.zoom}, s0:svgAt(e.clientX, e.clientY), snapped:false};
+  e.preventDefault();
+});
+svg.addEventListener('pointermove', e => {
+  if (!pointers.has(e.pointerId)) return; pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  if (!gest) return;
+  if (gest.pinch){ if (pointers.size < 2) return; const [a, b] = [...pointers.values()], d = Math.hypot(a.x-b.x, a.y-b.y); setZoom(gest.k0 * d/gest.d0, gest.m.x, gest.m.y); needDraw = true; return; }
+  if (!gest.moved && Math.hypot(e.clientX-gest.x0, e.clientY-gest.y0) < 7) return;
+  gest.moved = true;
+  if (gest.kind === 'empty'){   // pan when zoomed in
+    if (UI.zoom.k > 1){ const z = gest.z0, w = 400/z.k, h = 310/z.k, r = svg.getBoundingClientRect(), dx = (e.clientX-gest.x0)/r.width*w, dy = (e.clientY-gest.y0)/r.height*h; setZoom(z.k, z.x + w/2 - dx, z.y + h/2 - dy); }
+    return;
+  }
+  if (!editable(gest.S)){ if (!gest.warned){ gest.warned = true; toast(aud.paused ? 'Everyone is travelling here. Tap a formation below to move dancers.' : 'Pause the music to move dancers.'); } return; }
+  if (!gest.snapped){ snap(); gest.snapped = true; }
+  const f = gest.f, lift = gest.touch && gest.kind !== 'handle' ? 46 : 0;
+  if (gest.kind === 'handle'){
+    const prev = cur.formations[gest.S.idx-1], a = prev && prev.pos[gest.id], z = f.pos[gest.id]; if (!a || !z) return;
+    const q = svgAt(e.clientX, e.clientY), m = geo().fromS(q.x, q.y); f.paths = f.paths || {};
+    if (Math.hypot(m[0] - (a[0]+z[0])/2, m[1] - (a[1]+z[1])/2) < 0.5) delete f.paths[gest.id]; else f.paths[gest.id] = SC.ctrlFromMid(a, z, m).map(v => Math.round(v*10)/10);
+    $('eHint').innerHTML = `<b>${esc(nameOfD(gest.id))}</b>: curved path. Double-tap the ◆ to straighten it.`;
+  } else if (gest.kind === 'prop'){
+    const [x, y] = feetAt(e.clientX, e.clientY - lift, true), old = f.props[gest.id] || {};
+    f.props[gest.id] = Object.assign({}, old, {on:true, x, y, rot:old.rot || 0}); UI.selProp = gest.id; UI.sel = null;
+    $('eHint').innerHTML = `<b>${esc((cur.props.find(q => q.id === gest.id) || {}).name || 'Prop')}</b>: ${esc(spotText(x, y))}`;
+  } else {
+    const [x, y] = feetAt(e.clientX, e.clientY - lift); moveDancer(f, cur.formations[gest.S.idx+1], gest.id, x, y); UI.sel = gest.id; UI.selProp = null;
+    $('eHint').innerHTML = `<b>${esc(nameOfD(gest.id))}</b>: ${esc(spotText(x, y))}`;
+  }
+  needDraw = true;
+});
+let lastTapAt = 0, lastTapId = null;
+function endGesture(e){
+  pointers.delete(e.pointerId);
+  if (!gest) return;
+  if (gest.pinch){ if (pointers.size < 2) gest = null; return; }
+  const g = gest; gest = null;
+  if (g.moved){ if (g.snapped) afterChange(); return; }
+  const now = Date.now(), dbl = now - lastTapAt < 330 && lastTapId === (g.id || 'empty'); lastTapAt = now; lastTapId = g.id || 'empty';
+  if (g.kind === 'handle'){ if (dbl && editable(g.S)){ snap(); straighten(g.f, g.id); } return; }
+  if (g.kind === 'dancer'){ UI.sel = UI.sel === g.id ? null : g.id; UI.selProp = null; }
+  else if (g.kind === 'prop'){ UI.selProp = UI.selProp === g.id ? null : g.id; UI.sel = null; }
+  else if ((UI.sel || UI.selProp) && editable(g.S)){   // tap an empty spot: the picked dancer or prop goes there
+    snap();
+    if (UI.sel){ const [x, y] = feetAt(e.clientX, e.clientY); moveDancer(g.f, cur.formations[g.S.idx+1], UI.sel, x, y); }
+    else { const [x, y] = feetAt(e.clientX, e.clientY, true), old = g.f.props[UI.selProp] || {}; g.f.props[UI.selProp] = Object.assign({}, old, {on:true, x, y, rot:old.rot || 0}); }
+    afterChange(); return;
+  } else { UI.sel = null; UI.selProp = null; }
+  needDraw = true; refreshEditUI();
+}
+svg.addEventListener('pointerup', endGesture); svg.addEventListener('pointercancel', endGesture);
+function straighten(f, id){ if (f.paths){ delete f.paths[id]; if (!Object.keys(f.paths).length) delete f.paths; } afterChange(); }
+
+/* the hint, quick buttons and formation strip under the stage */
+function refreshEditUI(){
+  if (!UI.editing || !cur) return;
+  const S = nowS(), F = cur.formations, d = cur.dancers.find(x => x.id === UI.sel), pr = cur.props.find(x => x.id === UI.selProp), ed = editable(S);
+  let h;
+  if (!cur.dancers.length) h = 'Add your dancers first: tap <b>Dancers</b> below.';
+  else if (!F.length) h = 'Scrub to the count where the first formation lands, then tap <b>+ Formation here</b>.';
+  else if (!aud.paused || UI.counting) h = 'Playing. Pause to move dancers.';
+  else if (S.moving) h = `Travelling into <b>${esc(F[S.next].name)}</b>. Tap a formation below to move dancers.`;
+  else if (d) h = `<b>${esc(d.name)}</b>: tap where they go, or drag them.${S.idx > 0 ? ' Drag the ◆ to curve their path.' : ''}`;
+  else if (pr) h = `<b>${esc(pr.name)}</b>: tap where it goes, or drag it.`;
+  else h = `<b>${esc(F[S.idx].name)}</b>: tap a dancer, then tap where they go. Pinch to zoom.`;
+  $('eHint').innerHTML = h;
+  let q = '';
+  if (d && ed) q = `<button class="btn small" type="button" data-q="l" aria-label="Turn left">⟲</button><button class="btn small" type="button" data-q="r" aria-label="Turn right">⟳</button><button class="btn small" type="button" data-q="dancer">${esc(d.name)}…</button>`;
+  if (pr && ed) q = `<button class="btn small" type="button" data-q="rot">Rotate 45°</button><button class="btn small" type="button" data-q="props">${esc(pr.name)}…</button>`;
+  if (UI.zoom.k > 1) q += '<button class="btn small" type="button" data-q="zoom">Zoom out</button>';
+  $('eQuick').innerHTML = q;
+  $('eQuick').querySelectorAll('[data-q]').forEach(b => b.addEventListener('click', () => {
+    const v = b.dataset.q, f = F[S.idx];
+    if (v === 'zoom') return setZoom(1);
+    if (v === 'dancer' || v === 'props') return openSheet(v);
+    snap();
+    if (v === 'rot'){ const s = f.props[pr.id]; s.rot = ((s.rot || 0) + 45) % 360; }
+    else { f.face = f.face || {}; const n = SC.normDeg(faceOf(f, d.id) + (v === 'l' ? -45 : 45)); if (n) f.face[d.id] = n; else delete f.face[d.id]; if (!Object.keys(f.face).length) delete f.face; toast(`${d.name} is ${SC.faceText(n)}.`); }
+    afterChange();
+  }));
+  const here = Math.max(0, Math.floor(curBeat() + 1e-4));
+  $('eStrip').innerHTML = F.map((f, i) => `<button type="button" data-at="${f.at}" class="${!S.moving && S.idx === i ? 'on' : ''}">${i+1}. ${esc(f.name)}<small>${esc(shortBeat(f.at))}</small></button>`).join('')
+    + (cur.dancers.length && !F.some(f => f.at === here) ? `<button type="button" class="add" data-add="1">+ Formation here<small>${esc(shortBeat(here))}</small></button>` : '');
+  $('eStrip').querySelectorAll('[data-at]').forEach(b => b.addEventListener('click', () => { aud.pause(); seek(timeOfBeat(+b.dataset.at) + 0.001); }));
+  const ad = $('eStrip').querySelector('[data-add]'); if (ad) ad.addEventListener('click', addFormationHere);
+  const n = (UI.warn || []).length; $('ebWarn').hidden = !n; $('ebWarn').textContent = n;
+}
+function addFormationHere(){
+  aud.pause(); const b = Math.max(0, Math.floor(curBeat() + 1e-4)), F = cur.formations;
+  if (F.some(f => f.at === b)){ toast(`A formation already lands on ${beatLabel(b)}.`); return; }
+  if (!cur.dancers.length){ toast('Add dancers first.'); openSheet('dancers'); return; }
+  snap();
+  const pos = {}, ST = stg();
+  if (F.length){ const S = stateAt(b); cur.dancers.forEach(d => { if (S.pos[d.id]) pos[d.id] = S.pos[d.id].map(v => Math.round(v)); }); }
+  cur.dancers.forEach((d, i) => { if (!pos[d.id]){ const n = cur.dancers.length, gap = Math.min(3, (ST.w - 2)/Math.max(1, n - 1)); pos[d.id] = [Math.round((-(n-1)*gap/2 + i*gap)*2)/2, Math.round(Math.min(8, ST.d/3))]; } });
+  const fprops = {}, PP = F.length ? propsAt(stateAt(b)) : {};
+  cur.props.forEach((pr, i) => { const s = PP[pr.id]; fprops[pr.id] = F.length ? (s ? {on:true, x:Math.round(s.x*2)/2, y:Math.round(s.y*2)/2, rot:Math.round(s.rot||0), mover:''} : {on:false}) : {on:true, x:-8 + (i%5)*4, y:Math.max(2, ST.d - 4), rot:0, mover:''}; });
+  const prev = [...F].reverse().find(f => f.at < b);
+  F.push({id:uid('f'), name:`Formation ${F.length + 1}`, at:b, travel:prev ? Math.min(4, b - prev.at) : 0, pos, props:fprops});
+  afterChange(); seek(timeOfBeat(b) + 0.001); toast(`Added a formation on ${beatLabel(b)}. Tap a dancer, then tap where they go.`);
+}
+function addDancerNamed(name, color){
+  const used = new Set(cur.dancers.map(d => d.color)); if (!color || used.has(color)) color = DCOL.find(c => !used.has(c)) || DCOL[cur.dancers.length % DCOL.length];
+  const d = {id:uid('d'), name, color}, n = cur.dancers.length, ST = stg(), lim = ST.w/2 - 1;
+  cur.formations.forEach(f => { f.pos[d.id] = [Math.max(-lim, Math.min(lim, -lim + 1 + (n % Math.max(1, Math.floor(ST.w/2) - 1))*2)), ST.d - 2]; });
+  cur.dancers.push(d); return d;
+}
+
+/* sheets */
+function openSheet(name){ sheetName = name; renderSheet(); $('eSheet').hidden = false; $('eSheet').querySelector('.sheet').scrollTop = 0; }
+$('eClose').addEventListener('click', () => { $('eSheet').hidden = true; sheetName = null; needDraw = true; refreshEditUI(); });
+$('eSheet').addEventListener('click', e => { if (e.target === $('eSheet') && !$('eClose').hidden){ $('eSheet').hidden = true; sheetName = null; refreshEditUI(); } });
+function renderSheet(){
+  const B = SHEETS[sheetName]; if (!B || !cur) return;
+  const keep = $('eSheet').querySelector('.sheet').scrollTop;
+  $('eTitle').textContent = B.title(); $('eBody').innerHTML = B.html(); B.bind($('eBody'));
+  $('eSheet').querySelector('.sheet').scrollTop = keep;
+}
+const on = (root, sel, ev, fn) => { const el = root.querySelector(sel); if (el) el.addEventListener(ev, fn); return el; };
+// change(fn): undoable edit, then redraw
+const change = fn => { snap(); fn(); afterChange(); };
+const tapState = {taps:[]};
+async function decodeBlob(blob){ const ab = await blob.arrayBuffer(), oc = new OfflineAudioContext(1, 2, 22050); return new Promise((res, rej) => { const pr = oc.decodeAudioData(ab, res, rej); if (pr && pr.then) pr.then(res, rej); }); }
+async function songBuffer(){ if (cur.audio && cur.audio.demo) return buildDemo(); const m = await getMedia(cur.id + ':audio'); if (!m) throw new Error('no music'); return decodeBlob(m); }
+
+const SHEETS = {
+  song: {
+    title: () => 'Song, tempo and sections',
+    html: () => `
+      <div class="sfield"><span class="label">Title</span><input type="text" id="sTitle" value="${esc(cur.title)}"></div>
+      <div class="sfield"><span class="label">Style</span><input type="text" id="sStyle" value="${esc(cur.style || '')}" placeholder="Jazz, Contemporary, Hip-hop…"></div>
+      <div class="sfield"><span class="label">Tempo</span><div class="srow"><input type="number" id="sBpm" min="40" max="240" step="0.1" value="${cur.bpm}"><span class="muted">BPM</span><button class="btn small" id="sTap" type="button">Tap tempo</button><button class="btn small" id="sDetect" type="button">Find the beat again</button></div></div>
+      <div class="sfield"><span class="label">Count 1</span><div class="srow"><span class="mono">${cur.offset.toFixed(3)} s</span><button class="btn small" id="sOm" type="button">−10 ms</button><button class="btn small" id="sOp" type="button">+10 ms</button><button class="btn small" id="sHere" type="button">Count 1 is here</button><button class="btn small" id="sPlay" type="button">${aud.paused ? '▶ Play' : '❚❚ Pause'}</button></div><span class="muted" id="sStatus">${esc(tapState.msg || 'Play the song and tap Count 1 is here on the first count, or tap along with Tap tempo.')}</span></div>
+      <div class="sfield"><span class="label">Counting</span><select id="sPhrase">${[[8,'8-counts'],[6,'6-counts (6/8)'],[12,'12-counts (waltz)'],[4,'4-counts'],[16,'16-counts']].map(([v,t]) => `<option value="${v}" ${cur.phrase === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+      <div class="sfield"><span class="label">Sections</span><div class="slist">${cur.sections.map((x, i) => `<div class="sitem"><span class="tape-s" style="background:var(${TAPES[i%6]})"></span><input type="text" data-sn="${i}" value="${esc(x.name)}" aria-label="Section name">${i ? `<span class="muted">from</span><input type="number" min="2" data-ss="${i}" value="${x.start}" aria-label="Starts at ${word()}"><button class="x" type="button" data-sd="${i}" aria-label="Remove ${esc(x.name)}">✕</button>` : `<span class="muted">from ${word()} 1</span>`}</div>`).join('')}</div>
+        <div class="srow"><button class="btn small" id="sAdd" type="button">Add a section at ${esc(phraseLabel(Math.max(1, posAt(aud.currentTime||0).phrase)))}</button><button class="btn small" id="sSuggest" type="button">Suggest from the music</button></div><div id="sSug"></div></div>
+      <div class="sfield"><span class="label">Music</span><div class="srow"><span class="muted">${esc(cur.audio ? cur.audio.name : 'No music')}</span><label class="btn small" for="musicFile">Replace the music…</label></div></div>`,
+    bind: r => {
+      on(r, '#sTitle', 'change', e => change(() => { cur.title = e.target.value.trim() || 'Untitled'; }));
+      on(r, '#sStyle', 'change', e => change(() => { cur.style = e.target.value.trim(); }));
+      on(r, '#sBpm', 'change', e => { const v = parseFloat(e.target.value); if (!(v >= 40 && v <= 240)){ renderSheet(); return; } change(() => { cur.bpm = Math.round(v*10)/10; }); });
+      on(r, '#sTap', 'click', () => {
+        const now = performance.now(), T = tapState.taps; if (T.length && now - T[T.length-1] > 2000) T.length = 0; T.push(now); if (T.length > 8) T.shift();
+        if (T.length >= 4){ let bpm = 60000/((T[T.length-1] - T[0])/(T.length-1)); if (!aud.paused) bpm *= UI.rate; snap(); cur.bpm = Math.round(bpm*10)/10;
+          if (!aud.paused){ const t = aud.currentTime, bl = 60/cur.bpm; cur.offset = Math.max(0, Math.round((t - Math.round((t - cur.offset)/bl)*bl)*1000)/1000); }
+          tapState.msg = `Tapped ${cur.bpm} BPM. Keep tapping to refine it.`; afterChange(); }
+        else { tapState.msg = `Keep tapping on the beat (${T.length} of 4)…`; r.querySelector('#sStatus').textContent = tapState.msg; }
+      });
+      on(r, '#sDetect', 'click', async () => { r.querySelector('#sStatus').textContent = 'Listening to the song…';
+        try { const buf = await songBuffer(), t = SongCore.detectTempo(buf); if (!t) throw 0; const a = SongCore.analyzeSong(buf, t.bpm, t.offset, cur.phrase);
+          change(() => { cur.bpm = t.bpm; cur.offset = Math.round((a ? a.offset : t.offset)*1000)/1000; }); tapState.msg = `Found ${cur.bpm} BPM with count 1 at ${cur.offset.toFixed(2)} s.`; renderSheet(); }
+        catch(e){ tapState.msg = "Couldn't read the beat. Use Tap tempo while the song plays."; renderSheet(); } });
+      on(r, '#sOm', 'click', () => change(() => { cur.offset = Math.max(0, Math.round((cur.offset - 0.01)*1000)/1000); }));
+      on(r, '#sOp', 'click', () => change(() => { cur.offset = Math.round((cur.offset + 0.01)*1000)/1000; }));
+      on(r, '#sHere', 'click', () => change(() => { cur.offset = Math.round((aud.currentTime || 0)*1000)/1000; tapState.msg = `Count 1 is now at ${cur.offset.toFixed(2)} s.`; }));
+      on(r, '#sPlay', 'click', () => { togglePlay(); setTimeout(renderSheet, 80); });
+      on(r, '#sPhrase', 'change', e => change(() => { cur.phrase = parseInt(e.target.value, 10); }));
+      r.querySelectorAll('[data-sn]').forEach(el => el.addEventListener('change', () => change(() => { cur.sections[+el.dataset.sn].name = el.value.trim() || 'Untitled'; })));
+      r.querySelectorAll('[data-ss]').forEach(el => el.addEventListener('change', () => { const i = +el.dataset.ss; let v = parseInt(el.value, 10); if (!(v >= 2)) v = 2;
+        if (cur.sections.some((x, j) => j !== i && x.start === v)){ toast(`Another section starts at ${word()} ${v}.`); renderSheet(); return; } change(() => { cur.sections[i].start = v; }); }));
+      r.querySelectorAll('[data-sd]').forEach(el => el.addEventListener('click', () => change(() => { cur.sections.splice(+el.dataset.sd, 1); })));
+      on(r, '#sAdd', 'click', () => { const p = Math.max(1, posAt(aud.currentTime||0).phrase); if (cur.sections.some(x => x.start === p)){ toast(`A section already starts at ${phraseLabel(p)}. Rename it instead.`); return; } change(() => { cur.sections.push({name:'New section', start:p}); }); });
+      on(r, '#sSuggest', 'click', async () => { const box = r.querySelector('#sSug'); box.innerHTML = '<p class="muted">Listening to the song…</p>';
+        let a = null; try { a = SongCore.analyzeSong(await songBuffer(), cur.bpm, cur.offset, cur.phrase, true); } catch(e){}
+        if (!a || !a.sections || a.sections.length < 2){ box.innerHTML = '<p class="muted">No clear changes found in this song. Add sections by hand.</p>'; return; }
+        box.innerHTML = `<ol style="margin:8px 0; padding-left:20px">${a.sections.map(x => `<li>${esc(x.name)} <span class="muted">from ${word()} ${x.start}</span></li>`).join('')}</ol><div class="srow"><button class="btn small primary" type="button" id="sUse">Use these sections</button></div>`;
+        on(box, '#sUse', 'click', () => change(() => { cur.sections = a.sections; })); });
+    }
+  },
+  formation: {
+    title: () => { const S = nowS(); return !cur.formations.length || S.moving || S.idx < 0 ? 'Formations' : `Formation ${S.idx + 1} of ${cur.formations.length}`; },
+    html: () => {
+      const S = nowS(), F = cur.formations, here = Math.max(0, Math.floor(curBeat() + 1e-4)), W = UI.warn || [];
+      const warn = W.length ? `<span class="label">Spacing check: ${W.length} to fix</span><ul class="wl">${W.slice(0, 12).map((w, i) => `<li><button type="button" data-w="${i}">${esc(w.text)}<br><span class="muted">${esc(beatLabel(Math.floor(w.beat)))}</span></button></li>`).join('')}</ul>` : (F.length ? '<p class="muted">Spacing check: all clear. Everyone keeps 2 ft apart, standing and travelling.</p>' : '');
+      const addBtn = `<button class="btn small primary" id="fAdd" type="button" ${cur.dancers.length && !F.some(f => f.at === here) ? '' : 'disabled'}>Add a formation at ${esc(shortBeat(here))}</button>`;
+      if (!F.length || S.moving || S.idx < 0) return `<p>${F.length ? `Everyone is travelling into <b>${esc(F[S.next].name)}</b>.` : 'No formations yet.'} Scrub the timeline to the count where a formation lands, then add it.</p><div class="srow" style="margin-bottom:12px">${addBtn}</div>${warn}`;
+      const f = F[S.idx], i = S.idx, ph = Math.floor(f.at/cur.phrase) + 1, ct = f.at % cur.phrase + 1, si = Math.max(0, sectionFor(ph)), maxT = i ? f.at - F[i-1].at : 0, len = i ? f.at - travelStart(i) : 0;
+      const stag = f.stagger || {order:'together', len:Math.max(1, Math.round(len/2))};
+      return `
+        <div class="sfield"><span class="label">Name</span><input type="text" id="fName" value="${esc(f.name)}"></div>
+        <div class="sfield"><span class="label">Dancers arrive on</span><div class="srow"><select id="fSec">${cur.sections.map((x, j) => `<option value="${j}" ${j === si ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select><span class="muted">${word()}</span><input type="number" id="fPh" min="1" value="${ph - cur.sections[si].start + 1}"><span class="muted">count</span><input type="number" id="fCt" min="1" max="${cur.phrase}" value="${ct}"></div></div>
+        ${i ? `<div class="sfield"><span class="label">Travel time</span><div class="srow"><input type="number" id="fTr" min="1" max="${maxT}" value="${Math.min(f.travel, maxT)}"><span class="muted">counts, from ${esc(shortBeat(travelStart(i)))}</span></div>
+          <select id="fEase"><option value="smooth" ${f.ease !== 'steady' ? 'selected' : ''}>Smooth start and stop</option><option value="steady" ${f.ease === 'steady' ? 'selected' : ''}>Steady walk</option></select></div>
+          ${len > 1 ? `<div class="sfield"><span class="label">Who moves when</span><select id="fStag">${[['together','Everyone together'],['front','Front row first'],['back','Back row first'],['right','Stage right first'],['left','Stage left first'],['one','One at a time']].concat(stag.order === 'custom' ? [['custom','Set for each dancer']] : []).map(([v, t]) => `<option value="${v}" ${stag.order === v ? 'selected' : ''}>${t}</option>`).join('')}</select>
+            ${['together','custom'].includes(stag.order) ? '' : `<div class="srow"><span class="muted">each moving for</span><input type="number" id="fStagLen" min="1" max="${len}" value="${Math.min(stag.len, len)}"><span class="muted">counts</span></div>`}</div>` : ''}` : '<p class="muted">Opening formation: dancers start here.</p>'}
+        <div class="sfield"><span class="label">Formation note</span><textarea id="fNote" rows="2" placeholder="Spacing, who's in front, entrances, focus…">${esc(f.note || '')}</textarea></div>
+        ${warn}
+        <div class="srow">${addBtn}<button class="btn small danger" id="fDel" type="button">Delete this formation</button></div>`;
+    },
+    bind: r => {
+      r.querySelectorAll('[data-w]').forEach(b => b.addEventListener('click', () => { const w = UI.warn[+b.dataset.w]; aud.pause(); UI.sel = w.a; seek(timeOfBeat(w.beat) + 0.001); $('eSheet').hidden = true; sheetName = null; needDraw = true; }));
+      on(r, '#fAdd', 'click', () => { addFormationHere(); renderSheet(); });
+      const S = nowS(); if (S.moving || S.idx < 0) return; const F = cur.formations, f = F[S.idx], i = S.idx, len = i ? f.at - travelStart(i) : 0;
+      on(r, '#fName', 'change', e => change(() => { f.name = e.target.value.trim() || 'Untitled'; }));
+      on(r, '#fNote', 'change', e => change(() => { const v = e.target.value; if (v.trim()) f.note = v; else delete f.note; }));
+      const reAt = () => { const x = cur.sections[+r.querySelector('#fSec').value], ph = Math.max(1, parseInt(r.querySelector('#fPh').value, 10) || 1), ct = Math.max(1, Math.min(cur.phrase, parseInt(r.querySelector('#fCt').value, 10) || 1)), at = (x.start - 1 + ph - 1)*cur.phrase + (ct - 1);
+        if (F.some(o => o !== f && o.at === at)){ toast(`Another formation already lands on ${beatLabel(at)}.`); renderSheet(); return; }
+        change(() => { f.at = at; }); seek(timeOfBeat(at) + 0.001); renderSheet(); };
+      ['#fSec','#fPh','#fCt'].forEach(id => on(r, id, 'change', reAt));
+      const restag = () => { if (f.stagger && !['together','custom'].includes(f.stagger.order)){ const t = SC.staggerTimings(cur, i, f.stagger.order, f.stagger.len); if (t) f.timing = t; else delete f.timing; } };
+      on(r, '#fTr', 'change', e => change(() => { f.travel = Math.max(1, Math.min(f.at - F[i-1].at, parseInt(e.target.value, 10) || 1)); restag(); }));
+      on(r, '#fEase', 'change', e => change(() => { if (e.target.value === 'steady') f.ease = 'steady'; else delete f.ease; }));
+      const stag = () => { const order = r.querySelector('#fStag').value; if (order === 'custom') return; const el = r.querySelector('#fStagLen'), sl = Math.max(1, Math.min(len, parseInt(el ? el.value : Math.round(len/2), 10) || 1));
+        change(() => { if (order === 'together'){ delete f.timing; delete f.stagger; } else { f.stagger = {order, len:sl}; const t = SC.staggerTimings(cur, i, order, sl); if (t) f.timing = t; else delete f.timing; } }); };
+      on(r, '#fStag', 'change', stag); on(r, '#fStagLen', 'change', stag);
+      on(r, '#fDel', 'click', e => { const b = e.target; if (b.dataset.armed !== '1'){ b.dataset.armed = '1'; b.textContent = 'Tap again to delete'; return; } change(() => { F.splice(i, 1); }); toast(`Deleted ${f.name}.`); });
+    }
+  },
+  dancer: {
+    title: () => { const d = cur.dancers.find(x => x.id === UI.sel); return d ? d.name : 'Dancer'; },
+    html: () => {
+      const d = cur.dancers.find(x => x.id === UI.sel); if (!d) return '<p class="muted">Tap a dancer on the stage first.</p>';
+      const S = nowS(), F = cur.formations, f = !S.moving && S.idx >= 0 ? F[S.idx] : null, i = S.idx, ts = f && i > 0 ? travelStart(i) : 0, len = f && i > 0 ? f.at - ts : 0;
+      const [wa, wb] = len > 0 ? moveWindow(i, d.id).map(v => v - ts) : [0, 0], opts = (a, b, v) => { let o = ''; for (let x = a; x <= b; x++) o += `<option value="${x}" ${x === v ? 'selected' : ''}>${esc(shortBeat(ts + x))}</option>`; return o; };
+      return `
+        <div class="sfield"><span class="label">Name</span><input type="text" id="dName" value="${esc(d.name)}"></div>
+        <div class="sfield"><span class="label">Colour</span><div class="swatches">${DCOL.map(c => `<button type="button" data-c="${c}" style="background:${c}" aria-label="Colour ${c}" aria-pressed="${c === d.color}"></button>`).join('')}</div></div>
+        ${f ? `<div class="sfield"><span class="label">Facing in ${esc(f.name)}</span><div class="srow"><button class="btn small" id="dL" type="button">⟲</button><b style="min-width:10em; text-align:center">${esc(SC.faceText(faceOf(f, d.id)).replace(/^./, c => c.toUpperCase()))}</b><button class="btn small" id="dR" type="button">⟳</button><button class="btn small" id="dF" type="button">Front</button></div><button class="btn small" id="dAll" type="button" style="justify-self:start">Everyone faces this way</button></div>` : '<p class="muted">Jump to a formation to set facing, timing and paths.</p>'}
+        ${len > 0 ? `<div class="sfield"><span class="label">When ${esc(d.name)} moves into ${esc(f.name)}</span><div class="srow"><span class="muted">from</span><select id="dA">${opts(0, len - 1, wa)}</select><span class="muted">to</span><select id="dB">${opts(1, len, wb)}</select></div></div>
+          <div class="sfield"><span class="label">Path</span>${f.paths && f.paths[d.id] ? '<div class="srow"><span class="muted">Curved.</span><button class="btn small" id="dStraight" type="button">Straighten</button></div>' : '<span class="muted">Straight. Drag the ◆ on their path to curve it.</span>'}</div>` : ''}
+        <button class="btn danger" id="dDel" type="button" style="width:100%">Remove ${esc(d.name)} from this number</button>`;
+    },
+    bind: r => {
+      const d = cur.dancers.find(x => x.id === UI.sel); if (!d) return; const S = nowS(), f = !S.moving && S.idx >= 0 ? cur.formations[S.idx] : null, i = S.idx;
+      on(r, '#dName', 'change', e => change(() => { d.name = e.target.value.trim() || 'Dancer'; }));
+      r.querySelectorAll('[data-c]').forEach(b => b.addEventListener('click', () => change(() => { d.color = b.dataset.c; })));
+      const face = v => change(() => { f.face = f.face || {}; v = SC.normDeg(v); if (v) f.face[d.id] = v; else delete f.face[d.id]; if (!Object.keys(f.face).length) delete f.face; });
+      on(r, '#dL', 'click', () => face(faceOf(f, d.id) - 45)); on(r, '#dR', 'click', () => face(faceOf(f, d.id) + 45)); on(r, '#dF', 'click', () => face(0));
+      on(r, '#dAll', 'click', () => change(() => { const v = SC.normDeg(faceOf(f, d.id)); f.face = {}; if (v) cur.dancers.forEach(x => { f.face[x.id] = v; }); else delete f.face; }));
+      const setT = () => { const len = f.at - travelStart(i); let a = +r.querySelector('#dA').value, z = +r.querySelector('#dB').value; if (z <= a) z = Math.min(len, a + 1);
+        change(() => { f.timing = f.timing || {}; if (a === 0 && z === len) delete f.timing[d.id]; else f.timing[d.id] = [a, z]; if (!Object.keys(f.timing).length) delete f.timing; f.stagger = {order:'custom', len:z - a}; }); };
+      on(r, '#dA', 'change', setT); on(r, '#dB', 'change', setT);
+      on(r, '#dStraight', 'click', () => { snap(); straighten(f, d.id); });
+      on(r, '#dDel', 'click', e => { const b = e.target; if (b.dataset.armed !== '1'){ b.dataset.armed = '1'; b.textContent = 'Tap again to remove'; return; }
+        change(() => { cur.dancers = cur.dancers.filter(x => x !== d); cur.formations.forEach(ff => { delete ff.pos[d.id]; ['paths','timing','face'].forEach(k => { if (ff[k]) delete ff[k][d.id]; }); Object.values(ff.props || {}).forEach(s => { if (s.mover === d.id) s.mover = ''; }); }); });
+        $('eSheet').hidden = true; sheetName = null; toast(`Removed ${d.name}.`); });
+    }
+  },
+  dancers: {
+    title: () => `Dancers (${cur.dancers.length})`,
+    html: () => `
+      <div class="slist">${cur.dancers.map(d => `<div class="sitem"><button class="dotc" type="button" data-pick="${d.id}" style="background:${d.color}" aria-label="Pick ${esc(d.name)} on the stage">${esc(initials(d))}</button><input type="text" data-dn="${d.id}" value="${esc(d.name)}" aria-label="Dancer name"><button class="btn small" type="button" data-pick="${d.id}">Pick</button></div>`).join('') || '<p class="muted">No dancers yet. Solo? Add just yourself.</p>'}</div>
+      <div class="srow" style="margin-bottom:16px"><input type="text" id="dnNew" placeholder="Name" style="flex:1; min-height:40px; padding:6px 10px; border:1px solid var(--line); border-radius:10px; background:var(--surface); color:inherit"><button class="btn primary" id="dnAdd" type="button">Add dancer</button></div>
+      <div class="sfield"><span class="label">Saved classes</span><div id="dnClasses" class="slist"><p class="muted">Loading…</p></div>
+        <div class="srow"><input type="text" id="dnClassName" placeholder="Save these dancers as… (e.g. Jazz Tuesday)" style="flex:1; min-height:40px; padding:6px 10px; border:1px solid var(--line); border-radius:10px; background:var(--surface); color:inherit"><button class="btn small" id="dnSave" type="button" ${cur.dancers.length ? '' : 'disabled'}>Save class</button></div></div>`,
+    bind: async r => {
+      r.querySelectorAll('[data-dn]').forEach(el => el.addEventListener('change', () => change(() => { const d = cur.dancers.find(x => x.id === el.dataset.dn); if (d) d.name = el.value.trim() || 'Dancer'; })));
+      r.querySelectorAll('[data-pick]').forEach(b => b.addEventListener('click', () => { UI.sel = b.dataset.pick; UI.selProp = null; $('eSheet').hidden = true; sheetName = null; needDraw = true; refreshEditUI(); }));
+      const add = () => { const v = r.querySelector('#dnNew').value.trim(); change(() => { addDancerNamed(v || `Dancer ${cur.dancers.length + 1}`); }); setTimeout(() => { const n = $('eBody').querySelector('#dnNew'); if (n) n.focus(); }, 30); };
+      on(r, '#dnAdd', 'click', add); on(r, '#dnNew', 'keydown', e => { if (e.key === 'Enter') add(); });
+      const rs = await getMeta('rosters', []), box = r.querySelector('#dnClasses'); if (!box) return;
+      box.innerHTML = rs.length ? rs.map(x => { const have = new Set(cur.dancers.map(d => d.name.trim().toLowerCase())), fresh = x.dancers.filter(d => !have.has(d.name.trim().toLowerCase())).length;
+        return `<div class="sitem"><div style="flex:1; min-width:0"><b>${esc(x.name)}</b><div class="muted" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${esc(x.dancers.map(d => d.name).join(', '))}</div></div><button class="btn small" type="button" data-ra="${x.id}" ${fresh ? '' : 'disabled'}>Add ${fresh}</button><button class="x" type="button" data-rd="${x.id}" aria-label="Delete ${esc(x.name)}">✕</button></div>`; }).join('') : '<p class="muted">Save a class once and add it to any number.</p>';
+      box.querySelectorAll('[data-ra]').forEach(b => b.addEventListener('click', () => { const x = rs.find(q => q.id === b.dataset.ra), have = new Set(cur.dancers.map(d => d.name.trim().toLowerCase()));
+        change(() => { x.dancers.filter(d => !have.has(d.name.trim().toLowerCase())).forEach(d => addDancerNamed(d.name, d.color)); }); toast(`Added ${x.name}.`); }));
+      box.querySelectorAll('[data-rd]').forEach(b => b.addEventListener('click', async () => { if (b.dataset.armed !== '1'){ b.dataset.armed = '1'; b.textContent = 'Delete?'; return; } await setMeta('rosters', rs.filter(q => q.id !== b.dataset.rd)); renderSheet(); }));
+      on(r, '#dnSave', 'click', async () => { const name = r.querySelector('#dnClassName').value.trim(); if (!name){ r.querySelector('#dnClassName').focus(); return; }
+        const same = rs.find(x => x.name.toLowerCase() === name.toLowerCase()), x = same || {id:uid('r'), name}; x.name = name; x.dancers = cur.dancers.map(d => ({name:d.name, color:d.color})); if (!same) rs.push(x);
+        await setMeta('rosters', rs); toast(`Saved the class "${name}".`); renderSheet(); });
+    }
+  },
+  props: {
+    title: () => 'Props',
+    html: () => {
+      const S = nowS(), F = cur.formations, f = !S.moving && S.idx >= 0 ? F[S.idx] : null, prev = f && S.idx > 0 ? F[S.idx-1] : null;
+      const who = sel => `<option value="" ${!sel ? 'selected' : ''}>Nobody chosen</option><option value="crew" ${sel === 'crew' ? 'selected' : ''}>Stage crew</option>` + cur.dancers.map(d => `<option value="${d.id}" ${sel === d.id ? 'selected' : ''}>${esc(d.name)}</option>`).join('');
+      return `<div class="srow" style="margin-bottom:12px"><select id="pKind">${Object.entries(PROP_KINDS).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('')}</select><button class="btn primary" id="pAdd" type="button">Add prop</button></div>
+        <div class="slist">${cur.props.map(pr => { const st = f && (f.props[pr.id] || {on:false}), moved = st && prev && propMoved((prev.props || {})[pr.id], st);
+          return `<div class="sitem" style="flex-wrap:wrap${UI.selProp === pr.id ? '; border-color:var(--accent)' : ''}"><input type="text" data-pn="${pr.id}" value="${esc(pr.name)}" aria-label="Prop name"><span class="muted mono">${pr.w}×${pr.d} ft</span><button class="x" type="button" data-pd="${pr.id}" aria-label="Remove ${esc(pr.name)}">✕</button>
+            ${st ? `<div class="srow" style="width:100%"><select data-po="${pr.id}"><option value="1" ${st.on ? 'selected' : ''}>On stage</option><option value="0" ${!st.on ? 'selected' : ''}>Offstage</option></select>${st.on ? `<button class="btn small" type="button" data-pr="${pr.id}">Rotate 45°</button>` : ''}${moved ? `<span class="muted">moved by</span><select data-pm="${pr.id}">${who(st.mover)}</select>` : ''}</div>` : ''}</div>`; }).join('') || '<p class="muted">No props yet. Add chairs, boxes or anything that goes on stage, then choose who moves them.</p>'}</div>
+        <p class="muted">${f ? `Settings for <b>${esc(f.name)}</b>. Drag props on the stage like dancers.` : 'Jump to a formation to place props.'}</p>`;
+    },
+    bind: r => {
+      const S = nowS(), F = cur.formations, f = !S.moving && S.idx >= 0 ? F[S.idx] : null;
+      on(r, '#pAdd', 'click', () => { const kind = r.querySelector('#pKind').value, K = PROP_KINDS[kind], n = cur.props.filter(q => q.kind === kind).length + 1, pr = {id:uid('pr'), name:`${K.label} ${n}`, kind, w:K.w, d:K.d, round:!!K.round};
+        const from = F.length ? (S.moving ? S.next : Math.max(0, S.idx)) : 0, slot = cur.props.length % 5, ST = stg();
+        change(() => { cur.props.push(pr); F.forEach((fm, j) => { fm.props = fm.props || {}; fm.props[pr.id] = j < from ? {on:false} : {on:true, x:-8 + slot*4, y:Math.max(2, ST.d - 4), rot:0, mover:''}; }); UI.selProp = pr.id; UI.sel = null; }); });
+      r.querySelectorAll('[data-pn]').forEach(el => el.addEventListener('change', () => change(() => { const pr = cur.props.find(q => q.id === el.dataset.pn); if (pr) pr.name = el.value.trim() || 'Prop'; })));
+      r.querySelectorAll('[data-pd]').forEach(b => b.addEventListener('click', () => change(() => { cur.props = cur.props.filter(q => q.id !== b.dataset.pd); F.forEach(fm => { if (fm.props) delete fm.props[b.dataset.pd]; }); })));
+      if (!f) return;
+      r.querySelectorAll('[data-po]').forEach(el => el.addEventListener('change', () => change(() => { const s2 = Object.assign({}, f.props[el.dataset.po] || {}); if (el.value === '1'){ s2.on = true; if (s2.x == null){ s2.x = 0; s2.y = Math.round(stg().d/2); s2.rot = 0; } } else s2.on = false; f.props[el.dataset.po] = s2; UI.selProp = el.dataset.po; })));
+      r.querySelectorAll('[data-pr]').forEach(b => b.addEventListener('click', () => change(() => { const s2 = f.props[b.dataset.pr]; s2.rot = ((s2.rot || 0) + 45) % 360; })));
+      r.querySelectorAll('[data-pm]').forEach(el => el.addEventListener('change', () => change(() => { f.props[el.dataset.pm].mover = el.value; })));
+    }
+  },
+  stage: {
+    title: () => 'Stage',
+    html: () => { const st = stg(), pre = SC.STAGE_PRESETS.find(q => q.w === st.w && q.d === st.d);
+      return `<div class="sfield"><span class="label">Size</span><select id="tPre">${SC.STAGE_PRESETS.map(q => `<option value="${q.id}" ${pre && pre.id === q.id ? 'selected' : ''}>${esc(q.label)}</option>`).join('')}<option value="custom" ${pre ? '' : 'selected'}>Custom size</option></select>
+          <div class="srow"><input type="number" id="tW" min="12" max="80" value="${st.w}" aria-label="Width in feet"><span class="muted">×</span><input type="number" id="tD" min="8" max="60" value="${st.d}" aria-label="Depth in feet"><span class="muted">ft</span></div></div>
+        <div class="sfield"><span class="label">Spike marks</span><select id="tSpike">${[2,3,4,5,6].map(v => `<option value="${v}" ${st.spike === v ? 'selected' : ''}>Every ${v} ft</option>`).join('')}</select><select id="tLab">${Object.entries(SC.LABELS).map(([k, t]) => `<option value="${k}" ${st.labels === k ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>
+        <div class="sfield"><span class="label">Floor</span><select id="tFloor">${Object.entries(SC.FLOORS).filter(([k]) => k !== 'photo' || st.bg).map(([k, f]) => `<option value="${k}" ${st.floor === k ? 'selected' : ''}>${esc(f.label)}</option>`).join('')}</select><label class="btn small" for="tBg" style="justify-self:start">${st.bg ? 'Change picture…' : 'Use my own picture…'}</label><input type="file" id="tBg" accept="image/*" hidden></div>`; },
+    bind: r => {
+      const apply = patch => change(() => { const st = Object.assign(stg(), patch); cur.stage = {w:st.w, d:st.d, spike:st.spike, labels:st.labels, floor:st.floor}; if (st.bg) cur.stage.bg = st.bg; });
+      on(r, '#tPre', 'change', e => { const q = SC.STAGE_PRESETS.find(x => x.id === e.target.value); if (q) apply({w:q.w, d:q.d}); });
+      on(r, '#tW', 'change', e => apply({w:+e.target.value})); on(r, '#tD', 'change', e => apply({d:+e.target.value}));
+      on(r, '#tSpike', 'change', e => apply({spike:+e.target.value})); on(r, '#tLab', 'change', e => apply({labels:e.target.value})); on(r, '#tFloor', 'change', e => apply({floor:e.target.value}));
+      on(r, '#tBg', 'change', async e => { const f = e.target.files && e.target.files[0]; if (!f) return;
+        try { const url = URL.createObjectURL(f), im = new Image(); im.src = url; await im.decode(); URL.revokeObjectURL(url);
+          const sc = Math.min(1, 1400/Math.max(im.naturalWidth, im.naturalHeight)), c = document.createElement('canvas'); c.width = Math.round(im.naturalWidth*sc); c.height = Math.round(im.naturalHeight*sc); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+          apply({floor:'photo', bg:c.toDataURL('image/jpeg', 0.82)}); toast('Picture set as the floor. The top of the picture is upstage.'); } catch(err){ toast("That picture couldn't be opened."); } });
+    }
+  },
+  send: {
+    title: () => 'Send this number',
+    html: () => `<p style="margin:0 0 12px">Save a .dance file to send to a teacher or dancer, or to open on your computer in Choreography Workbook.</p>
+      <label class="row" style="gap:8px; align-items:flex-start; margin-bottom:8px"><input type="radio" name="sendKind" value="light" checked><span><b>Counts, notes and formations</b><br><span class="muted">Small file. They add their own copy of the song.</span></span></label>
+      <label class="row" style="gap:8px; align-items:flex-start; margin-bottom:14px"><input type="radio" name="sendKind" value="full"><span><b>Everything, with the music and video</b><br><span class="muted">Bigger file. Only share music and video you have the right to share.</span></span></label>
+      <button class="btn primary" id="sendGo" type="button" style="width:100%">Save or send the .dance file</button>
+      <p class="muted" style="margin:12px 0 0">When the file comes back with changes, opening it updates this number instead of adding a copy. If it was changed in both places, you choose which to keep.</p>`,
+    bind: r => { on(r, '#sendGo', 'click', async () => { try { await shareDance(r.querySelector('input[name="sendKind"]:checked').value === 'full'); } catch(e){ toast(`Couldn't make the file: ${e && e.message ? e.message : e}`); } }); }
+  }
+};
+
+/* .dance files from the phone */
+async function shareDance(full){
+  flushSave(); const p = cur;
+  const project = {uid:p.uid, updated:p.updated || p.added || 0, base:p.base || 0, title:p.title, style:p.style, bpm:p.bpm, offset:p.offset, phrase:p.phrase, sections:p.sections, notes:p.notes, dancers:p.dancers, formations:p.formations, props:p.props, stage:p.stage || null, peaks:p.peaks || null,
+    audio:p.audio ? {name:p.audio.name, duration:p.audio.duration, demo:!!p.audio.demo} : null, video:p.video ? {name:p.video.name, offset:p.video.offset || 0, mirror:!!p.video.mirror} : null};
+  const zip = new JSZip(); zip.file('project.json', JSON.stringify({app:'choreo-workbook', format:1, exported:new Date().toISOString(), project}, null, 1));
+  const ext = (b, name, dflt) => { const m = /\.([a-z0-9]{1,5})$/i.exec(name || ''); if (m) return m[1].toLowerCase(); const t = (b.type || '').split('/')[1] || dflt; return t.replace('mpeg', 'mp3').replace('quicktime', 'mov').replace(/;.*/, ''); };
+  if (full){
+    const a = p.audio && !p.audio.demo ? await getMedia(p.id + ':audio') : null, v = p.video ? await getMedia(p.id + ':video') : null;
+    if (a) zip.file(`media/audio.${ext(a, p.audio.name, 'mp3')}`, a);
+    if (v) zip.file(`media/video.${ext(v, p.video.name, 'mp4')}`, v);
+  }
+  const blob = await zip.generateAsync({type:'blob', mimeType:'application/zip'});
+  await saveFileOut(blob, `${(p.title || 'number').replace(/[\\/:*?"<>|]+/g, ' ').trim()}.dance`, 'Send your .dance file');
+}
+// Hands a file to the phone's share sheet (or the browser's), or downloads it.
+async function saveFileOut(blob, file, title){
+  const cap = window.Capacitor, P = cap && cap.isNativePlatform && cap.isNativePlatform() ? cap.Plugins : null;
+  if (P && P.Filesystem && P.Share){
+    const w = await P.Filesystem.writeFile({path:file, data:await blobToB64(blob), directory:'CACHE'});
+    try { await P.Share.share({title:file, files:[w.uri], dialogTitle:title}); } catch(e){ if (!/cancel/i.test(String(e && e.message))) throw e; }
+    return;
+  }
+  const f = new File([blob], file, {type:blob.type || 'application/octet-stream'});
+  if (navigator.canShare && navigator.canShare({files:[f]})){ try { await navigator.share({files:[f], title:file}); return; } catch(e){ if (e && e.name === 'AbortError') return; } }
+  const a = document.createElement('a'), u = URL.createObjectURL(f); a.href = u; a.download = file; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 60000);
+}
+
+/* a new number from a song on the phone */
+$('newSong').addEventListener('change', async e => {
+  const f = e.target.files && e.target.files[0]; e.target.value = ''; if (!f) return;
+  toast('Listening to the song…');
+  const id = uid('p'), isVideo = (f.type || '').startsWith('video');
+  const p = {id, uid:uid('u'), updated:Date.now(), added:Date.now(), title:f.name.replace(/\.[^.]+$/, ''), style:'', bpm:120, offset:0, phrase:8, sections:[{name:'Intro', start:1}], notes:{}, dancers:[], formations:[], props:[],
+    audio:{name:f.name, duration:0}, hasAudio:true, peaks:null, video:isVideo ? {name:f.name, offset:0, mirror:false} : null};
+  let found = '';
+  try { const buf = await decodeBlob(f); p.peaks = peaksOf(buf); p.audio.duration = Math.round(buf.duration*100)/100; const t = SongCore.detectTempo(buf);
+    if (t){ p.bpm = t.bpm; p.offset = t.offset; const a = SongCore.analyzeSong(buf, p.bpm, p.offset, p.phrase); if (a){ p.offset = Math.round(a.offset*1000)/1000; if (a.sections && a.sections.length > 1){ p.sections = a.sections; found = ` and ${a.sections.length} sections`; } } } }
+  catch(err){ toast("Couldn't read the beat. You can tap the tempo in Song."); }
+  await putMedia(id + ':audio', f); if (isVideo) await putMedia(id + ':video', f);
+  await putProject(p); await renderLib(); await openSong(id); setEditing(true);
+  toast(`Found ${p.bpm} BPM${found}. Next: add your dancers.`);
+});
+
 /* ---------- frame loop ---------- */
-let needDraw = true, lastT = -1, lastBeat = null, lastPhrase = null;
+let needDraw = true, lastT = -1, lastBeat = null, lastPhrase = null, lastEditKey = '';
 function frame(){
   requestAnimationFrame(frame);
   if (!cur) return;
@@ -886,12 +1464,13 @@ function frame(){
   if (pos.phrase !== lastPhrase){
     lastPhrase = pos.phrase; const si = pos.lead ? -1 : sectionFor(pos.phrase);
     if (si >= 0){ const s = cur.sections[si], tv = `var(${TAPES[si%6]})`; $('cdSection').textContent = s.name; $('cdTape').style.background = tv; $('cd').style.setProperty('--cur-tape', tv); $('cdPhrase').textContent = `${word()} ${pos.phrase - s.start + 1} of ${Math.max(1, Math.min(sectionEnd(si), totalPhrases()) - s.start + 1)}`; }
-    const nn = $('noteNow'), nx = $('noteNext');
+    const nn = $('noteNow'), nx = $('noteNext'); syncNoteEdit(pos);
     if (pos.lead){ $('noteLabel').textContent = 'Before count 1'; nn.textContent = 'Lead-in. Get into your opening position.'; nn.classList.add('empty'); const n1 = cur.notes[1]; nx.innerHTML = n1 ? `<b>First:</b> ${esc(n1)}` : ''; fitNote(); }
     else { const n = cur.notes[pos.phrase]; $('noteLabel').textContent = `Note · ${phraseLabel(pos.phrase)}`; if (n && n.trim()){ nn.textContent = n; nn.classList.remove('empty'); } else { nn.textContent = `No note for this ${word()}.`; nn.classList.add('empty'); } fitNote();
       const nxt = cur.notes[pos.phrase+1]; nx.innerHTML = nxt && pos.phrase+1 <= totalPhrases() ? `<b>Next, ${esc(phraseLabel(pos.phrase+1))}:</b> ${esc(nxt)}` : ''; }
   }
-  if (cur.formations.length){ const S = stateAt(b); renderDyn(S); $('formName').textContent = S.moving ? `Travelling into ${cur.formations[S.next].name}` : cur.formations[S.idx].name; updateCue(S); }
+  if (cur.formations.length || UI.editing){ const S = stateAt(b); renderDyn(S); $('formName').textContent = !cur.formations.length ? 'No formations yet' : S.moving ? `Travelling into ${cur.formations[S.next].name}` : cur.formations[S.idx].name; if (cur.formations.length) updateCue(S);
+    if (UI.editing){ const key = [S.idx, S.moving, aud.paused, UI.counting, aud.paused ? Math.floor(b + 1e-4) : ''].join(); if (key !== lastEditKey){ lastEditKey = key; refreshEditUI(); } } }
   $('tCur').textContent = fmt(t); $('tDur').textContent = fmt(dur());
   drawTimeline(t); lastT = t; needDraw = false;
 }
@@ -904,7 +1483,7 @@ function frame(){
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch(e){}
   // On a web page (WordPress plugin): ?file=<url of a .dance file> opens it, ?open=0 hides "Open a .dance file".
   const q = new URLSearchParams(location.search), embedded = window.parent !== window;
-  if (q.get('open') === '0'){ $('openFile').previousElementSibling.hidden = true; document.body.classList.add('no-open'); }
+  if (q.get('open') === '0'){ $('openFile').previousElementSibling.hidden = true; $('newSongLbl').hidden = true; document.body.classList.add('no-open'); }
   if (embedded){
     document.body.classList.add('embedded');
     let lastH = 0; const report = () => { const h = Math.ceil(document.documentElement.scrollHeight); if (h !== lastH){ lastH = h; window.parent.postMessage({type:'dance-player-height', h}, '*'); } };

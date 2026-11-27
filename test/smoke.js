@@ -115,12 +115,34 @@ const AdmZip = require('adm-zip');
   const audioFmt = mp4.includes(Buffer.from('mp4a')) ? 'AAC (plays everywhere)' : mp4.includes(Buffer.from('Opus')) ? 'Opus (VLC, browsers, most players)' : 'none';
   console.log(`INFO video sound format on ${process.platform}: ${audioFmt}`);
 
+  // Sync by file: the same number (same uid) is recognised, updated in place, or asked about
   await app.evaluate(({ dialog }, p) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [p] }); }, sharePath);
   await win.click('#backBtn');
   await win.waitForSelector('.card');
   await win.click('#importBtn');
+  await win.waitForFunction(() => document.getElementById('toast').textContent.includes('already have this version'), null, { timeout: 10000 });
+  ok((await win.$$('.card')).length === 1, 'opening your own unchanged file is recognised, not added twice');
+  ok(typeof data.project.uid === 'string' && data.project.updated > 0, '.dance file carries the number\'s id and version');
+  const edited = path.join(tmp, 'Spotlight-edited.dance');
+  const writeVersion = (file, patch) => { const z = new AdmZip(); z.addFile('project.json', Buffer.from(JSON.stringify({ ...data, project: { ...data.project, ...patch } }))); z.writeZip(file); };
+  writeVersion(edited, { title: 'Spotlight (edited on phone)', updated: data.project.updated + 60000, base: data.project.updated });
+  await app.evaluate(({ dialog }, p) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [p] }); }, edited);
+  await win.click('#importBtn');
+  await win.waitForFunction(() => document.getElementById('toast').textContent.startsWith('Updated'), null, { timeout: 10000 });
+  ok((await win.$$('.card')).length === 1 && (await win.textContent('#cards')).includes('Spotlight (edited on phone)'), 'a file edited elsewhere updates the number in place');
+  // change it here too, then open another edited copy: both changed, so the app asks
+  await win.click('.card [data-a="open"]'); await win.waitForSelector('#projView:not([hidden])');
+  await win.fill('#pTitle', 'Spotlight (edited here)'); await win.waitForTimeout(400);
+  await win.click('#backBtn'); await win.waitForSelector('.card');
+  const other = path.join(tmp, 'Spotlight-other.dance');
+  writeVersion(other, { title: 'Spotlight (edited by another teacher)', updated: data.project.updated + 120000, base: data.project.updated + 60000 });
+  await app.evaluate(({ dialog }, p) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [p] }); }, other);
+  await win.click('#importBtn');
+  await win.waitForSelector('#importAsk:not([hidden])', { timeout: 10000 });
+  ok((await win.textContent('#importAskText')).includes('was changed on this PC and in the file'), 'when both copies changed, the app asks what to do');
+  await win.click('#iaBoth');
   await win.waitForFunction(() => document.querySelectorAll('.card').length === 2, null, { timeout: 10000 });
-  ok((await win.textContent('#cards')).includes('Received from a share file'), 'opening the .dance file adds it to the library');
+  ok((await win.textContent('#cards')).includes('(from file)') && (await win.textContent('#cards')).includes('Received from a share file'), 'Keep both adds the file as a separate number');
 
   // library backup and restore
   const libPath = path.join(tmp, 'library.dancelib');

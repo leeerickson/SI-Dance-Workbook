@@ -22,6 +22,7 @@ A desktop app for dance teachers, choreographers and dancers to build, rehearse,
 - **Print.** Print the count sheet and formation charts, or save them as a PDF (Ctrl+P, Ctrl+Shift+P).
 - **Make a video.** Save an MP4 of the formations moving to the music, with the count, the note for each 8-count and the timeline (Share & print tab, or Ctrl+Shift+V). Choose 16:9 landscape or 9:16 portrait, the whole song or some sections, 100/90/75/50% speed (the music keeps its pitch), audience, dancer or 3D view, highlight one dancer and their path, and include the choreography video picture-in-picture. Videos are drawn frame by frame, which is usually faster than real time.
 - **Share.** Save a `.dance` file (Ctrl+S) and send it like any attachment. The other teacher opens it with Ctrl+O, or by double-clicking it if they used the installer.
+- **Sync by file.** Every number keeps a permanent ID. When a `.dance` file of a number you already have comes back (from a phone or another teacher), opening it updates your copy instead of adding a second one. If it was changed in both places since they last matched, the app asks: replace yours, or keep both. This works without accounts or the internet, and doesn't depend on the devices' clocks agreeing.
 
 ## The `.dance` file
 
@@ -76,6 +77,7 @@ The GitHub workflow in `.github/workflows/windows-build.yml` builds the installe
 | `main.js` | Window, menus, file dialogs, printing, reading and writing `.dance` files |
 | `preload.js` | The small, fixed set of functions the page can call |
 | `app/index.html` | The whole interface: library, rehearse, counts and notes, formations, share and print |
+| `app/songcore.js` | Beat, count 1 and section finding, and matching numbers when files come back (sync by file). Shared with the phone app like `stagecore.js` |
 | `app/stagecore.js` | Stage maths and drawing shared with the phone player: stage size, paths, timing, facing, 3D view. Edit it here, then run `npm run sync-core` to copy it to `mobile/www/` |
 | `app/fonts/` | Bundled fonts (SIL Open Font License), so the app works offline |
 | `build/` | Icon and the script that stamps the icon and version details into the `.exe` |
@@ -89,7 +91,7 @@ Projects are stored in the app's own folder (`%APPDATA%\Choreography Workbook`).
 
 ## Android player (`mobile/`)
 
-**Workbook Player** is a play-only Android app. It opens `.dance` files and plays them, with no editing:
+**Workbook Player** is the phone and tablet app (Android and iPhone). It opens `.dance` files and plays them, and it can edit and create numbers too:
 
 - big count, section and 8-count, plus the note for each 8-count and the next one
 - speed (25–100% without pitch change), count-off, loop this 8-count, and repeat sections a set number of times with a count-in
@@ -97,6 +99,12 @@ Projects are stored in the app's own folder (`%APPDATA%\Choreography Workbook`).
 - formation notes from the teacher
 - **Film yourself:** prop up the phone, tap Record, and the front camera films your run while the music plays (video only, no microphone). Then tap Watch to see your run next to the formation or the teacher's video, in time with the counts and at any speed. The last 10 runs per song stay on the phone
 - **Save a video with counts:** save a filmed run, or the teacher's video (the part chosen under Repeat), as a video with the count, section, 8-count and note drawn on it and the music underneath, at 100, 75, 50 or 25% speed (the music keeps its pitch). It's made in real time, so a 1-minute run at 50% takes 2 minutes. Then the share sheet saves it to Photos or Files, or sends it
+- **Edit on the phone or tablet:** tap **Edit**. A toolbar along the bottom opens panels for the song (title, tempo, tap tempo, count 1, counting, sections, suggested sections), formations (when they land, travel, who moves when, notes, spacing check), the selected dancer (name, colour, facing, timing, path), dancers and saved classes, props and who moves them, the stage, and sending the file.
+  - On the stage: tap a dancer, then tap where they go, or drag them; on a touch screen the dot rides just above your finger. Drag the ◆ on a path to curve it. Pinch to zoom and drag the floor to pan. Undo and Redo cover every change.
+  - Tap the note box to write the note for the 8-count you're on.
+  - **New number from a song** in the list starts from music on the phone: the beat, count 1 and sections are found for you.
+  - **Send** saves a `.dance` file (with or without the music and video) through the share sheet. Files that come back update the number in place (sync by file, as on the desktop).
+  - On tablets (880 px and wider) the player uses two columns.
 - speeds down to 25% for slow motion
 - the video, if the file includes it, locked to the music, with mirror
 - if the file came without music, add your own copy of the song
@@ -116,10 +124,14 @@ npm run sync
 cd android && ./gradlew assembleDebug
 ```
 
-To test the player in a phone-sized browser (uses Playwright):
+To test the player and the editor in a phone-sized browser (uses Playwright):
 
 ```bash
 node test/player-test.js path/to/file.dance
+```
+
+```bash
+node test/editor-test.js
 ```
 
 Test builds are signed with `android/app/test-signing.keystore`, which is kept in the repository so each build installs over the last one. Before publishing to the Play Store, create a private release key and keep it out of the repository.

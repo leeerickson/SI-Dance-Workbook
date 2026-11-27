@@ -26,6 +26,7 @@ jobs:
           npm install --no-save --no-audit --no-fund playwright@1.63.0
           npx playwright install webkit
           ENGINE=webkit DEVICE="iPhone 15" node test/player-test.js "" shots
+          ENGINE=webkit DEVICE="iPhone 15" node test/editor-test.js shots
       - name: Copy the player into the Xcode project
         run: npm run vendor && npx cap sync ios
       - name: Build for the iPhone Simulator

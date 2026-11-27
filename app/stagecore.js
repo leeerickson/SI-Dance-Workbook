@@ -144,6 +144,43 @@
     return out;
   }
 
+
+  /* ---------- checks: spacing, travel, props, off-stage ---------- */
+  function insideProp(pr, s, x, y, margin) {
+    const r = (s.rot || 0) * Math.PI / 180, dx = x - s.x, dy = y - s.y;
+    const lx = dx * Math.cos(r) + dy * Math.sin(r), ly = -dx * Math.sin(r) + dy * Math.cos(r);
+    if (pr.round) return Math.hypot(lx / (pr.w / 2 + margin), ly / (pr.d / 2 + margin)) < 1;
+    return Math.abs(lx) < pr.w / 2 + margin && Math.abs(ly) < pr.d / 2 + margin;
+  }
+  // Everything worth fixing, sorted by when it happens: [{a, b, beat, text}] (a, b are dancer ids or null).
+  function checkSpacing(p, minGap) {
+    minGap = minGap || 2; const W = [], F = p.formations || [], D = p.dancers || [], props = p.props || [], st = stageOf(p);
+    const nameOf = id => (D.find(d => d.id === id) || {}).name || '';
+    F.forEach((f, i) => {
+      const stat = new Set();
+      for (let a = 0; a < D.length; a++) for (let c = a + 1; c < D.length; c++) { const P = f.pos[D[a].id], Q = f.pos[D[c].id]; if (!P || !Q) continue; const d = Math.hypot(P[0] - Q[0], P[1] - Q[1]); if (d < minGap) { W.push({ a: D[a].id, b: D[c].id, beat: f.at, text: `${D[a].name} and ${D[c].name} are ${d.toFixed(1)} ft apart in ${f.name}` }); stat.add(a + '-' + c); } }
+      if (i === 0) return; const prev = F[i - 1], ts = travelStart(p, i), te = f.at; if (te <= ts) return; const best = {};
+      for (let k = 1; k < 24; k++) { const b = ts + (te - ts) * k / 24, S = stateAt(p, b);
+        for (let a = 0; a < D.length; a++) for (let c = a + 1; c < D.length; c++) { const key = a + '-' + c; if (stat.has(key)) continue; const p0 = prev.pos[D[a].id], q0 = prev.pos[D[c].id]; if (p0 && q0 && Math.hypot(p0[0] - q0[0], p0[1] - q0[1]) < minGap) continue; const P = S.pos[D[a].id], Q = S.pos[D[c].id]; if (!P || !Q) continue; const d = Math.hypot(P[0] - Q[0], P[1] - Q[1]); if (d < minGap && (!best[key] || d < best[key].d)) best[key] = { d, b }; } }
+      Object.entries(best).forEach(([key, v]) => { const [a, c] = key.split('-').map(Number); W.push({ a: D[a].id, b: D[c].id, beat: v.b, text: `${D[a].name} and ${D[c].name} pass within ${v.d.toFixed(1)} ft moving into ${f.name}` }); });
+    });
+    F.forEach((f, i) => {
+      const fp = f.props || {}, load = {};
+      props.forEach(pr => {
+        const s = fp[pr.id];
+        if (isOn(s)) D.forEach(d => { const P = f.pos[d.id]; if (P && insideProp(pr, s, P[0], P[1], 0.8)) W.push({ a: d.id, b: null, beat: f.at, text: `${d.name} is standing on ${pr.name} in ${f.name}` }); });
+        if (i === 0) return;
+        const a = (F[i - 1].props || {})[pr.id]; if (!propMoved(a, s)) return;
+        const m = s ? s.mover : '', d = D.find(x => x.id === m);
+        if (m !== 'crew' && !d) { W.push({ a: null, b: null, beat: travelStart(p, i), text: `Nobody is set to move ${pr.name} ${isOn(s) ? 'into' : 'off for'} ${f.name}` }); return; }
+        if (d) { load[m] = (load[m] || 0) + 1; const end = f.pos[m]; if (isOn(s) && end) { const gap = Math.hypot(end[0] - s.x, end[1] - s.y); if (gap > 4) W.push({ a: m, b: null, beat: f.at, text: `${d.name} moves ${pr.name} but ends ${gap.toFixed(0)} ft away from it in ${f.name}` }); } }
+      });
+      Object.entries(load).forEach(([m, c]) => { if (c > 1) W.push({ a: m, b: null, beat: travelStart(p, i), text: `${nameOf(m)} is moving ${c} props at once into ${f.name}` }); });
+    });
+    F.forEach(f => D.forEach(d => { const P = f.pos[d.id]; if (P && (Math.abs(P[0]) > st.w / 2 + 0.01 || P[1] < -0.01 || P[1] > st.d + 0.01)) W.push({ a: d.id, b: null, beat: f.at, text: `${d.name} is off the stage in ${f.name} (the stage is ${st.w} × ${st.d} ft)` }); }));
+    return W.sort((x, y) => x.beat - y.beat);
+  }
+
   /* ---------- 2D stage drawing (SVG strings) ---------- */
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   function palette(st) { return FLOORS[st.floor] || FLOORS.dark; }
@@ -329,7 +366,7 @@
   }
 
   const api = { DEF, STAGE_PRESETS, FLOORS, LABELS, clamp, stageOf, geom, marks, markLabel, spotText, faceText, faceVec, normDeg, usesFacing,
-    travelStart, moveWindow, stateAt, pathPoints, midOf, ctrlFromMid, staggerTimings, isOn, propMoved, wingOf, propsAt,
+    travelStart, moveWindow, stateAt, pathPoints, midOf, ctrlFromMid, staggerTimings, isOn, propMoved, wingOf, propsAt, insideProp, checkSpacing,
     palette, svgStatic, svgPath, svgFacing, render3D, imageFor, preloadImage, shade, EASE };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.StageCore = api;
 })(typeof window !== 'undefined' ? window : globalThis);

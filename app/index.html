@@ -318,6 +318,7 @@ input[type="number"]{width:72px; font-family:var(--f-mono)}
     <button class="btn small" id="backupBtn" type="button">Back up library…</button>
     <button class="btn small" id="restoreBtn" type="button">Restore a backup…</button>
   </div>
+  <div class="banner" id="importAsk" hidden><span id="importAskText"></span><button class="btn small primary" id="iaReplace" type="button">Replace mine with the file</button><button class="btn small" id="iaBoth" type="button">Keep both</button><button class="x" id="iaCancel" type="button">Cancel</button></div>
   <div class="banner" id="backupBanner" hidden><span id="backupText"></span><button class="btn small primary" id="backupNow" type="button">Back up now</button><button class="btn small" id="backupLater" type="button">Remind me next week</button></div>
 
   <div class="cards" id="cards"></div>
@@ -587,6 +588,7 @@ input[type="number"]{width:72px; font-family:var(--f-mono)}
 
 <script src="vendor/mp4-muxer.js"></script>
 <script src="stagecore.js"></script>
+<script src="songcore.js"></script>
 <script>
 (() => {
 const $ = id => document.getElementById(id);
@@ -665,89 +667,7 @@ function toWav(buf){
   let o = 44; for (let i=0;i<n;i++){ const s = Math.max(-1,Math.min(1,ch[i])); v.setInt16(o, s<0?s*0x8000:s*0x7fff, true); o+=2; }
   return new Blob([ab], {type:'audio/wav'});
 }
-function computePeaks(buf){
-  const d = buf.getChannelData(0), N = 1600, step = d.length/N, out = []; let max = 0;
-  for (let i=0;i<N;i++){ let m=0; for (let j=Math.floor(i*step); j<Math.floor((i+1)*step); j+=2){ const x = Math.abs(d[j]); if (x>m) m=x; } out.push(m); if (m>max) max=m; }
-  return out.map(v => max ? Math.round(v/max*1000)/1000 : 0);
-}
-function detectTempo(buf){
-  const sr = buf.sampleRate, d = buf.getChannelData(0), hop = Math.max(1, Math.round(sr/200)), fps = sr/hop;
-  const n = Math.min(Math.floor(d.length/hop), Math.floor(fps*120)), env = new Float32Array(n); let emax = 0;
-  for (let f=0; f<n; f++){ let s=0; const a=f*hop; for (let j=0;j<hop;j++){ const x=d[a+j]||0; s+=x*x; } env[f]=Math.sqrt(s/hop); if (env[f]>emax) emax=env[f]; }
-  if (!emax) return null;
-  const on = new Float32Array(n); for (let f=1; f<n; f++) on[f] = Math.max(0, Math.log(1+100*env[f]/emax) - Math.log(1+100*env[f-1]/emax));
-  const minLag = Math.floor(fps*60/200), maxLag = Math.ceil(fps*60/55); let best=-1, bestLag=minLag;
-  for (let lag=minLag; lag<=maxLag; lag++){ let s=0; for (let i=0;i<n-lag;i++) s+=on[i]*on[i+lag]; s/=(n-lag); const bpm=60*fps/lag, w=Math.exp(-0.5*Math.pow(Math.log2(bpm/120)/0.9,2)); if (s*w>best){best=s*w; bestLag=lag;} }
-  let bpm = 60*fps/bestLag; while (bpm<75) bpm*=2; while (bpm>165) bpm/=2;
-  let bs=-1, bB=bpm, bP=0;
-  for (let c=bpm*0.97; c<=bpm*1.03; c+=bpm*0.0015){ const p=fps*60/c; for (let ph=0; ph<p; ph++){ let s=0,k=0; for (let x=ph;x<n;x+=p){ s+=on[Math.round(x)]||0; k++; } s/=k; if (s>bs){bs=s; bB=c; bP=ph;} } }
-  if (Math.abs(bB-Math.round(bB))<0.3) bB = Math.round(bB);
-  const p = fps*60/bB; let st=0; for (let f=0; f<n; f++){ if (env[f]>0.08*emax){ st=f; break; } }
-  const k = Math.max(0, Math.ceil((st-bP)/p - 0.3));
-  return {bpm:Math.round(bB*10)/10, offset:Math.round((bP+k*p)/fps*1000)/1000};
-}
-/* Listens to the song beat by beat: finds which beat is "1" of the 8-count, then looks for places where the
-   music changes (loudness, bass, brightness) at 8-count boundaries and names the parts: Intro, Verse, Chorus… */
-function analyzeSong(buf, bpm, offset, P, keepOffset){
-  const sr = buf.sampleRate, d = buf.getChannelData(0), bl = 60/bpm, spb = Math.round(bl*sr), nb = Math.floor((d.length/sr - offset)/bl);
-  if (nb < P*3) return null;
-  const rms = new Float32Array(nb), low = new Float32Array(nb), hi = new Float32Array(nb), hit = new Float32Array(nb);
-  let lp = 0; const a = Math.exp(-2*Math.PI*160/sr);
-  for (let b = 0; b < nb; b++){
-    const s0 = Math.round((offset + b*bl)*sr); let e = 0, el = 0, eh = 0, head = 0, prev = d[s0-1] || 0;
-    for (let i = 0; i < spb; i += 2){ const x = d[s0+i] || 0; lp = a*lp + (1-a)*x; e += x*x; el += lp*lp; const df = x - prev; eh += df*df; prev = x; if (i < spb/8) head += x*x; }
-    rms[b] = Math.sqrt(e/(spb/2)); low[b] = el/(e || 1); hi[b] = eh/(e || 1); hit[b] = head/(spb/16);
-  }
-  const mx = Math.max(...rms) || 1, feat = b => [Math.log(1e-4 + rms[b]/mx), low[b], Math.log(1e-4 + hi[b])];
-  const win = (from, n) => { const o = [0,0,0]; let c = 0; for (let b = Math.max(0, from); b < Math.min(nb, from + n); b++){ const f = feat(b); o[0]+=f[0]; o[1]+=f[1]; o[2]+=f[2]; c++; } return c ? o.map(v => v/c) : null; };
-  // which beat is 1: strong hits and changes in the music should land on phrase starts
-  const hm = Math.max(...hit) || 1, sd = [0.6, 0.15, 0.5];
-  const change = b => { const A = win(b-4, 4), B = win(b, 4); return A && B ? Math.hypot((A[0]-B[0])/sd[0], (A[1]-B[1])/sd[1], (A[2]-B[2])/sd[2]) : 0; };
-  let shift = 0;
-  if (!keepOffset){
-    const score = k => { let s = 0, c = 0; for (let b = k; b < nb; b += P){ s += hit[b]/hm + 0.6*change(b); c++; } return c ? s/c : 0; };
-    const sc = Array.from({length:P}, (_, k) => score(k)), best = sc.indexOf(Math.max(...sc));
-    if (best > 0 && sc[best] > sc[0]*1.25) shift = best;
-  }
-  // step back whole 8-counts while there's already music playing before count 1
-  while (shift >= P) shift -= P;
-  if (shift > 0){ let pk = 0; for (let i = 0; i < d.length; i += 4) pk = Math.max(pk, Math.abs(d[i])); let i0 = 0; while (i0 < d.length && Math.abs(d[i0]) < 0.05*pk) i0++;
-    const back = shift - P; if (offset + back*bl >= i0/sr - 0.1) shift = back; }
-  const off = Math.max(0, offset + shift*bl), np = Math.floor((nb - Math.max(0, shift))/P);
-  if (np < 3) return {offset:off, shift, sections:null};
-  // one feature vector per 8-count, normalised across the song
-  const V = []; for (let p = 0; p < np; p++) V.push(win(shift + p*P, P));   // shift can be negative: win() clips
-  // normalise each feature by its median spread, so one very different part (a quiet intro) doesn't hide the rest
-  const med = arr => { const o = arr.slice().sort((x, y) => x - y); return o[Math.floor(o.length/2)]; };
-  const mid = [0,1,2].map(i => med(V.map(v => v[i]))), spread = [0,1,2].map(i => (med(V.map(v => Math.abs(v[i] - mid[i]))) || 0) * 1.4826 || Math.max(1e-3, Math.abs(mid[i])*0.05));
-  const Z = V.map(v => v.map((x, i) => Math.max(-6, Math.min(6, (x - mid[i])/spread[i])))), dist = (u, v) => Math.hypot(u[0]-v[0], u[1]-v[1], u[2]-v[2]);
-  const avg = (a, b) => { const o = [0,0,0]; let c = 0; for (let p = Math.max(0, a); p < Math.min(np, b); p++){ o[0]+=Z[p][0]; o[1]+=Z[p][1]; o[2]+=Z[p][2]; c++; } return c ? o.map(v => v/c) : null; };
-  // change at each 8-count boundary: the 8-counts either side, and the pairs either side
-  const nov = []; for (let p = 1; p < np; p++){ const A = avg(p-2, p), B = avg(p, p+2); nov.push({p, v: 0.5*dist(Z[p-1], Z[p]) + 0.5*(A && B ? dist(A, B) : 0)}); }
-  const nmed = med(nov.map(x => x.v)), thr = Math.max(1.5, nmed * 0.8), cuts = [];
-  nov.filter((x, i) => x.v > thr && x.v >= (nov[i-1] ? nov[i-1].v : 0) && x.v >= (nov[i+1] ? nov[i+1].v : 0)).sort((x, y) => y.v - x.v)
-    .forEach(x => { if (cuts.length < 9 && cuts.every(c => Math.abs(c - x.p) >= 2)) cuts.push(x.p); });
-  cuts.sort((x, y) => x - y);
-  const bounds = [0, ...cuts, np], parts = [];
-  for (let i = 0; i < bounds.length-1; i++){ const v = avg(bounds[i], bounds[i+1]); parts.push({start:bounds[i], len:bounds[i+1]-bounds[i], v, loud:v[0]}); }
-  // group parts that sound alike
-  const groups = []; parts.forEach(pt => { let g = groups.find(G => dist(G.v, pt.v) < 0.9); if (!g){ g = {v:pt.v, parts:[], loud:0}; groups.push(g); } g.parts.push(pt); pt.g = g; });
-  groups.forEach(g => { g.loud = g.parts.reduce((s, x) => s + x.loud, 0)/g.parts.length; });
-  const loudSorted = parts.map(x => x.loud).sort((x, y) => x - y), quiet = loudSorted[Math.floor(loudSorted.length/3)];
-  const rep = groups.filter(g => g.parts.length > 1), chorus = (rep.length ? rep : groups).slice().sort((x, y) => y.loud - x.loud)[0];
-  const order = ['Verse', 'Bridge', 'Break', 'Part D', 'Part E', 'Part F']; let oi = 0;
-  groups.forEach(g => { g.name = g === chorus ? 'Chorus' : null; });
-  parts.forEach((pt, i) => {
-    if (i === 0 && parts.length > 2 && pt.loud <= quiet && pt.len <= 4 && pt.g !== chorus){ pt.name = 'Intro'; return; }
-    if (i === parts.length-1 && parts.length > 2 && pt.loud <= quiet && pt.len <= 3 && pt.g !== chorus){ pt.name = 'Ending'; return; }
-    if (!pt.g.name) pt.g.name = order[Math.min(oi++, order.length-1)];
-    pt.name = pt.g.name;
-  });
-  const seen = {}, total = {}; parts.forEach(pt => { total[pt.name] = (total[pt.name]||0) + 1; });
-  parts.forEach((pt, i) => { seen[pt.name] = (seen[pt.name]||0) + 1;
-    if (total[pt.name] > 1 && seen[pt.name] > 1) pt.name = pt.name === 'Chorus' && i === parts.length-1 ? 'Final chorus' : `${pt.name} ${seen[pt.name]}`; });
-  return {offset:off, shift, sections:parts.map(pt => ({name:pt.name, start:pt.start + 1}))};
-}
+const {computePeaks, detectTempo, analyzeSong, importPlan} = window.SongCore;
 window.__wbTest = {analyzeSong, buildDemo};   // used by the tests
 async function songBuffer(){ if (cur.audio && cur.audio.demo) return demoBuf || await buildDemo(); const m = await getMedia(cur.id+':audio'); if (!m) throw new Error('no music'); return decodeBlob(m); }
 async function decodeBlob(blob){
@@ -785,7 +705,7 @@ function demoProject(){
   ];
   let prev = null; const formations = shapes.map(([name,at,travel,pts]) => { const pos = assign(prev, pts, dancers); prev = pos; return {id:uid('f'), name, at, travel, pos}; });
   const proj = {
-    id:'demo-spotlight', title:'Spotlight (demo)', style:'Jazz', demo:true, created:Date.now(), opened:Date.now(),
+    id:'demo-spotlight', uid:'demo-spotlight', title:'Spotlight (demo)', style:'Jazz', demo:true, created:Date.now(), opened:Date.now(),
     bpm:120, offset:1, phrase:8,
     sections:[{name:'Intro',start:1},{name:'Verse',start:3},{name:'Chorus',start:7},{name:'Bridge',start:11},{name:'Final chorus',start:13}],
     notes:{1:'Hold opening pose, head down. Lift chin on 7, 8.',2:'Walk 4 into the V (R, L, R, L). Arms up through 1st to 5th on 5–8.',3:'Jazz square R (1–4), ball change 5-6, hip roll 7-8.',4:'Chassé R, pas de bourrée L, single pirouette R from 4th on 5-6, land 7, plié 8.',5:'Travel into two lines on 5–8. Repeat 8-count 1 to the left.',6:'Kick ball change ×2, fan kick R on 7, land in lunge on 8.',7:'Hits on 1, 3, 5-6-7. Sharp arms. Front row only.',8:'Body roll down 1–4, slide R 5-6, turn to face back 7-8.',9:'Leap R on 1, run run 2-3, toe touch 4. Start the pinwheel.',10:'Pinwheel circle, 2 counts per spot. Finish facing front on 8.',11:'Slow. Contemporary arms, développé L on 3-4, roll down 5–8.',12:'Rise 1–4 in canon by rows. Everyone up by 8.',13:'Same as Chorus 8-count 1, bigger.',14:'Same as Chorus 8-count 2.',15:'Switch leaps on 1 and 5. Travel into the final pose.',16:'Final pose on 7. Hold 8 and freeze.'},
@@ -846,12 +766,6 @@ function propMoveText(pr, a, z){
   return `Move ${pr.name} to ${spotText(z.x, z.y).replace(/^./, c => c.toLowerCase())}`;
 }
 const propsAt = S => SC.propsAt(cur, S);
-function insideProp(pr, s, x, y, margin){
-  const r = (s.rot||0) * Math.PI / 180, dx = x - s.x, dy = y - s.y;
-  const lx = dx*Math.cos(r) + dy*Math.sin(r), ly = -dx*Math.sin(r) + dy*Math.cos(r);
-  if (pr.round) return Math.hypot(lx/(pr.w/2 + margin), ly/(pr.d/2 + margin)) < 1;
-  return Math.abs(lx) < pr.w/2 + margin && Math.abs(ly) < pr.d/2 + margin;
-}
 // Prop jobs for one person ('crew' or a dancer id) in the move INTO formation i.
 function propJobsFor(who, i){
   if (i <= 0) return []; const F = cur.formations, f = F[i], prev = F[i-1];
@@ -874,39 +788,7 @@ const faceOf = (f, id) => (f && f.face && f.face[id]) || 0;
 function initials(d){ const f = (d.name.trim()[0]||'?').toUpperCase(); const clash = cur.dancers.some(o => o !== d && (o.name.trim()[0]||'').toUpperCase() === f); return clash ? (d.name.trim().slice(0,2)||'?').replace(/^./, c=>c.toUpperCase()) : f; }
 const nameOf = id => (cur.dancers.find(d=>d.id===id)||{}).name || '';
 let warnings = [];
-function computeWarnings(){
-  const W = [], F = cur.formations, D = cur.dancers;
-  F.forEach((f,i) => {
-    const stat = new Set();
-    for (let a=0;a<D.length;a++) for (let c=a+1;c<D.length;c++){ const p=f.pos[D[a].id], q=f.pos[D[c].id]; if (!p||!q) continue; const d=Math.hypot(p[0]-q[0],p[1]-q[1]); if (d<MIN_GAP){ W.push({a:D[a].id,b:D[c].id,beat:f.at,text:`${D[a].name} and ${D[c].name} are ${d.toFixed(1)} ft apart in ${f.name}`}); stat.add(a+'-'+c); } }
-    if (i === 0) return; const prev = F[i-1], ts = travelStart(i), te = f.at; if (te <= ts) return; const best = {};
-    for (let s=1;s<24;s++){ const b = ts+(te-ts)*s/24, st = stateAt(b);
-      for (let a=0;a<D.length;a++) for (let c=a+1;c<D.length;c++){ const key=a+'-'+c; if (stat.has(key)) continue; const p0=prev.pos[D[a].id], q0=prev.pos[D[c].id]; if (p0&&q0&&Math.hypot(p0[0]-q0[0],p0[1]-q0[1])<MIN_GAP) continue; const p=st.pos[D[a].id], q=st.pos[D[c].id]; if (!p||!q) continue; const d=Math.hypot(p[0]-q[0],p[1]-q[1]); if (d<MIN_GAP && (!best[key]||d<best[key].d)) best[key]={d,b}; } }
-    Object.entries(best).forEach(([key,v]) => { const [a,c] = key.split('-').map(Number); W.push({a:D[a].id,b:D[c].id,beat:v.b,text:`${D[a].name} and ${D[c].name} pass within ${v.d.toFixed(1)} ft moving into ${f.name}`}); });
-  });
-  // Props: someone must move each prop that moves; the mover should end near it; nobody stands on a prop.
-  F.forEach((f, i) => {
-    const fp = f.props || {}, load = {};
-    cur.props.forEach(pr => {
-      const s = fp[pr.id];
-      if (isOn(s)) D.forEach(d => { const p = f.pos[d.id]; if (p && insideProp(pr, s, p[0], p[1], 0.8)) W.push({a:d.id, b:null, beat:f.at, text:`${d.name} is standing on ${pr.name} in ${f.name}`}); });
-      if (i === 0) return;
-      const a = (F[i-1].props||{})[pr.id];
-      if (!propMoved(a, s)) return;
-      const m = s ? s.mover : '', d = D.find(x => x.id === m);
-      if (m !== 'crew' && !d){ W.push({a:null, b:null, beat:travelStart(i), text:`Nobody is set to move ${pr.name} ${isOn(s) ? 'into' : 'off for'} ${f.name}`}); return; }
-      if (d){
-        load[m] = (load[m]||0) + 1;
-        const end = f.pos[m];
-        if (isOn(s) && end){ const gap = Math.hypot(end[0] - s.x, end[1] - s.y); if (gap > 4) W.push({a:m, b:null, beat:f.at, text:`${d.name} moves ${pr.name} but ends ${gap.toFixed(0)} ft away from it in ${f.name}`}); }
-      }
-    });
-    Object.entries(load).forEach(([m, c]) => { if (c > 1) W.push({a:m, b:null, beat:travelStart(i), text:`${nameOf(m)} is moving ${c} props at once into ${f.name}`}); });
-  });
-  const ST = stg();
-  F.forEach(f => D.forEach(d => { const p = f.pos[d.id]; if (p && (Math.abs(p[0]) > ST.w/2 + 0.01 || p[1] < -0.01 || p[1] > ST.d + 0.01)) W.push({a:d.id, b:null, beat:f.at, text:`${d.name} is off the stage in ${f.name} (the stage is ${ST.w} × ${ST.d} ft)`}); }));
-  W.sort((x,y)=>x.beat-y.beat); warnings = W;
-}
+function computeWarnings(){ warnings = SC.checkSpacing(cur, MIN_GAP); }
 
 /* ================= stage component ================= */
 // Cut the last r drawing units off a path so an arrowhead stops at the edge of a dancer's dot.
@@ -1078,7 +960,7 @@ $('backupLater').addEventListener('click', async () => { const b = await getMeta
 $('remindChk').addEventListener('change', async e => { const b = await getMeta('backup', {last:0, snooze:0}); b.remind = e.target.checked; await setMeta('backup', b); updateBackupBanner(); });
 
 async function duplicate(p){
-  const c = JSON.parse(JSON.stringify(p)); c.id = uid('p'); c.title = p.title + ' (copy)'; c.created = c.opened = Date.now(); c.demo = false;
+  const c = JSON.parse(JSON.stringify(p)); c.id = uid('p'); c.uid = uid('u'); delete c.base; c.title = p.title + ' (copy)'; c.created = c.opened = c.updated = Date.now(); c.demo = false;
   for (const k of ['audio','video']){ const m = await getMedia(p.id+':'+k); if (m) await putMedia(c.id+':'+k, m); }
   await putProject(c); toast(`Made a copy: ${c.title}.`); refreshLib();
 }
@@ -1086,7 +968,7 @@ $('newFile').addEventListener('change', async e => {
   const f = e.target.files && e.target.files[0]; if (!f) return; e.target.value = '';
   toast('Reading the beat…');
   const id = uid('p'), isVideo = (f.type||'').startsWith('video');
-  const p = {id, title:f.name.replace(/\.[^.]+$/,''), style:'Jazz', created:Date.now(), opened:Date.now(), bpm:120, offset:0, phrase:8,
+  const p = {id, uid:uid('u'), updated:Date.now(), title:f.name.replace(/\.[^.]+$/,''), style:'Jazz', created:Date.now(), opened:Date.now(), bpm:120, offset:0, phrase:8,
     sections:[{name:'Intro',start:1}], notes:{}, dancers:[], formations:[], audio:{name:f.name, duration:0}, hasAudio:true, peaks:null, video:isVideo ? {name:f.name, offset:0, mirror:false} : null};
   try { const buf = await decodeBlob(f); p.peaks = computePeaks(buf); p.audio.duration = Math.round(buf.duration*100)/100; const r = detectTempo(buf); if (r){ p.bpm = r.bpm; p.offset = r.offset; const a = analyzeSong(buf, p.bpm, p.offset, p.phrase); if (a){ p.offset = Math.round(a.offset*1000)/1000; if (a.sections && a.sections.length > 1){ p.sections = a.sections; p.autoSections = true; } } } }
   catch(err){ toast("Couldn't read the beat from this file. You can tap the tempo inside the project."); }
@@ -1095,20 +977,56 @@ $('newFile').addEventListener('change', async e => {
   if (p.autoSections) toast(`Found ${p.sections.length} sections in the music (${p.sections.map(x => x.name).join(', ')}). Rename or move them in Counts & notes.`);
 });
 const MIME = {mp3:'audio/mpeg', m4a:'audio/mp4', aac:'audio/aac', wav:'audio/wav', ogg:'audio/ogg', flac:'audio/flac', mp4:'video/mp4', mov:'video/quicktime', webm:'video/webm', m4v:'video/mp4'};
+// Fields of a project that come from a share file (everything but this PC's own bookkeeping).
+function fromShare(s, data){
+  return {title:s.title || 'Shared project', style:s.style||'Other', bpm:+s.bpm||120, offset:+s.offset||0, phrase:+s.phrase||8,
+    sections:Array.isArray(s.sections)&&s.sections.length ? s.sections : [{name:'Intro',start:1}], notes:s.notes||{}, dancers:s.dancers||[], formations:s.formations||[], props:Array.isArray(s.props) ? s.props : [], propsSeeded:true, stage:s.stage && typeof s.stage === 'object' ? s.stage : undefined,
+    audio:s.audio || null, peaks:s.peaks||null, imported:true, from:data.exported};
+}
+async function storeShareMedia(id, p, s, m){
+  if (m.audio){ await putMedia(id+':audio', new Blob([m.audio.data], {type:MIME[m.audio.ext]||''})); p.hasAudio = true; if (p.audio) p.audio.demo = false; }
+  if (m.video && s.video){ await putMedia(id+':video', new Blob([m.video.data], {type:MIME[m.video.ext]||''})); p.video = s.video; }
+}
+// Opening a .dance file: a number you already have (same uid) is updated in place instead of added twice.
 async function importShare(share){
   if (!share) return;
   if (!share.ok){ if (!share.canceled) toast(share.error || "That file couldn't be opened."); return; }
-  const data = share.data, s = data.project, id = uid('p');
-  const p = {id, title:s.title || 'Shared project', style:s.style||'Other', created:Date.now(), opened:Date.now(), bpm:+s.bpm||120, offset:+s.offset||0, phrase:+s.phrase||8,
-    sections:Array.isArray(s.sections)&&s.sections.length ? s.sections : [{name:'Intro',start:1}], notes:s.notes||{}, dancers:s.dancers||[], formations:s.formations||[], props:Array.isArray(s.props) ? s.props : [], propsSeeded:true, stage:s.stage && typeof s.stage === 'object' ? s.stage : undefined,
-    audio:s.audio || null, hasAudio:false, peaks:s.peaks||null, video:null, imported:true, from:data.exported};
-  const m = share.media || {};
-  if (m.audio){ await putMedia(id+':audio', new Blob([m.audio.data], {type:MIME[m.audio.ext]||''})); p.hasAudio = true; if (p.audio) p.audio.demo = false; }
-  if (m.video && s.video){ await putMedia(id+':video', new Blob([m.video.data], {type:MIME[m.video.ext]||''})); p.video = s.video; }
+  const s = share.data.project, mine = s.uid ? (await allProjects()).find(p => p.uid === s.uid) : null;
+  if (!mine) return addShared(share, s.uid);
+  const plan = importPlan(mine, s);
+  if (plan === 'same'){ toast(`You already have this version of "${mine.title}".`); return; }
+  if (plan === 'update') return updateFromShare(mine, share);
+  if (cur) await closeProject();
+  const when = s.updated ? new Date(s.updated).toLocaleString([], {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}) : 'an unknown time';
+  $('importAskText').textContent = plan === 'older'
+    ? `The file has an older copy of "${mine.title}" (changed ${when}) than the one on this PC.`
+    : `"${mine.title}" was changed on this PC and in the file you opened (changed ${when}) since they last matched.`;
+  $('importAsk').hidden = false; window.scrollTo(0, 0);
+  pendingImport = {mine, share};
+}
+let pendingImport = null;
+async function addShared(share, keepUid, titleSuffix){
+  const data = share.data, s = data.project, id = uid('p'), m = share.media || {};
+  const p = Object.assign({id, uid:keepUid || uid('u'), base:keepUid ? (+s.updated || 0) : 0, updated:keepUid ? (+s.updated || Date.now()) : Date.now(), created:Date.now(), opened:Date.now(), hasAudio:false, video:null}, fromShare(s, data));
+  if (titleSuffix) p.title += titleSuffix;
+  await storeShareMedia(id, p, s, m);
   await putProject(p);
   if (cur) await closeProject(); else await refreshLib();
   toast(`Added "${p.title}" to your library${m.audio ? ' with its music' : ''}.`);
 }
+async function updateFromShare(mine, share){
+  const data = share.data, s = data.project, m = share.media || {};
+  if (cur && cur.id === mine.id) await closeProject();
+  const p = Object.assign({}, mine, fromShare(s, data), {base:+s.updated || 0, updated:+s.updated || Date.now()});
+  if (!m.audio && mine.audio && !mine.audio.demo && p.audio) p.audio = Object.assign({}, p.audio, {demo:false});   // keep the music already on this PC
+  await storeShareMedia(mine.id, p, s, m);
+  await putProject(p);
+  if (cur) await closeProject(); else await refreshLib();
+  toast(`Updated "${p.title}" with the changes from the file.`);
+}
+$('iaReplace').addEventListener('click', async () => { const x = pendingImport; pendingImport = null; $('importAsk').hidden = true; if (x) await updateFromShare(x.mine, x.share); });
+$('iaBoth').addEventListener('click', async () => { const x = pendingImport; pendingImport = null; $('importAsk').hidden = true; if (x) await addShared(x.share, null, ' (from file)'); });
+$('iaCancel').addEventListener('click', () => { pendingImport = null; $('importAsk').hidden = true; });
 $('importBtn').addEventListener('click', async () => importShare(await window.workbook.openShare()));
 
 /* ================= open / close project ================= */
@@ -1118,7 +1036,8 @@ async function openProject(id){
   stopAll();
   cur = p; cur.opened = Date.now(); ensureProps(cur);
   if (cur.id === 'demo-spotlight' && !cur.propsSeeded) addDemoProps(cur);
-  UI.selProp = null; save();
+  if (!cur.uid) cur.uid = cur.id === 'demo-spotlight' ? 'demo-spotlight' : uid('u');
+  UI.selProp = null; putProject(cur);
   UI.loop = null; UI.sel = null; UI.hl = null; UI.follow = ''; UI.picking = false; UI.pick = null; UI.duration = cur.audio ? cur.audio.duration || 0 : 0;
   if (audioUrl){ URL.revokeObjectURL(audioUrl); audioUrl = null; }
   if (videoUrl){ URL.revokeObjectURL(videoUrl); videoUrl = null; }
@@ -1707,7 +1626,7 @@ $('addDancer').addEventListener('click', () => addDancerNamed(`Dancer ${cur.danc
 
 /* ================= share & print ================= */
 function shareObject(){
-  return {app:'choreo-workbook', format:1, exported:new Date().toISOString(), project:{title:cur.title, style:cur.style, bpm:cur.bpm, offset:cur.offset, phrase:cur.phrase,
+  return {app:'choreo-workbook', format:1, exported:new Date().toISOString(), project:{uid:cur.uid, updated:cur.updated || cur.created || 0, base:cur.base || 0, title:cur.title, style:cur.style, bpm:cur.bpm, offset:cur.offset, phrase:cur.phrase,
     sections:cur.sections, notes:cur.notes, dancers:cur.dancers, formations:cur.formations, props:cur.props, stage:cur.stage || null, peaks:cur.peaks,
     audio:cur.audio ? {name:cur.audio.name, duration:cur.audio.duration, demo:!!cur.audio.demo} : null, video:cur.video ? {name:cur.video.name, offset:cur.video.offset, mirror:cur.video.mirror} : null}};
 }

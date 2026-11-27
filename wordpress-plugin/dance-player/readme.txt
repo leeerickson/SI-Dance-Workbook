@@ -4,7 +4,7 @@ Tags: dance, choreography, formations, music, rehearsal
 Requires at least: 5.8
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 0.3.0
+Stable tag: 0.4.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -37,6 +37,9 @@ Options: `open="no"` hides the "Open a .dance file" button, `width="480"` sets t
 To include the music, save the share file in Choreography Workbook with "Everything, including music and video". Only post music and video you have the right to share.
 
 == Changelog ==
+
+= 0.4.0 =
+* The player now includes the phone app's editor (Edit button). Visitors' changes stay in their own browser; use ?open=0 to hide "Open" and "New number".
 
 = 0.3.0 =
 * Save a video with the counts drawn on it, at 100, 75, 50 or 25% speed: your filmed run, or the file's video.
